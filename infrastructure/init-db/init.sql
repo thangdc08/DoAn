@@ -1,0 +1,10 @@
+-- Enable extensions
+CREATE EXTENSION IF NOT EXISTS postgis SCHEMA public;
+CREATE EXTENSION IF NOT EXISTS pgcrypto SCHEMA public;
+
+-- Create schemas for different services
+CREATE SCHEMA IF NOT EXISTS identity;
+CREATE SCHEMA IF NOT EXISTS venue;
+CREATE SCHEMA IF NOT EXISTS booking;
+CREATE SCHEMA IF NOT EXISTS payment;
+CREATE SCHEMA IF NOT EXISTS community;
