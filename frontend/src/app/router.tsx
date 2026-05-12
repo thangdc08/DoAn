@@ -1,44 +1,135 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom';
+import { createBrowserRouter } from 'react-router-dom';
 import { lazy, Suspense } from 'react';
+import { Spin } from 'antd';
 
-// Layouts (eager - needed immediately)
-import MainLayout from '../components/layout/MainLayout';
+// Layouts
+import PublicLayout from '../layouts/PublicLayout';
+import DashboardLayout from '../layouts/DashboardLayout';
+
+// Auth Pages
 import LoginPage from '../pages/auth/LoginPage';
 import RegisterPage from '../pages/auth/RegisterPage';
 
-// Feature pages (lazy loaded)
-const VenueList    = lazy(() => import('../features/venues/VenueList'));
-const VenueDetail  = lazy(() => import('../features/venues/VenueDetail'));
-const MatchFeed    = lazy(() => import('../features/community/MatchFeed'));
-const DesignSystemDemo = lazy(() => import('../pages/demo/DesignSystemDemo'));
+// Public Pages
+const HomePage = lazy(() => import('../pages/public/HomePage'));
+const VenueListPage = lazy(() => import('../pages/public/VenueListPage'));
+const VenueDetailPage = lazy(() => import('../pages/public/VenueDetailPage'));
+const JoinPartnerPage = lazy(() => import('../pages/public/JoinPartnerPage'));
+const PartnerOnboardingPage = lazy(() => import('../pages/public/PartnerOnboardingPage'));
+const CommunityPage = lazy(() => import('../pages/public/CommunityPage'));
+const MatchDetailPage = lazy(() => import('../pages/public/MatchDetailPage'));
+const VenueMapPage = lazy(() => import('../pages/public/VenueMapPage'));
+const PricingPage = lazy(() => import('../pages/public/PricingPage'));
+const AboutPage = lazy(() => import('../pages/public/AboutPage'));
+
+// User Pages
+const ProfilePage = lazy(() => import('../pages/user/ProfilePage'));
+const BookingPage = lazy(() => import('../pages/user/BookingPage'));
+const CheckoutPage = lazy(() => import('../pages/user/CheckoutPage'));
+const PaymentPage = lazy(() => import('../pages/user/PaymentPage'));
+const MockPaymentPage = lazy(() => import('../pages/user/MockPaymentPage'));
+const PaymentResultPage = lazy(() => import('../pages/user/PaymentResultPage'));
+const BookingHistoryPage = lazy(() => import('../pages/user/BookingHistoryPage'));
+const NotificationsPage = lazy(() => import('../pages/user/NotificationsPage'));
+
+// Owner Pages
+const OwnerDashboardPage = lazy(() => import('../pages/owner/OwnerDashboardPage'));
+const VenueManagementPage = lazy(() => import('../pages/owner/VenueManagementPage'));
+const CourtManagementPage = lazy(() => import('../pages/owner/CourtManagementPage'));
+const OwnerBookingPage = lazy(() => import('../pages/owner/OwnerBookingPage'));
+const OwnerRevenuePage = lazy(() => import('../pages/owner/OwnerRevenuePage'));
+const OwnerSettingsPage = lazy(() => import('../pages/owner/OwnerSettingsPage'));
+const OwnerSupportPage = lazy(() => import('../pages/owner/OwnerSupportPage'));
+
+// Admin Pages
+const AdminDashboardPage = lazy(() => import('../pages/admin/AdminDashboardPage'));
+const UserManagementPage = lazy(() => import('../pages/admin/UserManagementPage'));
+const VenueApprovalPage = lazy(() => import('../pages/admin/VenueApprovalPage'));
+const AdminReportPage = lazy(() => import('../pages/admin/AdminReportPage'));
+const AdminSettingsPage = lazy(() => import('../pages/admin/AdminSettingsPage'));
+const AdminSupportPage = lazy(() => import('../pages/admin/AdminSupportPage'));
 
 // Loading fallback
 const PageLoader = () => (
-  <div className="flex h-64 items-center justify-center">
-    <div className="w-6 h-6 rounded-full border-2 border-brand-green border-t-transparent animate-spin" />
+  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+    <Spin size="large" />
   </div>
 );
 
 export const router = createBrowserRouter([
-  // ── Public routes (with top navbar) ──────────────────────────
+  // ── Public routes ──────────────────────────
   {
     path: '/',
-    element: <MainLayout />,
+    element: <PublicLayout />,
     children: [
-      { index: true,                element: <Navigate to="/venues" replace /> },
-      { path: 'venues',             element: <Suspense fallback={<PageLoader />}><VenueList /></Suspense> },
-      { path: 'venues/:id',         element: <Suspense fallback={<PageLoader />}><VenueDetail /></Suspense> },
-      { path: 'community',          element: <Suspense fallback={<PageLoader />}><MatchFeed /></Suspense> },
+      { index: true, element: <Suspense fallback={<PageLoader />}><HomePage /></Suspense> },
+      { path: 'venues', element: <Suspense fallback={<PageLoader />}><VenueListPage /></Suspense> },
+      { path: 'venues/:venueId', element: <Suspense fallback={<PageLoader />}><VenueDetailPage /></Suspense> },
+      { path: 'community', element: <Suspense fallback={<PageLoader />}><CommunityPage /></Suspense> },
+      { path: 'community/matches/:matchId', element: <Suspense fallback={<PageLoader />}><MatchDetailPage /></Suspense> },
+      { path: 'map', element: <Suspense fallback={<PageLoader />}><VenueMapPage /></Suspense> },
+      { path: 'pricing', element: <Suspense fallback={<PageLoader />}><PricingPage /></Suspense> },
+      { path: 'about', element: <Suspense fallback={<PageLoader />}><AboutPage /></Suspense> },
+      { path: 'partner', element: <Suspense fallback={<PageLoader />}><JoinPartnerPage /></Suspense> },
+      { path: 'partner/register', element: <Suspense fallback={<PageLoader />}><PartnerOnboardingPage /></Suspense> },
     ],
   },
 
-  // ── Auth routes (no navbar) ────────────────────────────────────
-  { path: '/login',    element: <LoginPage /> },
-  { path: '/register', element: <RegisterPage /> },
-
-  // ── Design system demo (dev only) ──────────────────────────────
+  // ── Auth routes ────────────────────────────────────
   {
-    path: '/design-system',
-    element: <Suspense fallback={<PageLoader />}><DesignSystemDemo /></Suspense>,
+    path: '/',
+    children: [
+      { path: 'login', element: <LoginPage /> },
+      { path: 'register', element: <RegisterPage /> },
+    ],
+  },
+
+  // ── User routes ────────────────────────────────────
+  {
+    path: '/user',
+    element: <DashboardLayout role="USER" />,
+    children: [
+      { path: 'profile', element: <Suspense fallback={<PageLoader />}><ProfilePage /></Suspense> },
+      { path: 'booking', element: <Suspense fallback={<PageLoader />}><BookingPage /></Suspense> },
+      { path: 'checkout', element: <Suspense fallback={<PageLoader />}><CheckoutPage /></Suspense> },
+      { path: 'payment', element: <Suspense fallback={<PageLoader />}><PaymentPage /></Suspense> },
+      { path: 'payment-result', element: <Suspense fallback={<PageLoader />}><PaymentResultPage /></Suspense> },
+      { path: 'bookings', element: <Suspense fallback={<PageLoader />}><BookingHistoryPage /></Suspense> },
+      { path: 'notifications', element: <Suspense fallback={<PageLoader />}><NotificationsPage /></Suspense> },
+    ],
+  },
+
+  // ── Mock Payment (standalone) ──────────────────────
+  { path: '/mock-payment', element: <Suspense fallback={<PageLoader />}><MockPaymentPage /></Suspense> },
+
+  // ── Owner routes ───────────────────────────────────
+  {
+    path: '/owner',
+    element: <DashboardLayout role="OWNER" />,
+    children: [
+      { index: true, element: <Suspense fallback={<PageLoader />}><OwnerDashboardPage /></Suspense> },
+      { path: 'dashboard', element: <Suspense fallback={<PageLoader />}><OwnerDashboardPage /></Suspense> },
+      { path: 'venues', element: <Suspense fallback={<PageLoader />}><VenueManagementPage /></Suspense> },
+      { path: 'venues/:venueId/courts', element: <Suspense fallback={<PageLoader />}><CourtManagementPage /></Suspense> },
+      { path: 'bookings', element: <Suspense fallback={<PageLoader />}><OwnerBookingPage /></Suspense> },
+      { path: 'revenue', element: <Suspense fallback={<PageLoader />}><OwnerRevenuePage /></Suspense> },
+      { path: 'settings', element: <Suspense fallback={<PageLoader />}><OwnerSettingsPage /></Suspense> },
+      { path: 'support', element: <Suspense fallback={<PageLoader />}><OwnerSupportPage /></Suspense> },
+    ],
+  },
+
+  // ── Admin routes ───────────────────────────────────
+  {
+    path: '/admin',
+    element: <DashboardLayout role="ADMIN" />,
+    children: [
+      { index: true, element: <Suspense fallback={<PageLoader />}><AdminDashboardPage /></Suspense> },
+      { path: 'dashboard', element: <Suspense fallback={<PageLoader />}><AdminDashboardPage /></Suspense> },
+      { path: 'users', element: <Suspense fallback={<PageLoader />}><UserManagementPage /></Suspense> },
+      { path: 'venues', element: <Suspense fallback={<PageLoader />}><VenueApprovalPage /></Suspense> },
+      { path: 'reports', element: <Suspense fallback={<PageLoader />}><AdminReportPage /></Suspense> },
+      { path: 'settings', element: <Suspense fallback={<PageLoader />}><AdminSettingsPage /></Suspense> },
+      { path: 'support', element: <Suspense fallback={<PageLoader />}><AdminSupportPage /></Suspense> },
+    ],
   },
 ]);

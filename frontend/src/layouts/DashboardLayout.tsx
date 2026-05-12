@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
+import { Dropdown, Badge, Avatar, message, Typography, Space } from 'antd';
+import type { MenuProps } from 'antd';
 import {
   LayoutDashboard, CalendarDays, Users, BarChart3,
   Building2, Settings, Bell, ChevronLeft, ChevronRight,
   LogOut, HelpCircle, FileCheck, Swords,
 } from 'lucide-react';
+import { BRAND } from '../theme/antdTheme';
+
+const { Text } = Typography;
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
@@ -41,6 +46,7 @@ const OWNER_MENU: MenuItem[] = [
   { to: '/owner/venues',     label: 'Quản lý sân',    icon: <Building2       size={18} /> },
   { to: '/owner/bookings',   label: 'Booking',         icon: <CalendarDays    size={18} /> },
   { to: '/owner/revenue',    label: 'Doanh thu',       icon: <BarChart3       size={18} /> },
+  { to: '/owner/settings',   label: 'Cấu hình',        icon: <Settings        size={18} /> },
   { to: '/owner/support',    label: 'Hỗ trợ',          icon: <HelpCircle      size={18} /> },
 ];
 
@@ -50,6 +56,7 @@ const ADMIN_MENU: MenuItem[] = [
   { to: '/admin/venues',     label: 'Duyệt sân',      icon: <FileCheck       size={18} /> },
   { to: '/admin/reports',    label: 'Báo cáo',         icon: <BarChart3       size={18} /> },
   { to: '/admin/settings',   label: 'Cấu hình',        icon: <Settings        size={18} /> },
+  { to: '/admin/support',    label: 'Hỗ trợ',          icon: <HelpCircle      size={18} /> },
 ];
 
 const MENUS: Record<DashboardRole, MenuItem[]> = {
@@ -101,24 +108,72 @@ const SidebarItem: React.FC<MenuItem & { collapsed: boolean }> = ({
 
 // ── Main component ────────────────────────────────────────────────────────
 
-/**
- * DashboardLayout — layout sidebar dùng cho USER / OWNER / ADMIN dashboard.
- * Menu tự thay đổi theo `role` prop.
- * Sidebar có thể collapse.
- *
- * @example
- * <DashboardLayout role="OWNER" userName="Nguyễn Văn A">
- *   <VenueManagePage />
- * </DashboardLayout>
- */
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   role = 'USER',
   userName = 'Người dùng',
   userAvatar,
 }) => {
   const [collapsed, setCollapsed] = useState(false);
+  const navigate = useNavigate();
   const menu = MENUS[role];
   const sidebarW = collapsed ? 'w-16' : 'w-60';
+
+  const handleLogout = () => {
+    message.success('Đã đăng xuất thành công');
+    navigate('/login');
+  };
+
+  const userMenuItems: MenuProps['items'] = [
+    {
+      key: 'profile',
+      label: 'Hồ sơ của tôi',
+      icon: <Users size={14} />,
+      onClick: () => navigate(`/${role.toLowerCase()}/profile`),
+    },
+    {
+      key: 'settings',
+      label: 'Cài đặt tài khoản',
+      icon: <Settings size={14} />,
+      onClick: () => navigate(`/${role.toLowerCase()}/settings`),
+    },
+    {
+      type: 'divider',
+    },
+    {
+      key: 'logout',
+      label: 'Đăng xuất',
+      danger: true,
+      icon: <LogOut size={14} />,
+      onClick: handleLogout,
+    },
+  ];
+
+  const notificationMenu = (
+    <div className="bg-white rounded-xl shadow-2xl border border-gray-100 w-80 overflow-hidden">
+      <div className="px-4 py-3 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
+        <span className="font-bold text-gray-800">Thông báo</span>
+        <button className="text-xs text-brand-green font-semibold">Đánh dấu đã đọc</button>
+      </div>
+      <div className="max-h-80 overflow-y-auto">
+        {[
+          { id: 1, title: 'Booking mới', desc: 'Có một khách hàng vừa đặt Sân 1 vào lúc 18:00', time: '5 phút trước', unread: true },
+          { id: 2, title: 'Thanh toán thành công', desc: 'Doanh thu +200.000đ từ booking #BK102', time: '1 giờ trước', unread: false },
+          { id: 3, title: 'Nhắc nhở lịch', desc: 'Bạn có 3 ca làm việc sắp tới vào ngày mai', time: '3 giờ trước', unread: false },
+        ].map(n => (
+          <div key={n.id} className={clsx("px-4 py-3 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors", n.unread && "bg-brand-green/5")}>
+            <div className="flex justify-between items-start mb-1">
+              <span className="text-sm font-bold text-gray-800">{n.title}</span>
+              <span className="text-[10px] text-gray-400">{n.time}</span>
+            </div>
+            <p className="text-xs text-gray-500 line-clamp-2">{n.desc}</p>
+          </div>
+        ))}
+      </div>
+      <div className="px-4 py-2 text-center border-t border-gray-50">
+        <button className="text-xs text-gray-400 hover:text-brand-green font-medium">Xem tất cả thông báo</button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="flex min-h-screen bg-app-bg">
@@ -166,26 +221,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           ))}
         </nav>
 
-        {/* User info + collapse button */}
+        {/* Collapse toggle */}
         <div className="flex-shrink-0 border-t border-app-border p-2">
-          {/* User row */}
-          {!collapsed && (
-            <div className="flex items-center gap-3 px-2 py-2 mb-1 rounded-xl hover:bg-app-bg cursor-pointer transition-colors">
-              <div className="w-8 h-8 rounded-full bg-brand-green flex-shrink-0 overflow-hidden flex items-center justify-center text-white text-sm font-bold">
-                {userAvatar
-                  ? <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />
-                  : userName.charAt(0).toUpperCase()
-                }
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-bold text-app-text truncate">{userName}</p>
-                <p className="text-xs text-app-muted truncate">{ROLE_LABELS[role]}</p>
-              </div>
-              <LogOut size={14} className="text-app-muted flex-shrink-0" />
-            </div>
-          )}
-
-          {/* Collapse toggle */}
           <button
             type="button"
             onClick={() => setCollapsed((v) => !v)}
@@ -217,29 +254,42 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              className="relative w-9 h-9 flex items-center justify-center rounded-lg text-app-muted hover:bg-app-bg transition-colors"
-              aria-label="Thông báo"
-            >
-              <Bell size={18} />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-status-error rounded-full ring-2 ring-white" />
-            </button>
+            <Dropdown dropdownRender={() => notificationMenu} trigger={['click']} placement="bottomRight">
+              <button
+                type="button"
+                className="relative w-10 h-10 flex items-center justify-center rounded-xl text-app-muted hover:bg-app-bg transition-colors"
+                aria-label="Thông báo"
+              >
+                <Badge dot color="#ff4d4f" offset={[-4, 4]}>
+                  <Bell size={20} />
+                </Badge>
+              </button>
+            </Dropdown>
 
             <button
               type="button"
-              className="w-9 h-9 flex items-center justify-center rounded-lg text-app-muted hover:bg-app-bg transition-colors"
+              className="w-10 h-10 flex items-center justify-center rounded-xl text-app-muted hover:bg-app-bg transition-colors"
               aria-label="Cài đặt"
+              onClick={() => navigate(`/${role.toLowerCase()}/settings`)}
             >
-              <Settings size={18} />
+              <Settings size={20} />
             </button>
 
-            <div className="w-8 h-8 rounded-full bg-brand-green overflow-hidden flex items-center justify-center text-white text-sm font-bold ml-1 flex-shrink-0">
-              {userAvatar
-                ? <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />
-                : userName.charAt(0).toUpperCase()
-              }
-            </div>
+            <Dropdown menu={{ items: userMenuItems }} trigger={['click']} placement="bottomRight">
+              <div className="flex items-center gap-2 ml-2 p-1 pr-3 rounded-xl hover:bg-app-bg cursor-pointer transition-colors group">
+                <Avatar 
+                  size={36} 
+                  src={userAvatar} 
+                  className="bg-brand-green font-bold group-hover:scale-105 transition-transform"
+                >
+                  {userName.charAt(0).toUpperCase()}
+                </Avatar>
+                <div className="hidden sm:block text-right">
+                   <p className="text-xs font-bold text-app-text leading-tight">{userName.split(' ').at(-1)}</p>
+                   <p className="text-[10px] text-app-muted leading-tight">{ROLE_LABELS[role]}</p>
+                </div>
+              </div>
+            </Dropdown>
           </div>
         </header>
 

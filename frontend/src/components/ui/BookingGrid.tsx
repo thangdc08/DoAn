@@ -16,6 +16,14 @@ type BookingGridProps = {
   onSelectionChange?: (slots: string[]) => void;
   /** Giá mỗi slot (VNĐ) */
   pricePerSlot?: number;
+  /** Chế độ xem chỉ đọc */
+  readOnly?: boolean;
+  /** Danh sách tên sân */
+  courtNames?: string[];
+  /** Danh sách khung giờ */
+  timeSlots?: string[];
+  /** Chế độ quản trị (Lock sân) */
+  isAdmin?: boolean;
 };
 
 // ─── Mock data (sẽ thay bằng API) ──────────────────────────────────────
@@ -95,9 +103,17 @@ function getSlotLabel(status: SlotStatus): string {
 const BookingGrid: React.FC<BookingGridProps> = ({
   onSelectionChange,
   pricePerSlot = 120_000,
+  readOnly = false,
+  courtNames: propsCourtNames,
+  timeSlots: propsTimeSlots,
+  isAdmin = false,
 }) => {
-  const { confirm, success } = useNotify();
-  const [selectedSlots, setSelectedSlots] = useState<string[]>(['Sân 2-20:00']);
+  const { confirm, success, notify } = useNotify();
+  const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
+  const [lockedByAdmin, setLockedByAdmin] = useState<Set<string>>(new Set(LOCKED_SLOTS));
+
+  const finalCourtNames = propsCourtNames || courtNames;
+  const finalTimeSlots = propsTimeSlots || timeSlots;
 
   const totalPrice = useMemo(
     () => selectedSlots.length * pricePerSlot,
@@ -107,14 +123,29 @@ const BookingGrid: React.FC<BookingGridProps> = ({
   const getStatus = (court: string, time: string): SlotStatus => {
     const id = `${court}-${time}`;
     if (BOOKED_SLOTS.has(id)) return 'booked';
-    if (LOCKED_SLOTS.has(id)) return 'locked';
+    if (lockedByAdmin.has(id)) return 'locked';
     if (selectedSlots.includes(id)) return 'selected';
     return 'available';
   };
 
   const toggleSlot = (court: string, time: string) => {
+    if (readOnly && !isAdmin) return;
     const id = `${court}-${time}`;
-    if (BOOKED_SLOTS.has(id) || LOCKED_SLOTS.has(id)) return;
+
+    if (isAdmin) {
+      const newLocked = new Set(lockedByAdmin);
+      if (newLocked.has(id)) {
+        newLocked.delete(id);
+        notify('info', 'Đã mở khóa sân', `Sân ${court} khung giờ ${time} đã sẵn sàng cho khách.`);
+      } else {
+        newLocked.add(id);
+        notify('warning', 'Đã khóa sân', `Sân ${court} khung giờ ${time} đã được ẩn khỏi khách.`);
+      }
+      setLockedByAdmin(newLocked);
+      return;
+    }
+
+    if (BOOKED_SLOTS.has(id) || lockedByAdmin.has(id)) return;
 
     setSelectedSlots((prev) => {
       const next = prev.includes(id)
@@ -160,14 +191,15 @@ const BookingGrid: React.FC<BookingGridProps> = ({
   return (
     <div>
       {/* ── Grid ───────────────────────────────────────────── */}
-      <div style={{ overflowX: 'auto', paddingBottom: 8 }}>
+      <div className="overflow-x-auto pb-4 custom-scrollbar">
         <div
           style={{
-            minWidth: 1280,
-            borderRadius: 12,
+            minWidth: 2000,
+            borderRadius: 16,
             border: '1px solid #e2e8f0',
             overflow: 'hidden',
             background: '#fff',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.02)'
           }}
         >
           {/* Header row */}
@@ -195,7 +227,7 @@ const BookingGrid: React.FC<BookingGridProps> = ({
             >
               Sân / Giờ
             </div>
-            {timeSlots.map((time) => (
+            {finalTimeSlots.map((time) => (
               <div
                 key={time}
                 style={{
@@ -215,7 +247,7 @@ const BookingGrid: React.FC<BookingGridProps> = ({
           </div>
 
           {/* Court rows */}
-          {courtNames.map((court) => (
+          {finalCourtNames.map((court) => (
             <div
               key={court}
               style={{
@@ -246,7 +278,7 @@ const BookingGrid: React.FC<BookingGridProps> = ({
               </div>
 
               {/* Slot cells */}
-              {timeSlots.map((time) => {
+              {finalTimeSlots.map((time) => {
                 const status = getStatus(court, time);
                 const label = getSlotLabel(status);
                 const tooltipTitle = `${court} · ${time} — ${
@@ -285,7 +317,8 @@ const BookingGrid: React.FC<BookingGridProps> = ({
       </div>
 
       {/* ── Footer: Legend + Summary ────────────────────────── */}
-      <div
+      {!readOnly && (
+        <div
         style={{
           marginTop: 16,
           display: 'flex',
@@ -337,6 +370,7 @@ const BookingGrid: React.FC<BookingGridProps> = ({
           </Badge>
         </div>
       </div>
+      )}
     </div>
   );
 };

@@ -11,7 +11,7 @@ import type { ModalFuncProps } from 'antd';
  *   confirm({ title: '...', onOk: () => {} });
  */
 export function useNotify() {
-  const { message, modal } = App.useApp();
+  const { message, modal, notification } = App.useApp();
 
   const success = (content: string, duration = 3) =>
     message.success({ content, duration });
@@ -32,5 +32,12 @@ export function useNotify() {
       ...props,
     });
 
-  return { success, error, warning, loading, confirm, message, modal };
+  const notify = (type: 'success' | 'info' | 'warning' | 'error', messageText: string, description?: string) =>
+    notification[type]({
+      message: messageText,
+      description,
+      placement: 'topRight',
+    });
+
+  return { success, error, warning, loading, confirm, notify, message, modal, notification };
 }
