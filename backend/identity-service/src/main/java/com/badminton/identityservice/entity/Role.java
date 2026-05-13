@@ -1,21 +1,24 @@
-﻿package com.badminton.identityservice.entity;
+package com.badminton.identityservice.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.util.UUID;
-
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 @Entity
 @Table(name = "roles", schema = "identity")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class Role {
+
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
-    private UUID id;
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-    @Column(unique = true, nullable = false)
-    private String code;
+    @Column(nullable = false, unique = true, length = 30)
+    private String code; // USER, OWNER, ADMIN
 
-    @Column(nullable = false)
+    @Column(nullable = false, length = 100)
     private String name;
 }

@@ -1,10 +1,13 @@
-﻿package com.badminton.identityservice.repository;
+package com.badminton.identityservice.repository;
 
 import com.badminton.identityservice.entity.Role;
 import org.springframework.data.jpa.repository.JpaRepository;
-import java.util.Optional;
-import java.util.UUID;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.stereotype.Repository;
 
-public interface RoleRepository extends JpaRepository<Role, UUID> {
+import java.util.Optional;
+
+@Repository
+public interface RoleRepository extends JpaRepository<Role, Long>, JpaSpecificationExecutor<Role> {
     Optional<Role> findByCode(String code);
 }

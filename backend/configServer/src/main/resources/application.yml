@@ -1,0 +1,46 @@
+server:
+  port: 8888
+
+spring:
+  application:
+    name: CONFIG-SERVER
+  profiles:
+    active: native
+
+  cloud:
+    config:
+      server:
+        native:
+          # Trỏ trực tiếp vào thư mục source để thay đổi có hiệu lực ngay lập tức
+          search-locations: file:///d:/Hoc_ki_8/DoAn/Code/Code/badminton-platform/backend/configServer/src/main/resources/configurations
+    bus:
+      enabled: true
+      destination: springCloudBus
+    stream:
+      kafka:
+        binder:
+          brokers: localhost:9094 
+
+  kafka:
+    bootstrap-servers: localhost:9094
+    admin:
+      properties:
+        bootstrap.servers: localhost:9094
+
+eureka:
+  instance:
+    hostname: localhost
+    prefer-ip-address: false
+    instance-id: ${spring.application.name}:${server.port}
+  client:
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,refresh,busrefresh
+  endpoint:
+    health:
+      show-details: always

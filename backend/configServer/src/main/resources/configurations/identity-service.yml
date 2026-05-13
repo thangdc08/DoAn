@@ -1,0 +1,56 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/badminton_db?currentSchema=identity
+    username: admin
+    password: adminpassword
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+
+  kafka:
+    bootstrap-servers: localhost:9094
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: identity-group
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+
+  security:
+    oauth2:
+      authorizationserver:
+        issuer: http://localhost:8081
+
+server:
+  port: 8081
+
+eureka:
+  instance:
+    hostname: localhost
+    prefer-ip-address: false
+    instance-id: ${spring.application.name}:${server.port}
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    registry-fetch-interval-seconds: 5
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
+
+jwt:
+  signerKey: "zV9X7f6N8M2K5P4R1S3T0U9V8W7X6Y5Z4A3B2C1D0E9F8G7H6I5J4K3L2M1N0O9"
+  valid-duration: 86400 # 24 hours
+  refreshable-duration: 604800 # 7 days
+
+springdoc:
+  api-docs:
+    path: /api-docs
+  swagger-ui:
+    path: /swagger-ui.html

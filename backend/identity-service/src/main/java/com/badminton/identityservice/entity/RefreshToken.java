@@ -1,31 +1,39 @@
-﻿package com.badminton.identityservice.entity;
+package com.badminton.identityservice.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 @Entity
 @Table(name = "refresh_tokens", schema = "identity")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
 public class RefreshToken {
+
     @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
+    @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(nullable = false)
-    private UUID userId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
+    private User user;
 
-    @Column(nullable = false)
+    @Column(name = "token_hash", nullable = false)
     private String tokenHash;
 
-    @Column(nullable = false)
-    private LocalDateTime expiresAt;
+    @Column(name = "expires_at", nullable = false)
+    private OffsetDateTime expiresAt;
 
-    private LocalDateTime revokedAt;
+    @Column(name = "revoked_at")
+    private OffsetDateTime revokedAt;
 
     @CreationTimestamp
-    private LocalDateTime createdAt;
+    @Column(name = "created_at", nullable = false, updatable = false)
+    private OffsetDateTime createdAt;
 }
