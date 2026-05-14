@@ -6,3 +6,7 @@ export { default as MockPaymentPage } from './MockPaymentPage';
 export { default as PaymentResultPage } from './PaymentResultPage';
 export { default as BookingHistoryPage } from './BookingHistoryPage';
 export { default as NotificationsPage } from './NotificationsPage';
+export { default as UserDashboardPage } from './UserDashboardPage';
+export { default as UserChallengesPage } from './UserChallengesPage';
+export { default as UserSettingsPage } from './UserSettingsPage';
+export { default as CreateMatchPage } from './CreateMatchPage';

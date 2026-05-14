@@ -31,11 +31,11 @@ interface MenuItem {
 }
 
 const USER_MENU: MenuItem[] = [
-  { to: '/dashboard',              label: 'Tổng quan',        icon: <LayoutDashboard size={18} /> },
-  { to: '/dashboard/bookings',     label: 'Booking của tôi',  icon: <CalendarDays    size={18} /> },
-  { to: '/dashboard/matches',      label: 'Kèo của tôi',      icon: <Swords          size={18} /> },
-  { to: '/dashboard/notifications',label: 'Thông báo',        icon: <Bell            size={18} /> },
-  { to: '/dashboard/profile',      label: 'Hồ sơ',            icon: <Users           size={18} /> },
+  { to: '/user/dashboard',         label: 'Tổng quan',        icon: <LayoutDashboard size={18} /> },
+  { to: '/user/bookings',          label: 'Booking của tôi',  icon: <CalendarDays    size={18} /> },
+  { to: '/user/challenges',        label: 'Kèo của tôi',      icon: <Swords          size={18} /> },
+  { to: '/user/notifications',     label: 'Thông báo',        icon: <Bell            size={18} /> },
+  { to: '/user/profile',           label: 'Hồ sơ',            icon: <Users           size={18} /> },
 ];
 
 const OWNER_MENU: MenuItem[] = [
@@ -186,10 +186,13 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         )}
       >
         {/* Logo */}
-        <div className={clsx(
-          'flex items-center h-16 px-4 border-b border-app-border flex-shrink-0',
-          collapsed ? 'justify-center' : 'gap-2.5',
-        )}>
+        <div 
+          className={clsx(
+            'flex items-center h-16 px-4 border-b border-app-border flex-shrink-0 cursor-pointer hover:opacity-80 transition-opacity',
+            collapsed ? 'justify-center' : 'gap-2.5',
+          )}
+          onClick={() => navigate('/')}
+        >
           <div className="w-8 h-8 rounded-lg bg-brand-green flex items-center justify-center text-white text-base font-black flex-shrink-0">
             🏸
           </div>
@@ -274,19 +277,22 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             </button>
 
             <Dropdown menu={{ items: userMenuItems }} trigger={['click']} placement="bottomRight">
-              <div className="flex items-center gap-2 ml-2 p-1 pr-3 rounded-xl hover:bg-app-bg cursor-pointer transition-colors group">
-                <Avatar 
-                  size={36} 
-                  src={userAvatar} 
-                  className="bg-brand-green font-bold group-hover:scale-105 transition-transform"
-                >
-                  {userName.charAt(0).toUpperCase()}
-                </Avatar>
-                <div className="hidden sm:block text-right">
-                   <p className="text-xs font-bold text-app-text leading-tight">{userName.split(' ').at(-1)}</p>
-                   <p className="text-[10px] text-app-muted leading-tight">{ROLE_LABELS[role]}</p>
-                </div>
+              <div 
+              className="flex items-center gap-2 ml-2 p-1 pr-3 rounded-xl hover:bg-app-bg cursor-pointer transition-colors group"
+              onClick={() => navigate(`/${role.toLowerCase()}/dashboard`)}
+            >
+              <Avatar 
+                size={36} 
+                src={userAvatar} 
+                className="bg-brand-green font-bold group-hover:scale-105 transition-transform"
+              >
+                {userName.charAt(0).toUpperCase()}
+              </Avatar>
+              <div className="hidden sm:block text-right">
+                 <p className="text-xs font-bold text-app-text leading-tight">{userName.split(' ').at(-1)}</p>
+                 <p className="text-[10px] text-app-muted leading-tight">{ROLE_LABELS[role]}</p>
               </div>
+            </div>
             </Dropdown>
           </div>
         </header>

@@ -31,6 +31,10 @@ const MockPaymentPage = lazy(() => import('../pages/user/MockPaymentPage'));
 const PaymentResultPage = lazy(() => import('../pages/user/PaymentResultPage'));
 const BookingHistoryPage = lazy(() => import('../pages/user/BookingHistoryPage'));
 const NotificationsPage = lazy(() => import('../pages/user/NotificationsPage'));
+const UserDashboardPage = lazy(() => import('../pages/user/UserDashboardPage'));
+const UserChallengesPage = lazy(() => import('../pages/user/UserChallengesPage'));
+const UserSettingsPage = lazy(() => import('../pages/user/UserSettingsPage'));
+const CreateMatchPage = lazy(() => import('../pages/user/CreateMatchPage'));
 
 // Owner Pages
 const OwnerDashboardPage = lazy(() => import('../pages/owner/OwnerDashboardPage'));
@@ -89,13 +93,18 @@ export const router = createBrowserRouter([
     path: '/user',
     element: <DashboardLayout role="USER" />,
     children: [
+      { index: true, element: <Suspense fallback={<PageLoader />}><UserDashboardPage /></Suspense> },
+      { path: 'dashboard', element: <Suspense fallback={<PageLoader />}><UserDashboardPage /></Suspense> },
       { path: 'profile', element: <Suspense fallback={<PageLoader />}><ProfilePage /></Suspense> },
       { path: 'booking', element: <Suspense fallback={<PageLoader />}><BookingPage /></Suspense> },
       { path: 'checkout', element: <Suspense fallback={<PageLoader />}><CheckoutPage /></Suspense> },
       { path: 'payment', element: <Suspense fallback={<PageLoader />}><PaymentPage /></Suspense> },
       { path: 'payment-result', element: <Suspense fallback={<PageLoader />}><PaymentResultPage /></Suspense> },
       { path: 'bookings', element: <Suspense fallback={<PageLoader />}><BookingHistoryPage /></Suspense> },
+      { path: 'challenges', element: <Suspense fallback={<PageLoader />}><UserChallengesPage /></Suspense> },
+      { path: 'challenges/create', element: <Suspense fallback={<PageLoader />}><CreateMatchPage /></Suspense> },
       { path: 'notifications', element: <Suspense fallback={<PageLoader />}><NotificationsPage /></Suspense> },
+      { path: 'settings', element: <Suspense fallback={<PageLoader />}><UserSettingsPage /></Suspense> },
     ],
   },
 
