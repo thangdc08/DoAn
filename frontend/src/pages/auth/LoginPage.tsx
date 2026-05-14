@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button, Checkbox, Divider, Form, Input, Typography } from 'antd';
 import {
   GoogleOutlined,
@@ -9,6 +9,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from '../../components/layout/AuthLayout';
 import { useNotify } from '../../hooks/useNotify';
 import { BRAND } from '../../theme/antdTheme';
+import { authApi } from '../../services/authApi';
+import { useAuthStore } from '../../stores/authStore';
 
 const { Title, Text } = Typography;
 
@@ -16,6 +18,17 @@ type LoginFormValues = {
   email: string;
   password: string;
   remember: boolean;
+};
+
+const getErrorMessage = (err: any) => {
+  const message = err?.response?.data?.message ?? err?.message;
+  if (Array.isArray(message)) {
+    return message.join('\n');
+  }
+  if (typeof message === 'string' && message.includes('Invalid URI path')) {
+    return 'Cấu hình API frontend không hợp lệ. Vui lòng khởi động lại frontend dev server.';
+  }
+  return message || 'Sai email hoặc mật khẩu. Vui lòng thử lại.';
 };
 
 const HERO_FEATURES = [
@@ -30,24 +43,54 @@ const LoginPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm<LoginFormValues>();
 
+
+
   const handleFinish = async (_values: LoginFormValues) => {
     setSubmitting(true);
     const hide = loading('Đang đăng nhập...');
 
     try {
-      // TODO: Kết nối identity-service API
-      await new Promise((res) => setTimeout(res, 1200));
+      const loginRes = await authApi.login({
+        email: _values.email,
+        password: _values.password,
+      });
+
+      // Xử lý ghi nhớ đăng nhập
+      if (_values.remember) {
+        localStorage.setItem('remembered_email', _values.email);
+      } else {
+        localStorage.removeItem('remembered_email');
+      }
+
+      const { access_token, refresh_token } = loginRes;
+      
+      // Sau khi đăng nhập thành công, gọi API /me để lấy thông tin user
+      // Lưu token vào store trước để API getMe có thể dùng token này
+      useAuthStore.getState().setAccessToken(access_token);
+      
+      const user = await authApi.getMe();
+      useAuthStore.getState().setAuth(user, access_token, refresh_token);
 
       hide();
       success('Đăng nhập thành công! Chào mừng trở lại 🏸');
       navigate('/venues');
-    } catch {
+    } catch (err: any) {
       hide();
-      error('Sai email hoặc mật khẩu. Vui lòng thử lại.');
+      error(getErrorMessage(err));
     } finally {
       setSubmitting(false);
     }
   };
+
+  useEffect(() => {
+    const rememberedEmail = localStorage.getItem('remembered_email');
+    if (rememberedEmail) {
+      form.setFieldsValue({
+        email: rememberedEmail,
+        remember: true
+      });
+    }
+  }, [form]);
 
   const handleFinishFailed = () => {
     error('Vui lòng kiểm tra lại thông tin đã nhập.');

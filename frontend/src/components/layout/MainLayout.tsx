@@ -7,6 +7,7 @@ import {
   MenuOutlined, SearchOutlined, SettingOutlined, UserOutlined,
 } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../../stores/authStore';
 import { BRAND } from '../../theme/antdTheme';
 
 const { Header, Content } = Layout;
@@ -87,6 +88,7 @@ const NavButton: React.FC<NavButtonProps> = ({ label, active, onClick }) => (
 // ─── Main component ───────────────────────────────────────────────────────
 
 const MainLayout: React.FC = () => {
+  const user = useAuthStore((state) => state.user);
   const location = useLocation();
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -246,12 +248,12 @@ const MainLayout: React.FC = () => {
             >
               <Avatar
                 size={30}
-                src="https://api.dicebear.com/7.x/avataaars/svg?seed=SmashMate"
+                src={user?.avatarUrl || "https://api.dicebear.com/7.x/avataaars/svg?seed=SmashMate"}
                 style={{ boxShadow: '0 2px 6px rgba(15,23,42,0.12)', flexShrink: 0 }}
               />
               <div className="hidden md:block" style={{ lineHeight: 1.2 }}>
                 <Text strong style={{ fontSize: 12.5, color: '#0f172a', display: 'block', whiteSpace: 'nowrap' }}>
-                  Thắng Đinh
+                  {user?.fullName || 'Người dùng'}
                 </Text>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
                   <span style={{

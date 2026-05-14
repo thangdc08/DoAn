@@ -3,33 +3,31 @@ export interface User {
   email: string;
   phone?: string;
   fullName: string;
+  level?: string;
   avatarUrl?: string;
+  gender?: 'MALE' | 'FEMALE' | 'OTHER';
+  goal?: string;
+  bio?: string;
+  rating?: number;
+  reviewCount?: number;
   status: 'ACTIVE' | 'INACTIVE' | 'BANNED';
-  roles: Role[];
-  profile?: UserProfile;
+  roles: string[];
+  preferredAreas?: string[];
+  availabilities?: UserAvailability[];
   createdAt: string;
   updatedAt: string;
+}
+
+export interface UserAvailability {
+  dayOfWeek: string;
+  startTime: string;
+  endTime: string;
 }
 
 export interface Role {
   id: string;
   code: 'USER' | 'OWNER' | 'ADMIN';
   name: string;
-}
-
-export interface UserProfile {
-  id: string;
-  userId: string;
-  level?: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'PROFESSIONAL';
-  gender?: 'MALE' | 'FEMALE' | 'OTHER';
-  goal?: string;
-  preferredArea?: string;
-  bio?: string;
-  freeTime?: any;
-  ratingAvg: number;
-  ratingCount: number;
-  createdAt: string;
-  updatedAt: string;
 }
 
 export interface LoginRequest {
@@ -42,13 +40,17 @@ export interface RegisterRequest {
   phone?: string;
   password: string;
   fullName: string;
+  level: string;
   role?: 'USER' | 'OWNER';
 }
 
 export interface LoginResponse {
-  accessToken: string;
+  access_token: string;
+  refresh_token: string;
+}
+
+export interface LogoutRequest {
   refreshToken: string;
-  user: User;
 }
 
 export interface RefreshTokenRequest {
@@ -56,6 +58,6 @@ export interface RefreshTokenRequest {
 }
 
 export interface RefreshTokenResponse {
-  accessToken: string;
-  refreshToken: string;
+  access_token: string;
+  refresh_token: string;
 }

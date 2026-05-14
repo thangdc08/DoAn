@@ -8,6 +8,7 @@ import {
   Building2, Settings, Bell, ChevronLeft, ChevronRight,
   LogOut, HelpCircle, FileCheck, Swords,
 } from 'lucide-react';
+import { useAuthStore } from '../stores/authStore';
 import { BRAND } from '../theme/antdTheme';
 
 const { Text } = Typography;
@@ -19,10 +20,6 @@ export type DashboardRole = 'USER' | 'OWNER' | 'ADMIN';
 export interface DashboardLayoutProps {
   children?: React.ReactNode;
   role?: DashboardRole;
-  /** Tên người dùng hiển thị */
-  userName?: string;
-  /** Avatar URL */
-  userAvatar?: string;
 }
 
 // ── Menu config per role ──────────────────────────────────────────────────
@@ -110,9 +107,10 @@ const SidebarItem: React.FC<MenuItem & { collapsed: boolean }> = ({
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   role = 'USER',
-  userName = 'Người dùng',
-  userAvatar,
 }) => {
+  const user = useAuthStore((state) => state.user);
+  const userName = user?.fullName || 'Người dùng';
+  const userAvatar = user?.avatarUrl;
   const [collapsed, setCollapsed] = useState(false);
   const navigate = useNavigate();
   const menu = MENUS[role];

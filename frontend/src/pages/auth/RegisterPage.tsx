@@ -11,6 +11,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import AuthLayout from '../../components/layout/AuthLayout';
 import { useNotify } from '../../hooks/useNotify';
 import { BRAND } from '../../theme/antdTheme';
+import { LEVEL_OPTIONS } from '../../constants/levels';
+import { authApi } from '../../services/authApi';
 
 const { Title, Text } = Typography;
 
@@ -23,12 +25,7 @@ type RegisterFormValues = {
   confirmPassword: string;
 };
 
-const LEVEL_OPTIONS = [
-  { value: 'beginner', label: '🟢 Người mới' },
-  { value: 'medium', label: '🟡 Trung bình' },
-  { value: 'good', label: '🟠 Khá' },
-  { value: 'advanced', label: '🔴 Giỏi' },
-];
+
 
 const HERO_FEATURES = [
   { icon: '👤', label: 'Hồ sơ người chơi' },
@@ -49,19 +46,20 @@ const RegisterPage: React.FC = () => {
     const hide = loading('Đang tạo tài khoản...');
 
     try {
-      // TODO: Kết nối identity-service /auth/register
-      console.info('Register payload:', {
-        ...values,
-        confirmPassword: undefined,
+      await authApi.register({
+        fullName: values.fullName,
+        email: values.email,
+        phone: values.phone,
+        password: values.password,
+        level: values.level,
       });
-      await new Promise((res) => setTimeout(res, 1400));
 
       hide();
       success('Tạo tài khoản thành công! Hãy đăng nhập để bắt đầu 🏸');
       navigate('/login');
-    } catch {
+    } catch (err: any) {
       hide();
-      error('Không thể tạo tài khoản. Vui lòng thử lại sau.');
+      error(err.response?.data?.message || 'Không thể tạo tài khoản. Vui lòng thử lại sau.');
     } finally {
       setSubmitting(false);
     }

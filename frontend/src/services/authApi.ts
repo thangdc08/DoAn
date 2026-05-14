@@ -6,41 +6,61 @@ import type {
   RefreshTokenRequest,
   RefreshTokenResponse,
   User,
+  LogoutRequest,
 } from '../types/auth.types';
+
+const unwrapResult = <T>(response: { data: { result?: T } }): T => {
+  if (response.data.result === undefined) {
+    throw new Error('Phản hồi từ máy chủ không hợp lệ.');
+  }
+  return response.data.result;
+};
 
 export const authApi = {
   // Register new account
-  register: async (data: RegisterRequest): Promise<User> => {
+  register: async (data: RegisterRequest): Promise<any> => {
     const response = await apiClient.post('/auth/register', data);
-    return response.data;
+    return unwrapResult(response);
   },
 
   // Login
   login: async (data: LoginRequest): Promise<LoginResponse> => {
     const response = await apiClient.post('/auth/login', data);
-    return response.data;
+    return unwrapResult<LoginResponse>(response);
   },
 
   // Refresh access token
   refreshToken: async (data: RefreshTokenRequest): Promise<RefreshTokenResponse> => {
-    const response = await apiClient.post('/auth/refresh-token', data);
-    return response.data;
+    const response = await apiClient.post('/auth/refresh', data);
+    return unwrapResult<RefreshTokenResponse>(response);
   },
 
   // Logout
-  logout: async (): Promise<void> => {
-    await apiClient.post('/auth/logout');
+  logout: async (data: LogoutRequest): Promise<void> => {
+    await apiClient.post('/auth/logout', data);
   },
 
   // Get current user info
   getMe: async (): Promise<User> => {
     const response = await apiClient.get('/users/me');
-    return response.data;
+    return unwrapResult<User>(response);
   },
 
-  // Update user profile
-  updateProfile: async (data: Partial<User['profile']>): Promise<User> => {
-    const response = await apiClient.put('/users/me/profile', data);
-    return response.data;
+  // Update current user profile
+  updateMe: async (data: Partial<User>): Promise<User> => {
+    const response = await apiClient.put('/users/me', data);
+    return unwrapResult<User>(response);
+  },
+
+  // Upload avatar
+  uploadAvatar: async (file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await apiClient.post('/users/avatar', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data; // The raw string URL
   },
 };

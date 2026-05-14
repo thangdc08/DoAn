@@ -52,7 +52,7 @@ export const useAuthStore = create<AuthState>()(
 
       hasRole: (role) => {
         const { user } = get();
-        return user?.roles?.some((r) => r.code === role) ?? false;
+        return user?.roles?.includes(role) ?? false;
       },
     }),
     {

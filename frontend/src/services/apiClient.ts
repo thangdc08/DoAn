@@ -1,8 +1,34 @@
 import axios, { AxiosError } from 'axios';
 import { useAuthStore } from '../stores/authStore';
 
+const DEFAULT_API_BASE_URL = 'http://localhost:8080/identity/api/v1';
+
+const getApiBaseUrl = () => {
+  const envUrl = import.meta.env.VITE_API_BASE_URL?.trim();
+  if (!envUrl) {
+    return DEFAULT_API_BASE_URL;
+  }
+
+  try {
+    if (envUrl.startsWith('http://') || envUrl.startsWith('https://')) {
+      return new URL(envUrl).toString().replace(/\/$/, '');
+    }
+
+    if (envUrl.startsWith('/') && !envUrl.includes(';') && !envUrl.includes('\\')) {
+      return envUrl.replace(/\/$/, '');
+    }
+  } catch {
+    // Fall back below.
+  }
+
+  console.warn('Invalid VITE_API_BASE_URL ignored:', envUrl);
+  return DEFAULT_API_BASE_URL;
+};
+
+const API_BASE_URL = getApiBaseUrl();
+
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api',
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -28,9 +54,14 @@ apiClient.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
     const originalRequest = error.config as any;
+    const requestUrl = originalRequest?.url ?? '';
+    const isPublicAuthRequest =
+      requestUrl.includes('/auth/login') ||
+      requestUrl.includes('/auth/register') ||
+      requestUrl.includes('/auth/refresh');
 
     // If 401 and not already retried
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && !originalRequest._retry && !isPublicAuthRequest) {
       originalRequest._retry = true;
 
       try {
@@ -38,17 +69,19 @@ apiClient.interceptors.response.use(
         
         if (!refreshToken) {
           logout();
-          window.location.href = '/login';
           return Promise.reject(error);
         }
 
         // Call refresh token API
         const response = await axios.post(
-          `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api'}/auth/refresh-token`,
+          `${API_BASE_URL}/auth/refresh`,
           { refreshToken }
         );
 
-        const { accessToken: newAccessToken } = response.data;
+        const newAccessToken = response.data.result?.access_token;
+        if (!newAccessToken) {
+          throw new Error('Refresh response does not include an access token');
+        }
         setAccessToken(newAccessToken);
 
         // Retry original request with new token
@@ -57,7 +90,6 @@ apiClient.interceptors.response.use(
       } catch (refreshError) {
         // Refresh token failed, logout user
         useAuthStore.getState().logout();
-        window.location.href = '/login';
         return Promise.reject(refreshError);
       }
     }
@@ -67,4 +99,3 @@ apiClient.interceptors.response.use(
 );
 
 export default apiClient;
-

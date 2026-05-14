@@ -119,9 +119,13 @@ export const PublicLayout: React.FC = () => {
                 </div>
               ) : (
                 <div className="flex items-center gap-1">
-                  <Link to="/login" className="px-4 py-2 text-[14px] font-bold text-slate-600 hover:text-brand-green whitespace-nowrap transition-colors">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/login')}
+                    className="px-4 py-2 text-[14px] font-bold text-slate-600 hover:text-brand-green whitespace-nowrap transition-colors bg-transparent border-none cursor-pointer"
+                  >
                     Đăng nhập
-                  </Link>
+                  </button>
                    <AppButton
                     variant="outline"
                     size="md"

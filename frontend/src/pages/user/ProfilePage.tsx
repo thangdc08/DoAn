@@ -1,7 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Card, Form, Input, Select, Button, Avatar, Upload, message, Row, Col, Typography, Divider, Space } from 'antd';
 import { UserOutlined, UploadOutlined, StarFilled, PlusOutlined, MinusCircleOutlined } from '@ant-design/icons';
-import { mockCurrentUser } from '../../data/mockUsers';
+import { useAuthStore } from '../../stores/authStore';
+import { authApi } from '../../services/authApi';
+import { LEVEL_OPTIONS } from '../../constants/levels';
+import { DAY_MAP, REVERSE_DAY_MAP, DAYS_OF_WEEK } from '../../constants/days';
+import { TIME_SLOTS, getTimeKeyByRange, getTimeRangeByKey, TIME_MAP } from '../../constants/times';
+import { AREA_OPTIONS, AREA_MAP } from '../../constants/areas';
+import { BRAND } from '../../theme/antdTheme';
 import type { UploadFile } from 'antd';
 
 const { Title, Text } = Typography;
@@ -11,19 +17,71 @@ const { Option } = Select;
 export default function ProfilePage() {
   const [form] = Form.useForm();
   const [fileList, setFileList] = useState<UploadFile[]>([]);
-  const [currentUser, setCurrentUser] = useState(mockCurrentUser);
+  const user = useAuthStore((state) => state.user);
+  const updateUserStore = useAuthStore((state) => state.updateUser);
+  const [loading, setLoading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
-  const handleSubmit = (values: any) => {
-    console.log('Mock update profile:', values);
-    message.success('Cập nhật hồ sơ thành công (mock)');
-    // Update mock user
-    setCurrentUser({
-      ...currentUser,
-      profile: {
-        ...currentUser.profile!,
-        ...values,
-      },
-    });
+  useEffect(() => {
+    if (user) {
+      form.setFieldsValue({
+        fullName: user.fullName,
+        level: user.level,
+        gender: user.gender,
+        goal: user.goal,
+        preferredAreas: user.preferredAreas || [],
+        bio: user.bio,
+        freeTime: user.availabilities?.map(a => ({
+          day: DAY_MAP[a.dayOfWeek] || a.dayOfWeek,
+          slots: (a.startTime && a.endTime) ? getTimeKeyByRange(a.startTime, a.endTime) : null
+        })) || [],
+      });
+    }
+  }, [user, form]);
+
+  const handleSubmit = async (values: any) => {
+    setLoading(true);
+    try {
+      // Use preferredAreas directly as it's now a list of keys from Select
+      const preferredAreas = values.preferredAreas || [];
+      
+      // Parse freeTime back to availabilities
+      const availabilities = values.freeTime
+        ?.filter((ft: any) => ft.day && ft.slots)
+        ?.map((ft: any) => {
+          const { start, end } = getTimeRangeByKey(ft.slots);
+          return {
+            dayOfWeek: REVERSE_DAY_MAP[ft.day] || ft.day,
+            startTime: start,
+            endTime: end
+          };
+        }) || [];
+
+      let avatarUrl = user?.avatarUrl;
+      if (fileList.length > 0 && fileList[0].originFileObj) {
+        avatarUrl = await authApi.uploadAvatar(fileList[0].originFileObj as File);
+      }
+
+      const updateData = {
+        fullName: values.fullName,
+        gender: values.gender,
+        level: values.level,
+        goal: values.goal,
+        bio: values.bio,
+        avatarUrl,
+        preferredAreas,
+        availabilities
+      };
+
+      const updatedUser = await authApi.updateMe(updateData);
+      updateUserStore(updatedUser);
+      setPreviewUrl(null);
+      message.success('Cập nhật hồ sơ thành công! 🏸');
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || 'Cập nhật hồ sơ thất bại');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -37,43 +95,68 @@ export default function ProfilePage() {
             <div style={{ textAlign: 'center' }}>
               <Avatar
                 size={120}
-                src={currentUser?.avatarUrl}
+                src={previewUrl || user?.avatarUrl}
                 icon={<UserOutlined />}
                 style={{ marginBottom: 16 }}
               />
-              <Title level={4}>{currentUser?.fullName}</Title>
-              <Text type="secondary">{currentUser?.email}</Text>
+              <Title level={4}>{user?.fullName}</Title>
+              <Text type="secondary">{user?.email}</Text>
 
-              {currentUser?.profile && (
-                <>
-                  <Divider />
-                  <div style={{ textAlign: 'left' }}>
-                    <div style={{ marginBottom: 12 }}>
-                      <Text strong>Trình độ: </Text>
-                      <Text>{currentUser.profile.level || 'Chưa cập nhật'}</Text>
-                    </div>
-                    <div style={{ marginBottom: 12 }}>
-                      <Text strong>Đánh giá: </Text>
-                      <StarFilled style={{ color: '#faad14', marginLeft: 8 }} />
-                      <Text style={{ marginLeft: 4 }}>
-                        {currentUser.profile.ratingAvg.toFixed(1)} ({currentUser.profile.ratingCount})
-                      </Text>
-                    </div>
-                    {currentUser.profile.preferredArea && (
-                      <div style={{ marginBottom: 12 }}>
-                        <Text strong>Khu vực ưu tiên: </Text>
-                        <Text>{currentUser.profile.preferredArea}</Text>
-                      </div>
-                    )}
+              <Divider />
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ marginBottom: 12 }}>
+                  <Text strong>Trình độ: </Text>
+                  <Text>{LEVEL_OPTIONS.find(opt => opt.value === user?.level)?.label || user?.level || 'Chưa cập nhật'}</Text>
+                </div>
+                <div style={{ marginBottom: 12 }}>
+                  <Text strong>Đánh giá: </Text>
+                  <StarFilled style={{ color: '#faad14', marginLeft: 8 }} />
+                  <Text style={{ marginLeft: 4 }}>
+                    {user?.rating?.toFixed(1) || '0.0'} ({user?.reviewCount || 0})
+                  </Text>
+                </div>
+                {user?.preferredAreas && user.preferredAreas.length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <Text strong>Khu vực ưu tiên: </Text>
+                    <Text>
+                      {user.preferredAreas.map(key => AREA_MAP[key] || key).join(', ')}
+                    </Text>
                   </div>
-                </>
-              )}
+                )}
+                {user?.availabilities && user.availabilities.length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <Text strong style={{ display: 'block', marginBottom: 4 }}>Lịch rảnh hàng tuần:</Text>
+                    {user.availabilities.map((a, idx) => {
+                      const dayLabel = DAY_MAP[a.dayOfWeek] || a.dayOfWeek;
+                      const timeKey = getTimeKeyByRange(a.startTime, a.endTime);
+                      const timeLabel = timeKey ? TIME_MAP[timeKey] : `${a.startTime.substring(0, 5)} - ${a.endTime.substring(0, 5)}`;
+                      return (
+                        <div key={idx} style={{ marginBottom: 2, paddingLeft: 8, borderLeft: `2px solid ${BRAND.primary}` }}>
+                          <Text style={{ fontSize: '12px' }}>{dayLabel}: {timeLabel}</Text>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
 
               <Upload
                 fileList={fileList}
-                onChange={({ fileList }) => setFileList(fileList)}
+                onChange={({ fileList }) => {
+                  setFileList(fileList);
+                  if (fileList.length > 0) {
+                    const file = fileList[0].originFileObj;
+                    if (file) {
+                      const url = URL.createObjectURL(file as File);
+                      setPreviewUrl(url);
+                    }
+                  } else {
+                    setPreviewUrl(null);
+                  }
+                }}
                 beforeUpload={() => false}
                 maxCount={1}
+                showUploadList={false}
               >
                 <Button icon={<UploadOutlined />} style={{ marginTop: 16 }}>
                   Đổi ảnh đại diện
@@ -89,17 +172,19 @@ export default function ProfilePage() {
             <Form
               form={form}
               layout="vertical"
-              initialValues={{
-                level: currentUser?.profile?.level,
-                gender: currentUser?.profile?.gender,
-                goal: currentUser?.profile?.goal,
-                preferredArea: currentUser?.profile?.preferredArea,
-                bio: currentUser?.profile?.bio,
-                freeTime: currentUser?.profile?.freeTime || [],
-              }}
               onFinish={handleSubmit}
             >
               <Row gutter={16}>
+                <Col xs={24}>
+                  <Form.Item
+                    label="Họ và tên"
+                    name="fullName"
+                    rules={[{ required: true, message: 'Vui lòng nhập họ tên' }]}
+                  >
+                    <Input placeholder="Nhập họ và tên" />
+                  </Form.Item>
+                </Col>
+
                 <Col xs={24} md={12}>
                   <Form.Item
                     label="Trình độ"
@@ -107,10 +192,9 @@ export default function ProfilePage() {
                     rules={[{ required: true, message: 'Vui lòng chọn trình độ' }]}
                   >
                     <Select placeholder="Chọn trình độ">
-                      <Option value="BEGINNER">Mới bắt đầu</Option>
-                      <Option value="INTERMEDIATE">Trung bình</Option>
-                      <Option value="ADVANCED">Nâng cao</Option>
-                      <Option value="PROFESSIONAL">Chuyên nghiệp</Option>
+                      {LEVEL_OPTIONS.map(opt => (
+                        <Option key={opt.value} value={opt.value}>{opt.label}</Option>
+                      ))}
                     </Select>
                   </Form.Item>
                 </Col>
@@ -132,8 +216,14 @@ export default function ProfilePage() {
                 </Col>
 
                 <Col xs={24} md={12}>
-                  <Form.Item label="Khu vực ưu tiên" name="preferredArea">
-                    <Input placeholder="VD: Quận 1, Quận 3..." />
+                  <Form.Item label="Khu vực ưu tiên" name="preferredAreas">
+                    <Select
+                      mode="multiple"
+                      placeholder="Chọn các quận/huyện ưu tiên"
+                      style={{ width: '100%' }}
+                      options={AREA_OPTIONS}
+                      maxTagCount="responsive"
+                    />
                   </Form.Item>
                 </Col>
 
@@ -161,7 +251,7 @@ export default function ProfilePage() {
                               rules={[{ required: true, message: 'Chọn thứ' }]}
                             >
                               <Select placeholder="Chọn thứ" style={{ width: 120 }}>
-                                {['Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7', 'Chủ nhật'].map(d => (
+                                {DAYS_OF_WEEK.map(d => (
                                   <Option key={d} value={d}>{d}</Option>
                                 ))}
                               </Select>
@@ -169,9 +259,13 @@ export default function ProfilePage() {
                             <Form.Item
                               {...restField}
                               name={[name, 'slots']}
-                              rules={[{ required: true, message: 'Nhập khung giờ' }]}
+                              rules={[{ required: true, message: 'Chọn khung giờ' }]}
                             >
-                              <Input placeholder="VD: 18:00 - 20:00" style={{ width: 200 }} />
+                              <Select placeholder="Chọn khung giờ" style={{ width: 200 }}>
+                                {TIME_SLOTS.map(slot => (
+                                  <Option key={slot.value} value={slot.value}>{slot.label}</Option>
+                                ))}
+                              </Select>
                             </Form.Item>
                             <MinusCircleOutlined onClick={() => remove(name)} />
                           </Space>
@@ -188,7 +282,7 @@ export default function ProfilePage() {
               </Row>
 
               <Form.Item>
-                <Button type="primary" htmlType="submit" size="large">
+                <Button type="primary" htmlType="submit" size="large" loading={loading}>
                   Lưu thay đổi
                 </Button>
               </Form.Item>
