@@ -32,4 +32,25 @@ public class RegisterRequest {
     @NotBlank(message = "Password is required")
     @Size(min = 6, message = "Password must be at least 6 characters")
     private String password;
+
+    // Venue Details (Optional for normal user, required for owner onboarding)
+    private String venueName;
+    private String address;
+    private String city;
+    private Integer courtCount;
+    private java.util.List<String> utilities;
+    private Double latitude;
+    private Double longitude;
+    private String openTime;
+    private String closeTime;
+    private java.util.List<PricingRuleRequest> pricing;
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class PricingRuleRequest {
+        private String from;
+        private String to;
+        private java.math.BigDecimal price;
+    }
 }

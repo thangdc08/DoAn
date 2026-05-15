@@ -174,20 +174,16 @@ export default function PartnerOnboardingPage() {
 
     try {
       setIsSubmitting(true);
-      // Bước 1: Đăng ký tài khoản Chủ sân
-      const authRes = await axios.post('http://localhost:8080/identity/api/v1/auth/register-owner', {
+      
+      // GỬI DUY NHẤT 1 REQUEST: Bao gồm cả thông tin User và thông tin Sân
+      // Hệ thống sẽ dùng Kafka để tạo sân ở background
+      await axios.post('http://localhost:8080/identity/api/v1/auth/register-owner', {
         fullName: values.ownerName, 
         email: values.email,
         phone: values.phone,
         level: 'PRO',
-        password: values.password
-      });
-      
-      // Sửa: Lấy token đúng cấu trúc { result: { access_token: "..." } }
-      const token = authRes.data.result.access_token;
-
-      // Bước 2: Khởi tạo thông tin Sân
-      await axios.post('http://localhost:8080/venues/api/v1/venues/onboard', {
+        password: values.password,
+        // Thông tin sân đi kèm
         venueName: values.venueName,
         address: values.address,
         city: values.city,
@@ -202,12 +198,10 @@ export default function PartnerOnboardingPage() {
           to: p.to.format('HH:mm:00'),
           price: p.price
         }))
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
       });
 
       message.success('Đã gửi hồ sơ đăng ký thành công!');
-      setCurrent(4);
+      setCurrent(4); // Chuyển đến bước thành công
     } catch (error: any) {
       console.error("Lỗi đăng ký:", error);
       const errorMsg = error.response?.data?.message || 'Có lỗi xảy ra, vui lòng thử lại!';

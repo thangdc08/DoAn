@@ -16,6 +16,8 @@ import com.badminton.identityservice.repository.RoleRepository;
 import com.badminton.identityservice.repository.UserRepository;
 import com.badminton.identityservice.security.JwtTokenProvider;
 import com.badminton.identityservice.service.AuthService;
+import com.badminton.identityservice.service.KafkaProducerService;
+import com.badminton.common.dto.event.OnboardingEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
@@ -43,6 +45,7 @@ public class AuthServiceImpl implements AuthService {
     private final JwtTokenProvider jwtTokenProvider;
     private final RefreshTokenRepository refreshTokenRepository;
     private final org.modelmapper.ModelMapper modelMapper;
+    private final KafkaProducerService kafkaProducerService;
 
     @Value("${jwt.refreshable-duration}")
     private long refreshableDuration;
@@ -104,6 +107,30 @@ public class AuthServiceImpl implements AuthService {
                 .build();
 
         user = userRepository.save(user);
+
+        // Bắn event qua Kafka để Venue Service xử lý tạo sân
+        OnboardingEvent event = OnboardingEvent.builder()
+                .userId(user.getId().toString())
+                .email(user.getEmail())
+                .fullName(user.getFullName())
+                .venueName(request.getVenueName())
+                .address(request.getAddress())
+                .city(request.getCity())
+                .courtCount(request.getCourtCount())
+                .utilities(request.getUtilities())
+                .latitude(request.getLatitude())
+                .longitude(request.getLongitude())
+                .openTime(request.getOpenTime())
+                .closeTime(request.getCloseTime())
+                .pricing(request.getPricing() != null ? request.getPricing().stream()
+                        .map(p -> OnboardingEvent.PricingRuleEvent.builder()
+                                .from(p.getFrom())
+                                .to(p.getTo())
+                                .price(p.getPrice())
+                                .build())
+                        .collect(java.util.stream.Collectors.toList()) : null)
+                .build();
+        kafkaProducerService.sendOnboardingEvent(event);
 
         String accessToken = jwtTokenProvider.generateToken(user);
         String rawRefreshToken = issueRefreshToken(user);
