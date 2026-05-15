@@ -20,17 +20,4 @@ public class LoginResponse {
     @JsonProperty("refresh_token")
     private String refreshToken;
 
-    private UserInner user;
-
-    @Data
-    @NoArgsConstructor
-    @AllArgsConstructor
-    @Builder
-    public static class UserInner {
-        private UUID id;
-        private String email;
-        private String phone;
-        private String fullName;
-        private Set<String> roles;
-    }
 }

@@ -35,6 +35,25 @@ public class User {
     @Column(name = "full_name", nullable = false, length = 150)
     private String fullName;
 
+    @Column(name = "avatar_url")
+    private String avatarUrl;
+
+    @Enumerated(EnumType.STRING)
+    private Gender gender;
+
+    @Column(length = 50)
+    private String level;
+
+    private String goal;
+
+    @Column(columnDefinition = "TEXT")
+    private String bio;
+
+    private Double rating = 0.0;
+
+    @Column(name = "review_count")
+    private Integer reviewCount = 0;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private UserStatus status = UserStatus.ACTIVE;
@@ -55,4 +74,12 @@ public class User {
             inverseJoinColumns = @JoinColumn(name = "role_id")
     )
     private Set<Role> roles = new HashSet<>();
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private Set<UserPreferredArea> preferredAreas = new HashSet<>();
+
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private Set<UserAvailability> availabilities = new HashSet<>();
 }

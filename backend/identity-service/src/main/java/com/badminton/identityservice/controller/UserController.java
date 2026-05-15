@@ -23,15 +23,31 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class UserController {
     private final UserService userService;
+    private final com.badminton.identityservice.service.FileService fileService;
+
+    @PostMapping("/avatar")
+    @ApiMessage("Tải ảnh đại diện lên")
+    public ResponseEntity<String> uploadAvatar(@RequestParam("file") org.springframework.web.multipart.MultipartFile file) throws java.io.IOException {
+        return ResponseEntity.ok(this.fileService.uploadAvatar(file));
+    }
+
+    @GetMapping("/files/avatars/{fileName:.+}")
+    public ResponseEntity<org.springframework.core.io.Resource> getAvatar(@PathVariable String fileName) throws java.io.IOException {
+        java.nio.file.Path path = java.nio.file.Paths.get("uploads/avatars").resolve(fileName);
+        org.springframework.core.io.Resource resource = new org.springframework.core.io.UrlResource(path.toUri());
+        return ResponseEntity.ok()
+                .contentType(org.springframework.http.MediaType.IMAGE_JPEG)
+                .body(resource);
+    }
 
     @PostMapping
-    @ApiMessage("Create user")
+    @ApiMessage("Tạo người dùng mới")
     public ResponseEntity<UserDTO> createUser(@RequestBody @Valid UserDTO userDTO) {
         return ResponseEntity.status(HttpStatus.CREATED).body(this.userService.createUser(userDTO));
     }
 
     @GetMapping
-    @ApiMessage("Get all users")
+    @ApiMessage("Lấy danh sách người dùng")
     public ResponseEntity<ObjectResponse> getAllUser(
             @Filter Specification<User> specification,
             Pageable pageable
@@ -40,13 +56,13 @@ public class UserController {
     }
 
     @GetMapping("/{userId}")
-    @ApiMessage("Get user by id")
+    @ApiMessage("Lấy thông tin người dùng theo ID")
     public ResponseEntity<UserDTO> getUserById(@PathVariable(value = "userId") UUID id) {
         return ResponseEntity.ok(this.userService.getUserById(id));
     }
 
     @PutMapping("/{userId}")
-    @ApiMessage("Update user")
+    @ApiMessage("Cập nhật thông tin người dùng")
     public ResponseEntity<UserDTO> updateUser(
             @PathVariable(value = "userId") UUID id,
             @RequestBody UserUpdateDTO userDto) {
@@ -54,20 +70,28 @@ public class UserController {
     }
 
     @DeleteMapping("/{userId}")
-    @ApiMessage("Delete a user")
+    @ApiMessage("Xóa người dùng")
     public ResponseEntity<Void> deleteUser(@PathVariable(value = "userId") UUID id) {
         this.userService.deleteUser(id);
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("/profile")
-    @ApiMessage("Get profile")
-    public ResponseEntity<UserDTO> getUserProfile(@RequestHeader(CustomHeaders.X_AUTH_USER_ID) UUID id) {
+    @GetMapping("/me")
+    @ApiMessage("Lấy thông tin cá nhân")
+    public ResponseEntity<UserDTO> getMe(@RequestHeader(CustomHeaders.X_AUTH_USER_ID) UUID id) {
         return ResponseEntity.ok(this.userService.getUserProfile(id));
     }
 
+    @PutMapping("/me")
+    @ApiMessage("Cập nhật thông tin cá nhân")
+    public ResponseEntity<UserDTO> updateMe(
+            @RequestHeader(CustomHeaders.X_AUTH_USER_ID) UUID id,
+            @RequestBody @Valid com.badminton.identityservice.dto.request.UserProfileUpdateRequest request) {
+        return ResponseEntity.ok(this.userService.updateProfile(id, request));
+    }
+
     @GetMapping("/username/{username}")
-    @ApiMessage("Get profile by username")
+    @ApiMessage("Lấy thông tin theo tên người dùng")
     public ResponseEntity<UserDTO> getUserByUsername(@PathVariable(value = "username") String username) {
         return ResponseEntity.ok(this.userService.getUserByUsername(username));
     }

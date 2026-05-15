@@ -146,7 +146,7 @@ export default function AboutPage() {
                      <Button 
                        ghost 
                        size="large" 
-                       onClick={() => navigate('/partner')}
+                       onClick={() => navigate('/partner/register')}
                        className="h-16 px-10 rounded-2xl border-slate-700 text-white font-bold"
                      >
                        Trở thành đối tác

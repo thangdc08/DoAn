@@ -21,4 +21,8 @@ public class UserUpdateDTO {
     @NotEmpty(message = "Số điện thoại không được bỏ trống")
     @Size(min = 9, message = "Số điện thoại phải có độ dài tối thiểu là 9 ký tự")
     private String phone;
+
+    @NotEmpty(message = "Trình độ không được bỏ trống")
+    @Size(max = 20)
+    private String level;
 }

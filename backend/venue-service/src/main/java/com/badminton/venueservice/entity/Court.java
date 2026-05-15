@@ -1,4 +1,4 @@
-﻿package com.badminton.venueservice.entity;
+package com.badminton.venueservice.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -16,8 +16,9 @@ public class Court {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
 
-    @Column(nullable = false)
-    private UUID venueId;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "venue_id", nullable = false)
+    private Venue venue;
 
     @Column(nullable = false)
     private String name;

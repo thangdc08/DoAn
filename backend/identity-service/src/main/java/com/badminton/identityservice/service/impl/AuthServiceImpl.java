@@ -1,7 +1,7 @@
 package com.badminton.identityservice.service.impl;
 
 import com.badminton.common.exception.AppException;
-import com.badminton.common.exception.ErrorCode;
+import com.badminton.identityservice.dto.model.UserDTO;
 import com.badminton.identityservice.dto.request.LoginRequest;
 import com.badminton.identityservice.dto.request.LogoutRequest;
 import com.badminton.identityservice.dto.request.RefreshTokenRequest;
@@ -18,6 +18,7 @@ import com.badminton.identityservice.security.JwtTokenProvider;
 import com.badminton.identityservice.service.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +42,7 @@ public class AuthServiceImpl implements AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
     private final RefreshTokenRepository refreshTokenRepository;
+    private final org.modelmapper.ModelMapper modelMapper;
 
     @Value("${jwt.refreshable-duration}")
     private long refreshableDuration;
@@ -50,16 +52,47 @@ public class AuthServiceImpl implements AuthService {
     // ─────────────────────────────────────────────
 
     @Override
-    public String register(RegisterRequest request) {
+    public UserDTO register(RegisterRequest request) {
         if (userRepository.existsByEmail(request.getEmail())) {
-            throw new AppException(ErrorCode.USER_EXISTED);
+            throw new AppException(HttpStatus.BAD_REQUEST, "Email đã tồn tại");
         }
         if (userRepository.existsByPhone(request.getPhone())) {
-            throw new AppException(ErrorCode.USER_EXISTED);
+            throw new AppException(HttpStatus.BAD_REQUEST, "Số điện thoại đã tồn tại");
         }
 
         Role userRole = roleRepository.findByCode("USER")
-                .orElseThrow(() -> new AppException(ErrorCode.ROLE_NOT_FOUND));
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy vai trò"));
+
+        User user = User.builder()
+                .email(request.getEmail())
+                .phone(request.getPhone())
+                .fullName(request.getFullName())
+                .level(request.getLevel())
+                .passwordHash(passwordEncoder.encode(request.getPassword()))
+                .status(UserStatus.ACTIVE)
+                .roles(new HashSet<>(java.util.Set.of(userRole)))
+                .build();
+
+        user = userRepository.save(user);
+        
+        UserDTO userDTO = modelMapper.map(user, UserDTO.class);
+        userDTO.setRoles(user.getRoles().stream().map(Role::getCode).collect(java.util.stream.Collectors.toSet()));
+        
+        return userDTO;
+    }
+
+    @Override
+    @Transactional
+    public LoginResponse registerOwner(RegisterRequest request) {
+        if (userRepository.existsByEmail(request.getEmail())) {
+            throw new AppException(HttpStatus.BAD_REQUEST, "Email đã tồn tại");
+        }
+        if (userRepository.existsByPhone(request.getPhone())) {
+            throw new AppException(HttpStatus.BAD_REQUEST, "Số điện thoại đã tồn tại");
+        }
+
+        Role ownerRole = roleRepository.findByCode("OWNER")
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy vai trò OWNER"));
 
         User user = User.builder()
                 .email(request.getEmail())
@@ -67,11 +100,15 @@ public class AuthServiceImpl implements AuthService {
                 .fullName(request.getFullName())
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .status(UserStatus.ACTIVE)
-                .roles(new HashSet<>(Set.of(userRole)))
+                .roles(new HashSet<>(java.util.Set.of(ownerRole)))
                 .build();
 
-        userRepository.save(user);
-        return "User registered successfully!";
+        user = userRepository.save(user);
+
+        String accessToken = jwtTokenProvider.generateToken(user);
+        String rawRefreshToken = issueRefreshToken(user);
+
+        return buildLoginResponse(accessToken, rawRefreshToken, user);
     }
 
     // ─────────────────────────────────────────────
@@ -81,15 +118,15 @@ public class AuthServiceImpl implements AuthService {
     @Override
     @Transactional
     public LoginResponse login(LoginRequest request) {
-        User user = userRepository.findByEmailOrPhoneWithRoles(request.getLogin())
-                .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_EXISTED));
+        User user = userRepository.findByEmailOrPhoneWithRoles(request.getEmail())
+                .orElseThrow(() -> new AppException(HttpStatus.BAD_REQUEST, "Người dùng không tồn tại"));
 
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
-            throw new AppException(ErrorCode.UNAUTHENTICATED);
+            throw new AppException(HttpStatus.UNAUTHORIZED, "Mật khẩu không chính xác");
         }
 
         if (user.getStatus() == UserStatus.LOCKED) {
-            throw new AppException(ErrorCode.UNAUTHENTICATED);
+            throw new AppException(HttpStatus.UNAUTHORIZED, "Tài khoản đã bị khóa");
         }
 
         String accessToken = jwtTokenProvider.generateToken(user);
@@ -108,16 +145,16 @@ public class AuthServiceImpl implements AuthService {
         String tokenHash = sha256(request.getRefreshToken());
 
         RefreshToken stored = refreshTokenRepository.findByTokenHash(tokenHash)
-                .orElseThrow(() -> new AppException(ErrorCode.INVALID_TOKEN));
+                .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, "Token không hợp lệ hoặc đã hết hạn"));
 
         // Kiểm tra đã bị revoke chưa
         if (stored.getRevokedAt() != null) {
-            throw new AppException(ErrorCode.INVALID_TOKEN);
+            throw new AppException(HttpStatus.UNAUTHORIZED, "Token đã bị thu hồi");
         }
 
         // Kiểm tra hết hạn chưa
         if (stored.getExpiresAt().isBefore(OffsetDateTime.now())) {
-            throw new AppException(ErrorCode.INVALID_TOKEN);
+            throw new AppException(HttpStatus.UNAUTHORIZED, "Token đã hết hạn");
         }
 
         // Revoke token cũ ngay lập tức (Token Rotation — bảo vệ khỏi replay attack)
@@ -142,7 +179,7 @@ public class AuthServiceImpl implements AuthService {
         String tokenHash = sha256(request.getRefreshToken());
 
         RefreshToken stored = refreshTokenRepository.findByTokenHash(tokenHash)
-                .orElseThrow(() -> new AppException(ErrorCode.INVALID_TOKEN));
+                .orElseThrow(() -> new AppException(HttpStatus.UNAUTHORIZED, "Token không hợp lệ"));
 
         if (stored.getRevokedAt() != null) {
             // Đã revoke rồi, coi như logout thành công
@@ -181,13 +218,6 @@ public class AuthServiceImpl implements AuthService {
         return LoginResponse.builder()
                 .accessToken(accessToken)
                 .refreshToken(rawRefreshToken)
-                .user(LoginResponse.UserInner.builder()
-                        .id(user.getId())
-                        .email(user.getEmail())
-                        .phone(user.getPhone())
-                        .fullName(user.getFullName())
-                        .roles(user.getRoles().stream().map(Role::getCode).collect(Collectors.toSet()))
-                        .build())
                 .build();
     }
 

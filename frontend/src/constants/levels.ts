@@ -1,9 +1,9 @@
 export const LEVEL_OPTIONS = [
-  { value: 'beginner', label: 'Người mới' },
-  { value: 'low_medium', label: 'Trung bình yếu' },
-  { value: 'medium', label: 'Trung bình' },
-  { value: 'medium_strong', label: 'Trung bình khá' },
-  { value: 'strong', label: 'Khá' },
-  { value: 'expert', label: 'Giỏi' },
-  { value: 'pro', label: 'Chuyên nghiệp' },
+  { value: 'BEGINNER', label: 'Người mới' },
+  { value: 'LOW_MEDIUM', label: 'Trung bình yếu' },
+  { value: 'MEDIUM', label: 'Trung bình' },
+  { value: 'MEDIUM_STRONG', label: 'Trung bình khá' },
+  { value: 'STRONG', label: 'Khá' },
+  { value: 'EXPERT', label: 'Giỏi' },
+  { value: 'PRO', label: 'Chuyên nghiệp' },
 ];

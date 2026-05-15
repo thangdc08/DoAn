@@ -2,12 +2,14 @@ import { Button, Input, Card, Row, Col, Typography, Space } from 'antd';
 import { SearchOutlined, EnvironmentOutlined, CalendarOutlined, TeamOutlined } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';
+import { useAuthStore } from '../../stores/authStore';
 
 const { Title, Paragraph } = Typography;
 
 export default function HomePage() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
   const handleSearch = () => {
     navigate(`/venues?search=${searchQuery}`);
@@ -109,26 +111,28 @@ export default function HomePage() {
       </div>
 
       {/* CTA Section */}
-      <div
-        style={{
-          background: '#f0f2f5',
-          padding: '60px 24px',
-          textAlign: 'center',
-        }}
-      >
-        <Title level={2}>Bắt đầu ngay hôm nay</Title>
-        <Paragraph style={{ fontSize: 16, marginBottom: 32 }}>
-          Đăng ký tài khoản để trải nghiệm đầy đủ tính năng
-        </Paragraph>
-        <Space>
-          <Button type="primary" size="large" onClick={() => navigate('/register')}>
-            Đăng ký ngay
-          </Button>
-          <Button size="large" onClick={() => navigate('/login')}>
-            Đăng nhập
-          </Button>
-        </Space>
-      </div>
+      {!isAuthenticated && (
+        <div
+          style={{
+            background: '#f0f2f5',
+            padding: '60px 24px',
+            textAlign: 'center',
+          }}
+        >
+          <Title level={2}>Bắt đầu ngay hôm nay</Title>
+          <Paragraph style={{ fontSize: 16, marginBottom: 32 }}>
+            Đăng ký tài khoản để trải nghiệm đầy đủ tính năng
+          </Paragraph>
+          <Space>
+            <Button type="primary" size="large" onClick={() => navigate('/register')}>
+              Đăng ký ngay
+            </Button>
+            <Button size="large" onClick={() => navigate('/login')}>
+              Đăng nhập
+            </Button>
+          </Space>
+        </div>
+      )}
     </div>
   );
 }

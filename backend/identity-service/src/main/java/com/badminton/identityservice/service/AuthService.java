@@ -6,8 +6,11 @@ import com.badminton.identityservice.dto.request.RefreshTokenRequest;
 import com.badminton.identityservice.dto.request.RegisterRequest;
 import com.badminton.identityservice.dto.response.LoginResponse;
 
+import com.badminton.identityservice.dto.model.UserDTO;
+
 public interface AuthService {
-    String register(RegisterRequest request);
+    UserDTO register(RegisterRequest request);
+    LoginResponse registerOwner(RegisterRequest request);
     LoginResponse login(LoginRequest request);
 
     /**

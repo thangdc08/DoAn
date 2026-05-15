@@ -1,4 +1,4 @@
-﻿package com.badminton.venueservice.entity;
+package com.badminton.venueservice.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -7,6 +7,9 @@ import org.hibernate.annotations.UpdateTimestamp;
 import org.locationtech.jts.geom.Point;
 
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -43,6 +46,16 @@ public class Venue {
     private Point location;
 
     private String phone;
+
+    private LocalTime openTime;
+    
+    private LocalTime closeTime;
+
+    @ElementCollection
+    @CollectionTable(name = "venue_utilities", joinColumns = @JoinColumn(name = "venue_id"))
+    @Column(name = "utility")
+    @Builder.Default
+    private List<String> utilities = new ArrayList<>();
 
     @Builder.Default
     private String status = "PENDING_APPROVAL";

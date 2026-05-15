@@ -126,7 +126,7 @@ const MainLayout: React.FC = () => {
           {/* Logo */}
           <button
             type="button"
-            onClick={() => navigate('/venues')}
+            onClick={() => navigate('/')}
             style={{
               display: 'flex', alignItems: 'center', gap: 10,
               background: 'none', border: 'none', cursor: 'pointer', padding: '4px 4px 4px 0',

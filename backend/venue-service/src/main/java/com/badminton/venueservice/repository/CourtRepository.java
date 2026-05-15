@@ -1,4 +1,4 @@
-﻿package com.badminton.venueservice.repository;
+package com.badminton.venueservice.repository;
 
 import com.badminton.venueservice.entity.Court;
 import org.springframework.data.jpa.repository.JpaRepository;

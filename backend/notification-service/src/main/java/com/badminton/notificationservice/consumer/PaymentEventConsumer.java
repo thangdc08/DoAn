@@ -1,4 +1,4 @@
-﻿package com.badminton.notificationservice.consumer;
+package com.badminton.notificationservice.consumer;
 
 import com.badminton.notificationservice.document.Notification;
 import com.badminton.notificationservice.repository.NotificationRepository;
@@ -18,19 +18,20 @@ public class PaymentEventConsumer {
 
     private final NotificationRepository notificationRepository;
 
-    @KafkaListener(topics = "payment-events", groupId = "notification-group")
-    public void handlePaymentSucceeded(Map<String, Object> event) {
-        log.info("Received payment event: {}", event);
+    @KafkaListener(topics = "booking-events", groupId = "notification-group")
+    public void handleBookingPaid(Map<String, Object> event) {
+        log.info("Received booking event: {}", event);
         
         UUID userId = UUID.fromString(event.get("userId").toString());
         UUID bookingId = UUID.fromString(event.get("bookingId").toString());
+        String venueName = event.get("venueName").toString();
 
         Notification notification = Notification.builder()
                 .receiverId(userId)
                 .type("BOOKING_PAID")
                 .title("Đặt sân thành công")
-                .content("Đơn đặt sân của bạn đã được thanh toán thành công.")
-                .data(Map.of("bookingId", bookingId))
+                .content("Bạn đã đặt sân thành công tại " + venueName)
+                .data(Map.of("bookingId", bookingId, "venueName", venueName))
                 .createdAt(LocalDateTime.now())
                 .build();
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Typography, Form, Input, Button, Steps, Card, Space, message, Divider, Checkbox, Row, Col, TimePicker, InputNumber, Alert } from 'antd';
+import { Typography, Form, Input, Button, Steps, Card, Space, message, Divider, Checkbox, Row, Col, TimePicker, InputNumber, Alert, Select, AutoComplete } from 'antd';
 import { 
   UserOutlined, 
   ShopOutlined, 
@@ -12,12 +12,14 @@ import {
   ClockCircleOutlined,
   DollarOutlined
 } from '@ant-design/icons';
-import { MapPin } from 'lucide-react';
-import { BRAND } from '../../theme/antdTheme';
+import { MapPin, X, Search } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import { PROVINCE_OPTIONS } from '../../constants/areas';
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import * as L from 'leaflet';
+import dayjs from 'dayjs';
+import axios from 'axios';
 
 // Leaflet fix for Vite/Webpack
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
@@ -43,7 +45,7 @@ const UTILITIES = [
   { label: 'Tủ đồ riêng', value: 'locker' },
   { label: 'Căng tin / Giải khát', value: 'canteen' },
   { label: 'Nhà vệ sinh / Tắm', value: 'shower' },
-  { label: 'Thuê vợt / Cầu', value: 'rental' },
+  { label: 'Bán đồ cầu lông', value: 'rental' },
 ];
 
 function LocationPicker({ position, setPosition }: { position: [number, number], setPosition: (p: [number, number]) => void }) {
@@ -56,11 +58,94 @@ function LocationPicker({ position, setPosition }: { position: [number, number],
   return position ? <Marker position={position} /> : null;
 }
 
+function MapController({ center }: { center: [number, number] }) {
+  const map = useMap() as any;
+  React.useEffect(() => {
+    if (map) {
+      map.setView(center, map.getZoom());
+      // Giới hạn bản đồ trong phạm vi Việt Nam
+      const bounds = [[8.18, 102.14], [23.39, 109.46]];
+      map.setMaxBounds(bounds);
+      map.setMinZoom(5);
+    }
+  }, [center, map]);
+  return null;
+}
+
 export default function PartnerOnboardingPage() {
   const [current, setCurrent] = useState(0);
   const [form] = Form.useForm();
   const navigate = useNavigate();
-  const [position, setPosition] = useState<[number, number]>([10.762622, 106.660172]);
+  const [position, setPosition] = useState<[number, number] | null>([10.762622, 106.660172]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [options, setOptions] = useState<{ value: string; label: string; lat: string; lon: string }[]>([]);
+
+  // Thêm biến ref để quản lý debounce timer
+  const searchTimeoutRef = React.useRef<any>(null);
+
+  const fetchSuggestions = (value: string) => {
+    if (!value || value.length < 3) {
+      setOptions([]);
+      return;
+    }
+
+    // Xóa timer cũ nếu người dùng vẫn đang gõ
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    // Đợi 800ms sau khi người dùng dừng gõ mới gửi request
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&countrycodes=vn&limit=5`,
+          {
+            headers: {
+              'Accept-Language': 'vi',
+              // Nominatim yêu cầu thông tin định danh nếu dùng nhiều, ở mức dev thì dùng mặc định trình duyệt
+            }
+          }
+        );
+        const data = await response.json();
+        setOptions(data.map((item: any) => ({
+          value: item.display_name,
+          label: item.display_name,
+          lat: item.lat,
+          lon: item.lon,
+        })));
+      } catch (error) {
+        console.error('Error fetching suggestions:', error);
+      }
+    }, 800);
+  };
+
+  const onSelectLocation = (value: string, option: any) => {
+    const newPos: [number, number] = [parseFloat(option.lat), parseFloat(option.lon)];
+    setPosition(newPos);
+    message.success(`Đã trỏ đến: ${value}`);
+  };
+
+  const handleMapSearch = async (value: string) => {
+    if (!value) return;
+    setSearchLoading(true);
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&countrycodes=vn&limit=1`);
+      const data = await response.json();
+      if (data && data.length > 0) {
+        const { lat, lon } = data[0];
+        const newPos: [number, number] = [parseFloat(lat), parseFloat(lon)];
+        setPosition(newPos);
+        message.success(`Đã tìm thấy: ${data[0].display_name}`);
+      } else {
+        message.warning('Không tìm thấy địa điểm này trong lãnh thổ Việt Nam.');
+      }
+    } catch (error) {
+      message.error('Lỗi khi tìm kiếm vị trí. Vui lòng thử lại sau.');
+    } finally {
+      setSearchLoading(false);
+    }
+  };
 
   const next = async () => {
     try {
@@ -77,9 +162,59 @@ export default function PartnerOnboardingPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
-  const onFinish = () => {
-    message.success('Đã gửi hồ sơ đăng ký thành công!');
-    setCurrent(4);
+  const onFinish = async (_values: any) => {
+    // Lấy toàn bộ giá trị từ form, bao gồm các field đã bị ẩn (do dùng preserve={true})
+    const values = form.getFieldsValue(true);
+    console.log('--- SUBMITTING ONBOARDING DATA ---', values);
+
+    if (!position) {
+      message.error('Vui lòng chọn vị trí trên bản đồ');
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      // Bước 1: Đăng ký tài khoản Chủ sân
+      const authRes = await axios.post('http://localhost:8080/identity/api/v1/auth/register-owner', {
+        fullName: values.ownerName, 
+        email: values.email,
+        phone: values.phone,
+        level: 'PRO',
+        password: values.password
+      });
+      
+      // Sửa: Lấy token đúng cấu trúc { result: { access_token: "..." } }
+      const token = authRes.data.result.access_token;
+
+      // Bước 2: Khởi tạo thông tin Sân
+      await axios.post('http://localhost:8080/venues/api/v1/venues/onboard', {
+        venueName: values.venueName,
+        address: values.address,
+        city: values.city,
+        courtCount: values.courtCount,
+        utilities: values.utilities,
+        latitude: position[0],
+        longitude: position[1],
+        openTime: values.openTime.format('HH:mm:00'),
+        closeTime: values.closeTime.format('HH:mm:00'),
+        pricing: values.pricing.map((p: any) => ({
+          from: p.from.format('HH:mm:00'),
+          to: p.to.format('HH:mm:00'),
+          price: p.price
+        }))
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      message.success('Đã gửi hồ sơ đăng ký thành công!');
+      setCurrent(4);
+    } catch (error: any) {
+      console.error("Lỗi đăng ký:", error);
+      const errorMsg = error.response?.data?.message || 'Có lỗi xảy ra, vui lòng thử lại!';
+      message.error(errorMsg);
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -112,7 +247,7 @@ export default function PartnerOnboardingPage() {
         </div>
 
         <Card className="rounded-[40px] shadow-2xl shadow-slate-200/50 border-none p-4 md:p-10 overflow-hidden">
-          <Form form={form} layout="vertical" requiredMark={false} onFinish={onFinish} initialValues={{ utilities: ['wifi', 'parking'] }}>
+          <Form form={form} layout="vertical" requiredMark={false} onFinish={onFinish} initialValues={{ utilities: ['wifi', 'parking'] }} preserve={true}>
             {current === 0 && (
               <div className="animate-in fade-in slide-in-from-bottom duration-500">
                 <div className="mb-10 text-center max-w-md mx-auto">
@@ -134,6 +269,31 @@ export default function PartnerOnboardingPage() {
                   <Col span={12}>
                     <Form.Item name="email" label={<Text strong>Email liên hệ</Text>} rules={[{ required: true, type: 'email', message: 'Email không hợp lệ' }]}>
                       <Input size="large" placeholder="partner@example.com" className="h-14 rounded-2xl bg-slate-50 border-slate-100" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item name="password" label={<Text strong>Mật khẩu đăng nhập</Text>} rules={[{ required: true, min: 6, message: 'Mật khẩu tối thiểu 6 ký tự' }]}>
+                      <Input.Password size="large" placeholder="••••••••" className="h-14 rounded-2xl bg-slate-50 border-slate-100" />
+                    </Form.Item>
+                  </Col>
+                  <Col span={12}>
+                    <Form.Item 
+                      name="confirmPassword" 
+                      label={<Text strong>Xác nhận mật khẩu</Text>} 
+                      dependencies={['password']}
+                      rules={[
+                        { required: true, message: 'Vui lòng xác nhận mật khẩu' },
+                        ({ getFieldValue }) => ({
+                          validator(_, value) {
+                            if (!value || getFieldValue('password') === value) {
+                              return Promise.resolve();
+                            }
+                            return Promise.reject(new Error('Mật khẩu xác nhận không khớp!'));
+                          },
+                        }),
+                      ]}
+                    >
+                      <Input.Password size="large" placeholder="••••••••" className="h-14 rounded-2xl bg-slate-50 border-slate-100" />
                     </Form.Item>
                   </Col>
                 </Row>
@@ -169,7 +329,15 @@ export default function PartnerOnboardingPage() {
                   </Col>
                   <Col span={12}>
                     <Form.Item name="city" label={<Text strong>Thành phố / Tỉnh</Text>} rules={[{ required: true }]}>
-                      <Input size="large" placeholder="Hồ Chí Minh" className="h-14 rounded-2xl bg-slate-50 border-slate-100" />
+                      <Select 
+                        size="large" 
+                        placeholder="Chọn thành phố" 
+                        className="h-14 w-full"
+                        options={PROVINCE_OPTIONS}
+                        showSearch
+                        optionFilterProp="label"
+                        style={{ borderRadius: '1rem' }}
+                      />
                     </Form.Item>
                   </Col>
                 </Row>
@@ -211,40 +379,169 @@ export default function PartnerOnboardingPage() {
 
                 <Alert 
                   message={<Text strong>Hướng dẫn định vị</Text>}
-                  description="Hãy nhấn chuột vào bản đồ bên dưới để đánh dấu chính xác vị trí sân của bạn."
+                  description="Bạn có thể nhập địa chỉ để tìm kiếm hoặc nhấn chuột trực tiếp vào bản đồ để đánh dấu vị trí sân."
                   type="info"
                   showIcon
                   className="mb-6 rounded-2xl"
                   icon={<EnvironmentOutlined />}
                 />
 
-                <div className="h-[400px] rounded-3xl overflow-hidden border-4 border-slate-100 mb-8 z-0 relative">
-                  <MapContainer center={position} zoom={13} style={{ height: '100%', width: '100%' }}>
+                <div className="mt-8 mb-4">
+                  <AutoComplete
+                    options={options}
+                    onSearch={fetchSuggestions}
+                    onSelect={onSelectLocation}
+                    style={{ width: '100%' }}
+                  >
+                    <Input.Search 
+                      placeholder="Nhập địa chỉ hoặc tên khu vực để tìm nhanh... (VD: Lê Văn Lương, Hà Nội)" 
+                      enterButton={
+                        <Button type="primary" className="bg-slate-900 border-none h-full px-6 rounded-r-2xl flex items-center gap-2">
+                          <Search size={26} /> Tìm vị trí
+                        </Button>
+                      }
+                      size="large"
+                      loading={searchLoading}
+                      onSearch={handleMapSearch}
+                      className="h-14 rounded-2xl overflow-hidden shadow-sm border-none"
+                      style={{ borderRadius: '1rem' }}
+                    />
+                  </AutoComplete>
+                </div>
+
+                <div className="h-[450px] rounded-3xl overflow-hidden border-4 border-slate-100 mb-8 z-0 relative">
+                  <MapContainer 
+                    center={position || [10.762622, 106.660172]} 
+                    zoom={13} 
+                    style={{ height: '100%', width: '100%' }}
+                  >
                     <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                     <LocationPicker position={position} setPosition={setPosition} />
+                    <MapController center={position} />
                   </MapContainer>
-                  <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-md px-4 py-2 rounded-full shadow-lg z-[1000] border border-slate-200 flex items-center gap-2">
-                    <MapPin size={16} className="text-emerald-500" />
-                    <Text strong style={{ fontSize: 11 }}>LAT: {position[0].toFixed(6)} | LNG: {position[1].toFixed(6)}</Text>
-                  </div>
+                  {position && (
+                    <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-white/90 backdrop-blur-md px-4 py-2 rounded-full shadow-lg z-[1000] border border-slate-200 flex items-center gap-2">
+                      <MapPin size={16} className="text-emerald-500" />
+                      <Text strong style={{ fontSize: 11 }}>LAT: {position[0].toFixed(6)} | LNG: {position[1].toFixed(6)}</Text>
+                    </div>
+                  )}
                 </div>
 
                 <Row gutter={24}>
-                  <Col span={12}>
-                    <Form.Item name="hours" label={<Text strong><ClockCircleOutlined /> Giờ hoạt động</Text>} rules={[{ required: true }]}>
-                      <TimePicker.RangePicker format="HH:mm" className="h-14 w-full rounded-2xl bg-slate-50 border-slate-100" />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="basePrice" label={<Text strong><DollarOutlined /> Giá thuê cơ bản (vnđ/giờ)</Text>} rules={[{ required: true }]}>
-                      <InputNumber 
-                        size="large" 
-                        formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                        parser={value => value!.replace(/\$\s?|(,*)/g, '')}
-                        placeholder="50,000" 
-                        className="w-full h-14 rounded-2xl bg-slate-50 border-slate-100 pt-3" 
+                  <Col span={24}>
+                    <div className="p-6 rounded-[32px] bg-slate-50 border border-slate-100 mb-8">
+                      <div className="flex items-center gap-3 mb-6">
+                        <div className="w-10 h-10 rounded-xl bg-brand-green/10 flex items-center justify-center text-brand-green">
+                          <ClockCircleOutlined />
+                        </div>
+                        <div>
+                          <Text strong className="text-lg">Thời gian vận hành</Text>
+                          <p className="text-xs text-slate-400 mb-0">Thiết lập giờ mở cửa và đóng cửa của cơ sở</p>
+                        </div>
+                      </div>
+                      
+                      <Row gutter={16}>
+                        <Col span={12}>
+                          <Form.Item name="openTime" label={<Text strong>Giờ mở cửa</Text>} rules={[{ required: true }]}>
+                            <TimePicker format="HH:mm" className="h-14 w-full rounded-2xl border-white bg-white" placeholder="05:00" />
+                          </Form.Item>
+                        </Col>
+                        <Col span={12}>
+                          <Form.Item name="closeTime" label={<Text strong>Giờ đóng cửa</Text>} rules={[{ required: true }]}>
+                            <TimePicker format="HH:mm" className="h-14 w-full rounded-2xl border-white bg-white" placeholder="23:00 (hoặc 00:00)" />
+                          </Form.Item>
+                        </Col>
+                      </Row>
+                      <Alert 
+                        message={<Text style={{ fontSize: 12 }}>Lưu ý: Nếu giờ đóng cửa nhỏ hơn giờ mở cửa, hệ thống sẽ tự động hiểu là sang ngày hôm sau (qua đêm).</Text>}
+                        type="warning"
+                        className="rounded-xl border-none bg-amber-50"
                       />
-                    </Form.Item>
+                    </div>
+                  </Col>
+
+                  <Col span={24}>
+                    <div className="p-6 rounded-[32px] bg-white border border-slate-100 mb-8 shadow-sm">
+                      <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-500">
+                            <DollarOutlined />
+                          </div>
+                          <div>
+                            <Text strong className="text-lg">Bảng giá linh hoạt</Text>
+                            <p className="text-xs text-slate-400 mb-0">Thiết lập giá tiền khác nhau cho từng khung giờ (ví dụ: giờ cao điểm)</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <Form.List 
+                        name="pricing" 
+                        initialValue={[{ 
+                          from: dayjs('05:00', 'HH:mm'), 
+                          to: dayjs('17:00', 'HH:mm'), 
+                          price: 50000 
+                        }]}
+                      >
+                        {(fields, { add, remove }) => (
+                          <>
+                            {fields.map(({ key, name, ...restField }) => (
+                              <div key={key} className="p-4 rounded-2xl bg-slate-50 border border-slate-100 mb-4 animate-in fade-in zoom-in duration-300">
+                                <Row gutter={12} align="middle">
+                                  <Col span={24}>
+                                    <div className="flex items-center gap-4">
+                                      <div className="flex-1">
+                                        <Text type="secondary" className="text-[10px] uppercase tracking-wider mb-1 block">Khung giờ</Text>
+                                        <div className="flex items-center gap-2">
+                                          <Form.Item {...restField} name={[name, 'from']} rules={[{ required: true }]} noStyle>
+                                            <TimePicker format="HH:mm" placeholder="Từ" className="flex-1 h-11 rounded-xl bg-white border-slate-200" />
+                                          </Form.Item>
+                                          <Text type="secondary" className="px-1">—</Text>
+                                          <Form.Item {...restField} name={[name, 'to']} rules={[{ required: true }]} noStyle>
+                                            <TimePicker format="HH:mm" placeholder="Đến" className="flex-1 h-11 rounded-xl bg-white border-slate-200" />
+                                          </Form.Item>
+                                        </div>
+                                      </div>
+                                      <div className="w-[200px]">
+                                        <Text type="secondary" className="text-[10px] uppercase tracking-wider mb-1 block">Giá thuê (vnđ/giờ)</Text>
+                                        <Form.Item {...restField} name={[name, 'price']} rules={[{ required: true }]} noStyle>
+                                          <InputNumber 
+                                            placeholder="50,000" 
+                                            className="w-full h-11 rounded-xl font-bold text-brand-green" 
+                                            formatter={v => `${v}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                                            parser={v => v!.replace(/\$\s?|(,*)/g, '')}
+                                            addonAfter={<span className="text-[10px] font-normal text-slate-400">đ/giờ</span>}
+                                          />
+                                        </Form.Item>
+                                      </div>
+                                      <div className="pt-5">
+                                        <Button 
+                                          type="text" 
+                                          danger 
+                                          shape="circle"
+                                          icon={<X size={18} />} 
+                                          onClick={() => remove(name)} 
+                                          disabled={fields.length === 1}
+                                          className="hover:bg-red-50 flex items-center justify-center"
+                                        />
+                                      </div>
+                                    </div>
+                                  </Col>
+                                </Row>
+                              </div>
+                            ))}
+                            <Button 
+                              type="dashed" 
+                              onClick={() => add()} 
+                              block 
+                              icon={<RocketOutlined />} 
+                              className="h-12 rounded-xl border-slate-200 text-slate-500 hover:text-brand-green hover:border-brand-green"
+                            >
+                              Thêm khung giờ & giá mới
+                            </Button>
+                          </>
+                        )}
+                      </Form.List>
+                    </div>
                   </Col>
                 </Row>
 
@@ -270,10 +567,10 @@ export default function PartnerOnboardingPage() {
                 </Paragraph>
                 
                 <div className="flex flex-col gap-4">
-                  <Button type="primary" size="large" block onClick={onFinish} className="h-16 rounded-2xl bg-emerald-500 font-bold text-lg shadow-xl shadow-emerald-500/20 border-none">
+                  <Button type="primary" size="large" block onClick={form.submit} loading={isSubmitting} className="h-16 rounded-2xl bg-emerald-500 font-bold text-lg shadow-xl shadow-emerald-500/20 border-none">
                     Xác nhận & Gửi hồ sơ
                   </Button>
-                  <Button type="link" onClick={() => setCurrent(0)} className="text-slate-400 font-bold">
+                  <Button type="link" onClick={() => setCurrent(0)} disabled={isSubmitting} className="text-slate-400 font-bold">
                     Quay lại bước đầu tiên
                   </Button>
                 </div>

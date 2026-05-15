@@ -78,17 +78,25 @@ public class SecurityConfig {
                                 "/v3/api-docs/**",
                                 "/openapi/**",
                                 "/identity/v3/api-docs/**",
+                                "/identity/swagger-ui/**",
+                                "/identity/swagger-ui.html",
+                                "/webjars/**",
+                                "/venues/api-docs/**",
                                 "/venues/v3/api-docs/**",
+                                "/bookings/api-docs/**",
                                 "/bookings/v3/api-docs/**"
                         ).permitAll()
                         // Public — auth endpoints (không cần token)
                         .pathMatchers(HttpMethod.POST, "/identity/api/v1/auth/login").permitAll()
                         .pathMatchers(HttpMethod.POST, "/identity/api/v1/auth/register").permitAll()
+                        .pathMatchers(HttpMethod.POST, "/identity/api/v1/auth/register-owner").permitAll()
                         .pathMatchers(HttpMethod.POST, "/identity/api/v1/auth/refresh").permitAll()
                         .pathMatchers(HttpMethod.POST, "/identity/api/v1/auth/logout").permitAll()
                         // Public — read-only venue & booking
                         .pathMatchers(HttpMethod.GET, "/venues/**").permitAll()
                         .pathMatchers(HttpMethod.GET, "/bookings/**").permitAll()
+                        // Venue Onboarding — Owner only
+                        .pathMatchers(HttpMethod.POST, "/venues/api/v1/venues/onboard").hasAuthority("SCOPE_OWNER")
                         // Admin only
                         .pathMatchers("/identity/admin/**").hasAuthority("SCOPE_ADMIN")
                         .pathMatchers(HttpMethod.POST, "/venues/**").hasAuthority("SCOPE_ADMIN")

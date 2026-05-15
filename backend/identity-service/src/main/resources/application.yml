@@ -6,6 +6,15 @@ spring:
   config:
     import: "optional:configserver:http://localhost:8888"
 
+server:
+  forward-headers-strategy: framework
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
 eureka:
   instance:
     hostname: localhost
@@ -17,3 +26,10 @@ eureka:
     registry-fetch-interval-seconds: 5
     service-url:
       defaultZone: http://localhost:8761/eureka/
+
+app:
+  cloudinary:
+    cloud-name: drq5f0hg2
+    api-key: "318313767569946"
+    api-secret: "Bvsb_Fx01DWD5qFC82Zf8IU-Uig"
+

@@ -21,6 +21,20 @@ public class UserMapper {
                     .map(Role::getCode)
                     .collect(Collectors.toSet()));
         }
+        if (user.getPreferredAreas() != null) {
+            dto.setPreferredAreas(user.getPreferredAreas().stream()
+                    .map(com.badminton.identityservice.entity.UserPreferredArea::getAreaName)
+                    .collect(Collectors.toList()));
+        }
+        if (user.getAvailabilities() != null) {
+            dto.setAvailabilities(user.getAvailabilities().stream()
+                    .map(a -> UserDTO.UserAvailabilityDTO.builder()
+                            .dayOfWeek(a.getDayOfWeek())
+                            .startTime(a.getStartTime())
+                            .endTime(a.getEndTime())
+                            .build())
+                    .collect(Collectors.toList()));
+        }
         return dto;
     }
 

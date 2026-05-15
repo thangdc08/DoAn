@@ -29,6 +29,21 @@ public class OpenApiProxyController {
         this.objectMapper = objectMapper;
     }
 
+    @GetMapping(value = "/identity", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Mono<String> identity() {
+        return forwardAndPatch("http://identity-service/v3/api-docs", "http://localhost:8080/identity");
+    }
+
+    @GetMapping(value = "/venues", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Mono<String> venues() {
+        return forwardAndPatch("http://venue-service/api-docs", "http://localhost:8080/venues");
+    }
+
+    @GetMapping(value = "/bookings", produces = MediaType.APPLICATION_JSON_VALUE)
+    public Mono<String> bookings() {
+        return forwardAndPatch("http://booking-service/api-docs", "http://localhost:8080/bookings");
+    }
+
     @GetMapping(value = "/product", produces = MediaType.APPLICATION_JSON_VALUE)
     public Mono<String> product() { return forwardAndPatch("http://PRODUCT-SERVICE/v3/api-docs"); }
 
@@ -49,12 +64,16 @@ public class OpenApiProxyController {
 
 
     private Mono<String> forwardAndPatch(String uri) {
-        return webClientBuilder.build().get().uri(uri).retrieve()
-                .bodyToMono(String.class)
-                .map(this::patchOpenApi);
+        return forwardAndPatch(uri, "http://localhost:8080");
     }
 
-    private String patchOpenApi(String json) {
+    private Mono<String> forwardAndPatch(String uri, String serverUrl) {
+        return webClientBuilder.build().get().uri(uri).retrieve()
+                .bodyToMono(String.class)
+                .map(json -> patchOpenApi(json, serverUrl));
+    }
+
+    private String patchOpenApi(String json, String serverUrl) {
         try {
             ObjectNode root = (ObjectNode) objectMapper.readTree(json);
 
@@ -76,7 +95,7 @@ public class OpenApiProxyController {
             // 3) QUAN TRỌNG: ép servers -> Gateway (để Try it out không gọi port nội bộ)
             ArrayNode servers = objectMapper.createArrayNode();
             ObjectNode server = objectMapper.createObjectNode();
-            server.put("url", "http://localhost:8085");     // ví dụ http://localhost:8085
+            server.put("url", serverUrl);
             servers.add(server);
             root.set("servers", servers);
 

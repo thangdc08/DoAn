@@ -1,4 +1,6 @@
 spring:
+  kafka:
+    bootstrap-servers: localhost:9094
   cloud:
     gateway:
       discovery:
@@ -71,9 +73,6 @@ spring:
 jwt:
   signerKey: "zV9X7f6N8M2K5P4R1S3T0U9V8W7X6Y5Z4A3B2C1D0E9F8G7H6I5J4K3L2M1N0O9"
 
-  kafka:
-    bootstrap-servers: localhost:9094
-
 auth:
   token-url: http://localhost:8080/identity/api/v1/auth/login
   scopes: openid, profile, email
@@ -100,8 +99,8 @@ springdoc:
     path: /swagger-ui.html
     urls:
       - name: Identity Service
-        url: /identity/v3/api-docs
+        url: /openapi/identity
       - name: Venue Service
-        url: /venues/v3/api-docs
+        url: /openapi/venues
       - name: Booking Service
-        url: /bookings/v3/api-docs
+        url: /openapi/bookings

@@ -1,0 +1,24 @@
+package com.badminton.bookingservice.client;
+
+import org.springframework.cloud.openfeign.FeignClient;
+import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.UUID;
+
+@FeignClient(name = "venue-service", url = "${app.services.venue-service.url}")
+public interface VenueClient {
+
+    @GetMapping("/internal/venues/{id}")
+    Object getVenueById(@PathVariable("id") UUID id);
+
+    @GetMapping("/internal/courts/{courtId}/price")
+    BigDecimal getPrice(
+            @PathVariable("courtId") UUID courtId,
+            @RequestParam("startTime") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
+            @RequestParam("endTime") @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime);
+}

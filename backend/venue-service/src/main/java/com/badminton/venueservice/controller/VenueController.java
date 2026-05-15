@@ -1,9 +1,12 @@
-﻿package com.badminton.venueservice.controller;
+package com.badminton.venueservice.controller;
 
-import com.badminton.venueservice.entity.Venue;
-import com.badminton.venueservice.repository.VenueRepository;
+import com.badminton.common.dto.ApiResponse;
+import com.badminton.venueservice.dto.VenueResponse;
+import com.badminton.venueservice.service.VenueService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -12,22 +15,27 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/venues")
 @RequiredArgsConstructor
+@Slf4j
+@Tag(name = "Venue Management", description = "Endpoints for discovering and managing badminton venues")
 public class VenueController {
 
-    private final VenueRepository venueRepository;
+    private final VenueService venueService;
 
     @GetMapping
-    public ResponseEntity<List<Venue>> getAllVenues(@RequestParam(required = false) String city) {
-        if (city != null) {
-            return ResponseEntity.ok(venueRepository.findByCity(city));
-        }
-        return ResponseEntity.ok(venueRepository.findAll());
+    @Operation(summary = "Get all venues", description = "Returns a list of all badminton venues.")
+    public ApiResponse<List<VenueResponse>> getAllVenues() {
+        log.info("API Request: Get all venues");
+        return ApiResponse.<List<VenueResponse>>builder()
+                .result(venueService.findAll())
+                .build();
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<Venue> getVenueById(@PathVariable UUID id) {
-        return venueRepository.findById(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    @Operation(summary = "Get venue by ID", description = "Returns venue details by unique ID")
+    public ApiResponse<VenueResponse> getVenueById(@PathVariable UUID id) {
+        log.info("API Request: Get venue by id {}", id);
+        return ApiResponse.<VenueResponse>builder()
+                .result(venueService.findVenueResponseById(id))
+                .build();
     }
 }

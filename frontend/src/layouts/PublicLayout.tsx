@@ -67,7 +67,10 @@ export const PublicLayout: React.FC = () => {
           <div className="flex items-center justify-between">
 
             {/* Logo - Left */}
-            <Link to="/venues" className="flex items-center gap-3 group flex-shrink-0">
+            <div 
+              onClick={() => navigate('/')} 
+              className="flex items-center gap-3 group flex-shrink-0 cursor-pointer"
+            >
               <div className="w-10 h-10 rounded-xl bg-brand-green flex items-center justify-center shadow-lg shadow-emerald-500/20 group-hover:rotate-6 transition-transform duration-300">
                 <span className="text-xl">🏸</span>
               </div>
@@ -77,7 +80,7 @@ export const PublicLayout: React.FC = () => {
                 </span>
                 <Text style={{ fontSize: 10, fontWeight: 700, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', marginTop: 2 }}>Premium Platform</Text>
               </div>
-            </Link>
+            </div>
 
             {/* Navigation - Center */}
             <nav className="hidden lg:flex items-center bg-slate-50/50 p-1 rounded-2xl border border-slate-100">

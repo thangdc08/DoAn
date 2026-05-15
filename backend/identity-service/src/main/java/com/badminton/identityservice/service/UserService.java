@@ -3,6 +3,7 @@ package com.badminton.identityservice.service;
 import com.badminton.identityservice.dto.message.ObjectResponse;
 import com.badminton.identityservice.dto.model.UserDTO;
 import com.badminton.identityservice.dto.model.UserUpdateDTO;
+import com.badminton.identityservice.dto.request.UserProfileUpdateRequest;
 import com.badminton.identityservice.entity.User;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -17,6 +18,8 @@ public interface UserService {
     UserDTO getUserById(UUID id);
 
     UserDTO updateUser(UserUpdateDTO userDto, UUID id);
+
+    UserDTO updateProfile(UUID id, UserProfileUpdateRequest request);
 
     void deleteUser(UUID id);
 

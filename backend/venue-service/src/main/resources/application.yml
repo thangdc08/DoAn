@@ -12,6 +12,10 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: true
+  flyway:
+    enabled: true
+    schemas: venue
+    baseline-on-migrate: true
     properties:
       hibernate:
         dialect: org.hibernate.spatial.dialect.postgis.PostgisPGDialect
@@ -31,3 +35,20 @@ springdoc:
     path: /api-docs
   swagger-ui:
     path: /swagger-ui.html
+
+app:
+  cloudinary:
+    cloud-name: drq5f0hg2
+    api-key: "318313767569946"
+    api-secret: "Bvsb_Fx01DWD5qFC82Zf8IU-Uig"
+
+eureka:
+  instance:
+    hostname: localhost
+    prefer-ip-address: false
+    instance-id: ${spring.application.name}:${server.port}
+  client:
+    register-with-eureka: true
+    fetch-registry: true
+    service-url:
+      defaultZone: http://localhost:8761/eureka/
