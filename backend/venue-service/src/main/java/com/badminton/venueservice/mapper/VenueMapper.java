@@ -1,9 +1,10 @@
 package com.badminton.venueservice.mapper;
 
 import com.badminton.venueservice.dto.CourtResponse;
-import com.badminton.venueservice.dto.CourtResponse;
+import com.badminton.venueservice.dto.PriceRuleResponse;
 import com.badminton.venueservice.dto.VenueResponse;
 import com.badminton.venueservice.entity.Court;
+import com.badminton.venueservice.entity.PriceRule;
 import com.badminton.venueservice.entity.Venue;
 import org.mapstruct.Mapper;
 
@@ -15,4 +16,6 @@ public interface VenueMapper {
     VenueResponse toVenueResponse(Venue venue);
     
     CourtResponse toCourtResponse(Court court);
+
+    PriceRuleResponse toPriceRuleResponse(PriceRule priceRule);
 }

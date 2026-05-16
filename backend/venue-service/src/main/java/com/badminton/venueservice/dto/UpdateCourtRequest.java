@@ -5,20 +5,15 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
-import java.util.UUID;
+import java.util.List;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class CourtResponse {
-    private UUID id;
+public class UpdateCourtRequest {
     private String name;
     private String courtType;
-    private String status;
     private String description;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-    private Integer displayOrder;
+    private String status;
 }

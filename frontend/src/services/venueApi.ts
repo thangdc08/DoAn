@@ -5,6 +5,7 @@ import type {
   PriceRule,
   CreateVenueRequest,
   UpdateVenueRequest,
+  UpdateCourtAvailabilityRequest,
 } from '../types/venue.types';
 
 const unwrapResult = <T>(response: { data: { result?: T } }): T => {
@@ -85,6 +86,15 @@ export const venueApi = {
 
   reorderCourts: async (venueId: string, courtIds: string[]): Promise<void> => {
     await apiClient.put(`/venues/api/venues/${venueId}/courts/reorder`, courtIds);
+  },
+
+  updateCourtAvailability: async (venueId: string, courtId: string, data: UpdateCourtAvailabilityRequest): Promise<void> => {
+    await apiClient.put(`/venues/api/venues/${venueId}/courts/${courtId}/availability`, data);
+  },
+
+  getCourtAvailability: async (venueId: string, courtId: string, date: string): Promise<any[]> => {
+    const response = await apiClient.get(`/venues/api/venues/${venueId}/courts/${courtId}/availability`, { params: { date } });
+    return unwrapResult(response);
   },
 
   createPriceRule: async (venueId: string, data: Omit<PriceRule, 'id' | 'createdAt'>): Promise<PriceRule> => {

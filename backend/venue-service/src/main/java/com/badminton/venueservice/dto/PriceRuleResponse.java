@@ -5,20 +5,21 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.time.LocalDateTime;
+import java.math.BigDecimal;
+import java.time.LocalTime;
 import java.util.UUID;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class CourtResponse {
+public class PriceRuleResponse {
     private UUID id;
-    private String name;
-    private String courtType;
+    private UUID venueId;
+    private UUID courtId;
+    private Integer dayOfWeek;
+    private LocalTime startTime;
+    private LocalTime endTime;
+    private BigDecimal pricePerHour;
     private String status;
-    private String description;
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
-    private Integer displayOrder;
 }

@@ -134,3 +134,9 @@ export interface UpdateVenueRequest {
   utilities?: string[];
   status?: string;
 }
+
+export interface UpdateCourtAvailabilityRequest {
+  startDate: string;
+  endDate: string;
+  availableSlots: string[]; // e.g., ["05:00", "05:30", "06:00"]
+}

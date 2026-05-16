@@ -9,4 +9,5 @@ public interface PriceRuleRepository extends JpaRepository<PriceRule, UUID> {
     List<PriceRule> findByVenueId(UUID venueId);
     List<PriceRule> findByCourtId(UUID courtId);
     List<PriceRule> findByVenueIdAndDayOfWeek(UUID venueId, Integer dayOfWeek);
+    void deleteByCourtId(UUID courtId);
 }

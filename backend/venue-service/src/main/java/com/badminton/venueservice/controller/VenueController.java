@@ -50,7 +50,7 @@ public class VenueController {
             log.warn("X-Auth-User-Id header is missing!");
             return ApiResponse.<List<VenueResponse>>builder()
                     .code(HttpStatus.UNAUTHORIZED.value())
-                    .message("KhÃ´ng tÃ¬m tháº¥y thÃ´ng tin Ä‘á»‹nh danh ngÆ°á»i dÃ¹ng (X-Auth-User-Id header is missing)")
+                    .message("KhÃ´ng tÃ¬m tháº¥y thÃ´ng tin Ä‘á»‹nh danh ngÆ°á» i dÃ¹ng (X-Auth-User-Id header is missing)")
                     .build();
         }
         
@@ -77,7 +77,17 @@ public class VenueController {
                 .build();
     }
 
-
+    @GetMapping("/{venueId}/courts/{courtId}/availability")
+    @Operation(summary = "Get court availability", description = "Returns the availability status of all slots for a specific date")
+    public ApiResponse<List<CourtSlotResponse>> getAvailability(
+            @PathVariable UUID venueId,
+            @PathVariable UUID courtId,
+            @RequestParam @org.springframework.format.annotation.DateTimeFormat(iso = org.springframework.format.annotation.DateTimeFormat.ISO.DATE) java.time.LocalDate date) {
+        log.info("API Request: Get availability for court {} on {}", courtId, date);
+        return ApiResponse.<List<CourtSlotResponse>>builder()
+                .result(venueService.getCourtAvailability(venueId, courtId, date))
+                .build();
+    }
 
     @PutMapping("/{venueId}/courts/reorder")
     @Operation(summary = "Reorder courts", description = "Allows owners to change the display order of courts")
@@ -90,6 +100,58 @@ public class VenueController {
                 .message("Cập nhật thứ tự sân thành công")
                 .build();
     }
+
+    @PutMapping("/{venueId}/courts/{courtId}")
+    @Operation(summary = "Update court info", description = "Allows owners to update specific court details")
+    public ApiResponse<CourtResponse> updateCourt(
+            @PathVariable UUID venueId,
+            @PathVariable UUID courtId,
+            @RequestBody UpdateCourtRequest request) {
+        log.info("API Request: Update court {} for venue {}", courtId, venueId);
+        return ApiResponse.<CourtResponse>builder()
+                .result(venueService.updateCourt(venueId, courtId, request))
+                .message("Cập nhật thông tin sân thành công")
+                .build();
+    }
+
+    @PutMapping("/{venueId}/courts/{courtId}/availability")
+    @Operation(summary = "Update court availability", description = "Allows owners to lock/unlock specific slots for a date range")
+    public ApiResponse<Void> updateAvailability(
+            @PathVariable UUID venueId,
+            @PathVariable UUID courtId,
+            @RequestBody UpdateCourtAvailabilityRequest request) {
+        log.info("API Request: Update availability for court {} for range {} to {}", 
+                courtId, request.getStartDate(), request.getEndDate());
+        venueService.updateCourtAvailability(venueId, courtId, request);
+        return ApiResponse.<Void>builder()
+                .message("Cập nhật lịch sân thành công")
+                .build();
+    }
+
+    @PostMapping("/{venueId}/courts")
+    @Operation(summary = "Create new court", description = "Allows owners to add a new court to their venue")
+    public ApiResponse<CourtResponse> createCourt(
+            @PathVariable UUID venueId,
+            @RequestBody CreateCourtRequest request) {
+        log.info("API Request: Create court {} for venue {}", request.getName(), venueId);
+        return ApiResponse.<CourtResponse>builder()
+                .result(venueService.createCourt(venueId, request))
+                .message("Thêm sân mới thành công")
+                .build();
+    }
+
+    @DeleteMapping("/{venueId}/courts/{courtId}")
+    @Operation(summary = "Delete court", description = "Deletes a specific court from a venue")
+    public ApiResponse<Void> deleteCourt(
+            @PathVariable UUID venueId,
+            @PathVariable UUID courtId) {
+        log.info("API Request: Delete court {} for venue {}", courtId, venueId);
+        venueService.deleteCourt(venueId, courtId);
+        return ApiResponse.<Void>builder()
+                .message("Xóa sân thành công")
+                .build();
+    }
+
     @PostMapping
     @Operation(summary = "Create new venue", description = "Allows owners to register a new badminton venue")
     public ApiResponse<VenueResponse> createVenue(
@@ -111,9 +173,6 @@ public class VenueController {
                 .result(venueService.updateVenue(id, request))
                 .build();
     }
-
-
-
 
     @PostMapping("/{id}/images")
     @Operation(summary = "Upload venue images", description = "Allows owners to upload images for their venue")
@@ -139,7 +198,6 @@ public class VenueController {
                 .build();
     }
 
-
     @DeleteMapping("/{id}")
     @Operation(summary = "Delete venue", description = "Deletes a venue and all associated data")
     public ApiResponse<Void> deleteVenue(@PathVariable UUID id) {
@@ -148,5 +206,37 @@ public class VenueController {
                 .message("Venue deleted successfully")
                 .build();
     }
-}
 
+    @GetMapping("/{venueId}/price-rules")
+    @Operation(summary = "Get price rules", description = "Returns all price rules for a specific venue")
+    public ApiResponse<List<PriceRuleResponse>> getPriceRules(@PathVariable UUID venueId) {
+        log.info("API Request: Get price rules for venue {}", venueId);
+        return ApiResponse.<List<PriceRuleResponse>>builder()
+                .result(venueService.findPriceRulesByVenueId(venueId))
+                .build();
+    }
+
+    @PostMapping("/{venueId}/price-rules")
+    @Operation(summary = "Create price rule", description = "Allows owners to add a new price rule")
+    public ApiResponse<PriceRuleResponse> createPriceRule(
+            @PathVariable UUID venueId,
+            @RequestBody CreatePriceRuleRequest request) {
+        log.info("API Request: Create price rule for venue {}", venueId);
+        return ApiResponse.<PriceRuleResponse>builder()
+                .result(venueService.createPriceRule(venueId, request))
+                .message("Thêm khung giờ giá thành công")
+                .build();
+    }
+
+    @DeleteMapping("/{venueId}/price-rules/{ruleId}")
+    @Operation(summary = "Delete price rule", description = "Allows owners to delete a specific price rule")
+    public ApiResponse<Void> deletePriceRule(
+            @PathVariable UUID venueId,
+            @PathVariable UUID ruleId) {
+        log.info("API Request: Delete price rule {} for venue {}", ruleId, venueId);
+        venueService.deletePriceRule(venueId, ruleId);
+        return ApiResponse.<Void>builder()
+                .message("Xóa quy tắc giá thành công")
+                .build();
+    }
+}

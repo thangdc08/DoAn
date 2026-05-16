@@ -9,22 +9,17 @@ import com.badminton.venueservice.entity.PriceRule;
 import com.badminton.venueservice.entity.Venue;
 import com.badminton.venueservice.mapper.VenueMapper;
 import com.badminton.venueservice.entity.VenueImage;
-import com.badminton.venueservice.repository.CourtRepository;
-import com.badminton.venueservice.repository.PriceRuleRepository;
-import com.badminton.venueservice.repository.VenueImageRepository;
-import com.badminton.venueservice.repository.VenueRepository;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import com.badminton.venueservice.dto.*;
+import com.badminton.venueservice.entity.CourtSlot;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import com.badminton.venueservice.dto.*;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.geom.PrecisionModel;
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.util.ArrayList;
@@ -33,6 +28,11 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import com.cloudinary.utils.ObjectUtils;
+
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+import com.badminton.venueservice.repository.*;
 
 @Service
 @RequiredArgsConstructor
@@ -43,6 +43,7 @@ public class VenueService {
     private final CourtRepository courtRepository;
     private final PriceRuleRepository priceRuleRepository;
     private final VenueImageRepository venueImageRepository;
+    private final CourtSlotRepository courtSlotRepository;
     private final VenueMapper venueMapper;
     private final com.cloudinary.Cloudinary cloudinary;
     private final GeometryFactory geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
@@ -250,11 +251,11 @@ public class VenueService {
     public void deleteVenueImage(UUID venueId, UUID imageId) {
         log.info("Deleting image {} from venue {}", imageId, venueId);
         VenueImage image = venueImageRepository.findById(imageId)
-                .orElseThrow(() -> new RuntimeException("Kh�ng t�m th?y ?nh"));
+                .orElseThrow(() -> new RuntimeException("Không tìm thấy ảnh"));
         
         if (!image.getVenueId().equals(venueId)) {
-            throw new RuntimeException("?nh kh�ng thu?c v? co s? n�y");
-        }
+            throw new RuntimeException("Ảnh không thuộc về cơ sở này");
+        }           
         
         venueImageRepository.delete(image);
     }
@@ -265,7 +266,6 @@ public class VenueService {
 
         Point location = null;
         if (request.getLatitude() != null && request.getLongitude() != null) {
-            // Note: JTS Point uses (x, y) which is (longitude, latitude)
             location = geometryFactory.createPoint(new Coordinate(request.getLongitude(), request.getLatitude()));
         }
 
@@ -284,32 +284,61 @@ public class VenueService {
                 .utilities(request.getUtilities())
                 .openTime(request.getOpenTime())
                 .closeTime(request.getCloseTime())
+                .courtCount(request.getCourtCount()) // Set courtCount here
                 .status(VenueStatus.PENDING_APPROVAL)
                 .build();
         
         Venue savedVenue = venueRepository.save(venue);
 
-        // 2. Create Courts
-        List<Court> courts = new ArrayList<>();
+        // 2. Create Courts and initial Slots for 30 days
+        int startHour = savedVenue.getOpenTime() != null ? savedVenue.getOpenTime().getHour() : 5;
+        int endHour = savedVenue.getCloseTime() != null ? savedVenue.getCloseTime().getHour() : 22;
+        if (endHour == 0) endHour = 24;
+
         for (int i = 1; i <= request.getCourtCount(); i++) {
             Court court = Court.builder()
                     .venue(savedVenue)
                     .name("Sân " + i)
                     .courtType("STANDARD")
                     .status("ACTIVE")
+                    .displayOrder(i-1)
                     .build();
-            courts.add(courtRepository.save(court));
+            Court savedCourt = courtRepository.save(court);
+
+            // Generate slots for next 30 days
+            List<CourtSlot> initialSlots = new ArrayList<>();
+            LocalDate today = LocalDate.now();
+            for (int day = 0; day < 30; day++) {
+                LocalDate slotDate = today.plusDays(day);
+                for (int h = startHour; h < endHour; h++) {
+                    // Slot 1: h:00 - h:30
+                    initialSlots.add(CourtSlot.builder()
+                            .court(savedCourt)
+                            .slotDate(slotDate)
+                            .startTime(LocalTime.of(h, 0))
+                            .endTime(LocalTime.of(h, 30))
+                            .status("AVAILABLE")
+                            .build());
+                    // Slot 2: h:30 - (h+1):00
+                    initialSlots.add(CourtSlot.builder()
+                            .court(savedCourt)
+                            .slotDate(slotDate)
+                            .startTime(LocalTime.of(h, 30))
+                            .endTime(LocalTime.of(h + 1 == 24 ? 23 : h + 1, h + 1 == 24 ? 59 : 0))
+                            .status("AVAILABLE")
+                            .build());
+                }
+            }
+            courtSlotRepository.saveAll(initialSlots);
         }
 
-        // 3. Create PriceRules (apply to all days 1-7, and all courts... or just tied to venue)
-        // Since PriceRule has courtId, we might tie it to venueId and leave courtId null, 
-        // or create for each court. The entity allows null courtId to mean "all courts in venue".
+        // 3. Create PriceRules
         if (request.getPricing() != null && !request.getPricing().isEmpty()) {
             for (FlexiblePriceDTO pricing : request.getPricing()) {
                 for (int day = 1; day <= 7; day++) {
                     PriceRule rule = PriceRule.builder()
                             .venueId(savedVenue.getId())
-                            .courtId(null) // Applies to all courts
+                            .courtId(null)
                             .dayOfWeek(day)
                             .startTime(pricing.getFrom())
                             .endTime(pricing.getTo())
@@ -324,14 +353,134 @@ public class VenueService {
         return toVenueResponse(savedVenue);
     }
 
+    @Transactional
+    public CourtResponse createCourt(UUID venueId, CreateCourtRequest request) {
+        log.info("Creating court {} for venue {}", request.getName(), venueId);
+        Venue venue = findById(venueId);
+        
+        // Increment courtCount
+        venue.setCourtCount((venue.getCourtCount() != null ? venue.getCourtCount() : 0) + 1);
+        venueRepository.save(venue);
+        
+        Court court = Court.builder()
+                .venue(venue)
+                .name(request.getName())
+                .courtType(request.getCourtType())
+                .description(request.getDescription())
+                .status("ACTIVE")
+                .displayOrder(venue.getCourtCount() - 1)
+                .build();
+        
+        Court savedCourt = courtRepository.save(court);
 
+        // Generate slots for next 30 days
+        int startHour = venue.getOpenTime() != null ? venue.getOpenTime().getHour() : 5;
+        int endHour = venue.getCloseTime() != null ? venue.getCloseTime().getHour() : 22;
+        if (endHour == 0) endHour = 24;
+
+        List<CourtSlot> initialSlots = new ArrayList<>();
+        LocalDate today = LocalDate.now();
+        for (int day = 0; day < 30; day++) {
+            LocalDate slotDate = today.plusDays(day);
+            for (int h = startHour; h < endHour; h++) {
+                // Slot 1: h:00 - h:30
+                initialSlots.add(CourtSlot.builder()
+                        .court(savedCourt)
+                        .slotDate(slotDate)
+                        .startTime(LocalTime.of(h, 0))
+                        .endTime(LocalTime.of(h, 30))
+                        .status("AVAILABLE")
+                        .build());
+                // Slot 2: h:30 - (h+1):00
+                initialSlots.add(CourtSlot.builder()
+                        .court(savedCourt)
+                        .slotDate(slotDate)
+                        .startTime(LocalTime.of(h, 30))
+                        .endTime(LocalTime.of(h + 1 == 24 ? 23 : h + 1, h + 1 == 24 ? 59 : 0))
+                        .status("AVAILABLE")
+                        .build());
+            }
+        }
+        courtSlotRepository.saveAll(initialSlots);
+
+        return venueMapper.toCourtResponse(savedCourt);
+    }
 
     @Transactional
-    public Court createCourt(UUID venueId, Court court) {
-        log.info("Creating court {} for venue {}", court.getName(), venueId);
-        Venue venue = findById(venueId);
-        court.setVenue(venue);
-        return courtRepository.save(court);
+    public void deleteCourt(UUID venueId, UUID courtId) {
+        log.info("Deleting court {} from venue {}", courtId, venueId);
+        Court court = courtRepository.findById(courtId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy sân lẻ"));
+
+        if (!court.getVenue().getId().equals(venueId)) {
+            throw new AppException(HttpStatus.BAD_REQUEST, "Sân lẻ không thuộc về cơ sở này");
+        }
+
+        try {
+            Venue venue = court.getVenue();
+            
+            // 1. Tự động xóa các bảng giá gắn liền với sân này
+            log.info("Deleting associated price rules for court {}", courtId);
+            priceRuleRepository.deleteByCourtId(courtId);
+
+            // 2. Cập nhật số lượng sân của Venue
+            int currentCount = venue.getCourtCount() != null ? venue.getCourtCount() : 0;
+            venue.setCourtCount(Math.max(0, currentCount - 1));
+            venueRepository.save(venue);
+
+            // 3. Xóa sân lẻ
+            courtRepository.delete(court);
+            courtRepository.flush(); 
+        } catch (org.springframework.dao.DataIntegrityViolationException e) {
+            log.error("Failed to delete court {} due to integrity violation (likely existing bookings)", courtId, e);
+            throw new AppException(HttpStatus.CONFLICT, 
+                "Không thể xóa sân này vì hiện đang có lịch khách đặt. Vui lòng kiểm tra và xử lý các lịch đặt trước khi xóa.");
+        } catch (Exception e) {
+            log.error("Unexpected error deleting court {}", courtId, e);
+            throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR, "Có lỗi xảy ra khi xóa sân. Vui lòng thử lại sau.");
+        }
+    }
+
+    public List<CourtSlotResponse> getCourtAvailability(UUID venueId, UUID courtId, LocalDate date) {
+        log.info("Fetching availability for court {} on {}", courtId, date);
+        
+        List<CourtSlot> slots = courtSlotRepository.findByCourtIdAndSlotDate(courtId, date);
+        
+        if (!slots.isEmpty()) {
+            return slots.stream()
+                    .map(s -> CourtSlotResponse.builder()
+                            .startTime(s.getStartTime().toString())
+                            .endTime(s.getEndTime().toString())
+                            .status(s.getStatus())
+                            .build())
+                    .collect(Collectors.toList());
+        }
+
+        // Fallback to default venue hours if no specific slots configured
+        Court court = courtRepository.findById(courtId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy sân lẻ"));
+        Venue venue = court.getVenue();
+        
+        int startHour = venue.getOpenTime() != null ? venue.getOpenTime().getHour() : 5;
+        int endHour = venue.getCloseTime() != null ? venue.getCloseTime().getHour() : 22;
+        if (endHour == 0) endHour = 24;
+
+        List<CourtSlotResponse> defaultSlots = new ArrayList<>();
+        for (int h = startHour; h < endHour; h++) {
+            // Slot 1: h:00 - h:30
+            defaultSlots.add(CourtSlotResponse.builder()
+                    .startTime(LocalTime.of(h, 0).toString())
+                    .endTime(LocalTime.of(h, 30).toString())
+                    .status("AVAILABLE")
+                    .build());
+            // Slot 2: h:30 - (h+1):00
+            defaultSlots.add(CourtSlotResponse.builder()
+                    .startTime(LocalTime.of(h, 30).toString())
+                    .endTime(LocalTime.of(h + 1 == 24 ? 23 : h + 1, h + 1 == 24 ? 59 : 0).toString())
+                    .status("AVAILABLE")
+                    .build());
+        }
+        return defaultSlots;
     }
 
     public List<CourtResponse> findCourtsByVenueId(UUID venueId) {
@@ -363,6 +512,24 @@ public class VenueService {
         log.info("Reordering completed for venue {}", venueId);
     }
 
+    @Transactional
+    public CourtResponse updateCourt(UUID venueId, UUID courtId, UpdateCourtRequest request) {
+        log.info("Updating court {} for venue {}", courtId, venueId);
+        Court court = courtRepository.findById(courtId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy sân"));
+
+        if (!court.getVenue().getId().equals(venueId)) {
+            throw new AppException(HttpStatus.BAD_REQUEST, "Sân không thuộc về cơ sở này");
+        }
+
+        if (request.getName() != null) court.setName(request.getName());
+        if (request.getCourtType() != null) court.setCourtType(request.getCourtType());
+        if (request.getDescription() != null) court.setDescription(request.getDescription());
+        if (request.getStatus() != null) court.setStatus(request.getStatus());
+
+        return venueMapper.toCourtResponse(courtRepository.save(court));
+    }
+
     public BigDecimal calculatePrice(UUID courtId, LocalDateTime startTime, LocalDateTime endTime) {
         log.info("Calculating price for court {} from {} to {}", courtId, startTime, endTime);
         Court court = courtRepository.findById(courtId).orElseThrow(() -> 
@@ -382,6 +549,104 @@ public class VenueService {
                 .findFirst()
                 .map(PriceRule::getPricePerHour)
                 .orElse(BigDecimal.valueOf(100000));
+    }
+
+    @Transactional
+    public void updateCourtAvailability(UUID venueId, UUID courtId, UpdateCourtAvailabilityRequest request) {
+        log.info("Updating availability for court {} from {} to {}", courtId, request.getStartDate(), request.getEndDate());
+        
+        Court court = courtRepository.findById(courtId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy sân lẻ"));
+
+        if (!court.getVenue().getId().equals(venueId)) {
+            throw new AppException(HttpStatus.BAD_REQUEST, "Sân không thuộc về cơ sở này");
+        }
+
+        // 1. Delete existing slots in the range
+        courtSlotRepository.deleteByCourtIdAndSlotDateBetween(courtId, request.getStartDate(), request.getEndDate());
+
+        // 2. Generate new slots
+        List<CourtSlot> newSlots = new ArrayList<>();
+        LocalDate current = request.getStartDate();
+        while (!current.isAfter(request.getEndDate())) {
+            Venue venue = court.getVenue();
+            // Default to 5:00 - 22:00 if not set
+            int startHour = 5;
+            int endHour = 22;
+            
+            try {
+                if (venue.getOpenTime() != null) startHour = venue.getOpenTime().getHour();
+                if (venue.getCloseTime() != null) {
+                    endHour = venue.getCloseTime().getHour();
+                    if (endHour == 0) endHour = 24; // Handle midnight as 24:00
+                }
+            } catch (Exception e) {
+                log.warn("Failed to parse venue operating hours, using defaults: {}", e.getMessage());
+            }
+
+            for (int h = startHour; h < endHour; h++) {
+                // Slot 1: h:00 - h:30
+                String time1 = String.format("%02d:00", h);
+                String status1 = request.getAvailableSlots().contains(time1) ? "AVAILABLE" : "LOCKED";
+                newSlots.add(CourtSlot.builder()
+                        .court(court)
+                        .slotDate(current)
+                        .startTime(LocalTime.of(h, 0))
+                        .endTime(LocalTime.of(h, 30))
+                        .status(status1)
+                        .build());
+
+                // Slot 2: h:30 - (h+1):00
+                String time2 = String.format("%02d:30", h);
+                String status2 = request.getAvailableSlots().contains(time2) ? "AVAILABLE" : "LOCKED";
+                newSlots.add(CourtSlot.builder()
+                        .court(court)
+                        .slotDate(current)
+                        .startTime(LocalTime.of(h, 30))
+                        .endTime(LocalTime.of(h + 1 == 24 ? 23 : h + 1, h + 1 == 24 ? 59 : 0))
+                        .status(status2)
+                        .build());
+            }
+            current = current.plusDays(1);
+        }
+        
+        courtSlotRepository.saveAll(newSlots);
+        log.info("Successfully updated availability for court {} over {} days", courtId, newSlots.size());
+    }
+
+    public List<PriceRuleResponse> findPriceRulesByVenueId(UUID venueId) {
+        log.info("Fetching price rules for venue {}", venueId);
+        return priceRuleRepository.findByVenueId(venueId).stream()
+                .map(venueMapper::toPriceRuleResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public PriceRuleResponse createPriceRule(UUID venueId, CreatePriceRuleRequest request) {
+        log.info("Creating price rule for venue {}", venueId);
+        PriceRule rule = PriceRule.builder()
+                .venueId(venueId)
+                .courtId(request.getCourtId())
+                .dayOfWeek(request.getDayOfWeek())
+                .startTime(LocalTime.parse(request.getStartTime()))
+                .endTime(LocalTime.parse(request.getEndTime()))
+                .pricePerHour(request.getPricePerHour())
+                .status(request.getStatus() != null ? request.getStatus() : "ACTIVE")
+                .build();
+        return venueMapper.toPriceRuleResponse(priceRuleRepository.save(rule));
+    }
+
+    @Transactional
+    public void deletePriceRule(UUID venueId, UUID ruleId) {
+        log.info("Deleting price rule {} for venue {}", ruleId, venueId);
+        PriceRule rule = priceRuleRepository.findById(ruleId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy quy tắc giá"));
+        
+        if (!rule.getVenueId().equals(venueId)) {
+            throw new AppException(HttpStatus.BAD_REQUEST, "Quy tắc giá không thuộc về cơ sở này");
+        }
+
+        priceRuleRepository.delete(rule);
     }
 }
 

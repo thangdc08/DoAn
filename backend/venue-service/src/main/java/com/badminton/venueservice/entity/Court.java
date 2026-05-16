@@ -30,6 +30,9 @@ public class Court {
     @Builder.Default
     private String status = "ACTIVE";
 
+    @Column(columnDefinition = "TEXT")
+    private String description;
+
     private Integer displayOrder;
 
     @CreationTimestamp
