@@ -36,6 +36,7 @@ public class RegisterRequest {
     // Venue Details (Optional for normal user, required for owner onboarding)
     private String venueName;
     private String address;
+    private String ward;
     private String city;
     private Integer courtCount;
     private java.util.List<String> utilities;

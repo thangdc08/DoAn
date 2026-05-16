@@ -20,9 +20,11 @@ import {
   Tooltip, 
   ResponsiveContainer 
 } from 'recharts';
+import { useQuery } from '@tanstack/react-query';
 import { mockBookings } from '../../data/mockBookings';
 import dayjs from 'dayjs';
 import { BRAND } from '../../theme/antdTheme';
+import { venueApi } from '../../services/venueApi';
 
 const { Title, Text } = Typography;
 
@@ -37,15 +39,21 @@ const REVENUE_DATA = [
 ];
 
 export default function OwnerDashboardPage() {
+  // Lấy danh sách sân thực tế để tính toán stats
+  const { data: venues = [] } = useQuery({
+    queryKey: ['my-venues'],
+    queryFn: () => venueApi.getMyVenues(),
+  });
+
   const stats = useMemo(() => {
     const paid = mockBookings.filter(b => b.status === 'PAID');
     return {
       revenue: paid.reduce((sum, b) => sum + b.totalAmount, 0),
       bookings: paid.length,
-      venues: 3,
+      venues: venues.length,
       growth: 12.5
     };
-  }, []);
+  }, [venues.length]);
 
   const columns = [
     {

@@ -12,6 +12,7 @@ import java.util.UUID;
 public interface VenueRepository extends JpaRepository<Venue, UUID> {
     List<Venue> findByCity(String city);
     List<Venue> findByStatus(String status);
+    List<Venue> findByOwnerId(UUID ownerId);
     
     @Query(value = "SELECT * FROM venue.venues v WHERE ST_DWithin(v.location, :point, :distance)", nativeQuery = true)
     List<Venue> findNearby(@Param("point") Point point, @Param("distance") double distance);

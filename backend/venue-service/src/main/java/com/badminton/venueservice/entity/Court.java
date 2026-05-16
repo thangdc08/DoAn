@@ -18,6 +18,7 @@ public class Court {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "venue_id", nullable = false)
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Venue venue;
 
     @Column(nullable = false)
@@ -28,6 +29,8 @@ public class Court {
 
     @Builder.Default
     private String status = "ACTIVE";
+
+    private Integer displayOrder;
 
     @CreationTimestamp
     private LocalDateTime createdAt;

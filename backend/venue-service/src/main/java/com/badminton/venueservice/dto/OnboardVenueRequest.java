@@ -19,9 +19,13 @@ public class OnboardVenueRequest {
 
     @NotBlank(message = "Address is required")
     private String address;
+    private String ward;
 
     @NotBlank(message = "City is required")
     private String city;
+
+    private String phone;
+    private String email;
 
     private Double latitude;
     private Double longitude;

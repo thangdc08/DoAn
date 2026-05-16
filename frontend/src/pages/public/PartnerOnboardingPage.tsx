@@ -15,6 +15,8 @@ import {
 import { MapPin, X, Search } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
 import { PROVINCE_OPTIONS } from '../../constants/areas';
+import { UTILITIES } from '../../constants/venue.constants.tsx';
+import { AddressFields } from '../../components/forms/AddressFields';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import * as L from 'leaflet';
@@ -39,14 +41,6 @@ const DefaultIcon = (L as any).icon({
 
 const { Title, Text, Paragraph } = Typography;
 
-const UTILITIES = [
-  { label: 'Wifi miễn phí', value: 'wifi' },
-  { label: 'Bãi đỗ xe', value: 'parking' },
-  { label: 'Tủ đồ riêng', value: 'locker' },
-  { label: 'Căng tin / Giải khát', value: 'canteen' },
-  { label: 'Nhà vệ sinh / Tắm', value: 'shower' },
-  { label: 'Bán đồ cầu lông', value: 'rental' },
-];
 
 function LocationPicker({ position, setPosition }: { position: [number, number], setPosition: (p: [number, number]) => void }) {
   useMapEvents({
@@ -186,6 +180,7 @@ export default function PartnerOnboardingPage() {
         // Thông tin sân đi kèm
         venueName: values.venueName,
         address: values.address,
+        ward: values.ward,
         city: values.city,
         courtCount: values.courtCount,
         utilities: values.utilities,
@@ -200,8 +195,8 @@ export default function PartnerOnboardingPage() {
         }))
       });
 
-      message.success('Đã gửi hồ sơ đăng ký thành công!');
-      setCurrent(4); // Chuyển đến bước thành công
+      message.success('Đăng ký tài khoản chủ sân thành công! Vui lòng đăng nhập.');
+      navigate('/login');
     } catch (error: any) {
       console.error("Lỗi đăng ký:", error);
       const errorMsg = error.response?.data?.message || 'Có lỗi xảy ra, vui lòng thử lại!';
@@ -316,22 +311,10 @@ export default function PartnerOnboardingPage() {
                       <Input size="large" placeholder="Số nhà, đường, phường/xã, quận/huyện..." className="h-14 rounded-2xl bg-slate-50 border-slate-100" />
                     </Form.Item>
                   </Col>
+                  <AddressFields />
                   <Col span={12}>
                     <Form.Item name="courtCount" label={<Text strong>Số lượng sân (Capacity)</Text>} rules={[{ required: true }]}>
                       <InputNumber size="large" min={1} placeholder="10" className="w-full h-14 rounded-2xl bg-slate-50 border-slate-100 pt-3" />
-                    </Form.Item>
-                  </Col>
-                  <Col span={12}>
-                    <Form.Item name="city" label={<Text strong>Thành phố / Tỉnh</Text>} rules={[{ required: true }]}>
-                      <Select 
-                        size="large" 
-                        placeholder="Chọn thành phố" 
-                        className="h-14 w-full"
-                        options={PROVINCE_OPTIONS}
-                        showSearch
-                        optionFilterProp="label"
-                        style={{ borderRadius: '1rem' }}
-                      />
                     </Form.Item>
                   </Col>
                 </Row>
@@ -345,7 +328,10 @@ export default function PartnerOnboardingPage() {
                         <Col span={12} md={8} key={u.value}>
                           <div className="p-4 rounded-2xl border border-slate-100 bg-slate-50/50 flex items-center gap-3">
                             <Checkbox value={u.value} />
-                            <Text strong style={{ fontSize: 13 }}>{u.label}</Text>
+                            <div className="flex items-center gap-2">
+                              <span className="text-emerald-500 flex items-center">{u.icon}</span>
+                              <Text strong style={{ fontSize: 13 }}>{u.label}</Text>
+                            </div>
                           </div>
                         </Col>
                       ))}
@@ -578,15 +564,15 @@ export default function PartnerOnboardingPage() {
                 </div>
                 <Title level={2} style={{ marginBottom: 16, fontWeight: 900 }}>Đăng ký thành công!</Title>
                 <Paragraph className="text-slate-500 text-xl mb-12 max-w-sm mx-auto leading-relaxed">
-                  Chuyên viên của chúng tôi sẽ liên hệ với bạn sớm nhất có thể.
+                  Tài khoản của bạn đã được khởi tạo. Hãy đăng nhập để bắt đầu quản lý sân của mình ngay bây giờ!
                 </Paragraph>
                 <Button 
                   type="primary" 
                   size="large" 
-                  onClick={() => navigate('/')} 
-                  className="h-20 px-16 rounded-2xl bg-slate-900 border-none font-bold text-xl"
+                  onClick={() => navigate('/login')} 
+                  className="h-20 px-16 rounded-3xl bg-emerald-500 border-none font-bold text-xl shadow-xl shadow-emerald-500/20 hover:scale-105 transition-transform"
                 >
-                  Trở về trang chủ
+                  Đăng nhập ngay
                 </Button>
               </div>
             )}

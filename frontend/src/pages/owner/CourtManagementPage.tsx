@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { Card, Button, Table, Tag, Space, Modal, Form, Input, Select, message, Typography, Popconfirm, Row, Col, InputNumber, Divider, Tooltip, Alert, Switch, Tabs } from 'antd';
 import { 
@@ -9,31 +9,150 @@ import {
   ClockCircleOutlined,
   ThunderboltOutlined,
   CheckCircleOutlined,
-  InfoCircleOutlined
+  InfoCircleOutlined,
+  EnvironmentOutlined,
+  ToolOutlined,
+  HolderOutlined
 } from '@ant-design/icons';
-import { mockVenues, mockCourts } from '../../data/mockVenues';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { 
+  DndContext, 
+  closestCenter, 
+  PointerSensor, 
+  useSensor, 
+  useSensors,
+  DragOverlay,
+  defaultDropAnimationSideEffects
+} from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  rectSortingStrategy,
+  useSortable
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+
+import { venueApi } from '../../services/venueApi';
 import type { Court } from '../../types/venue.types';
 import { BRAND } from '../../theme/antdTheme';
 import TextArea from 'antd/es/input/TextArea';
 import BookingGrid from '../../components/ui/BookingGrid';
-import { 
-  EnvironmentOutlined,
-  ToolOutlined 
-} from '@ant-design/icons';
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Text } = Typography;
 const { Option } = Select;
+
+interface SortableCourtCardProps {
+  court: Court;
+  isEditLayout: boolean;
+}
+
+function SortableCourtCard({ court, isEditLayout }: SortableCourtCardProps) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging
+  } = useSortable({ id: court.id, disabled: !isEditLayout });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 1000 : 1,
+    opacity: isDragging ? 0.3 : 1,
+    touchAction: 'none',
+  };
+
+  return (
+    <div 
+      ref={setNodeRef} 
+      style={style} 
+      {...attributes} 
+      {...listeners}
+    >
+      <Card 
+        style={{ 
+          borderRadius: 12, 
+          textAlign: 'center', 
+          boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
+          cursor: isEditLayout ? 'grab' : 'default',
+          border: isEditLayout ? `1px dashed ${BRAND.primary}` : '1px solid #f1f5f9',
+          userSelect: 'none',
+          WebkitUserSelect: 'none',
+        }}
+        bodyStyle={{ padding: '24px 16px' }}
+      >
+        {isEditLayout && (
+          <div style={{ position: 'absolute', top: 8, right: 8, color: '#94a3b8' }}>
+            <HolderOutlined />
+          </div>
+        )}
+        <div style={{ fontSize: 24, marginBottom: 8 }}>🏸</div>
+        <Text strong style={{ fontSize: 16, display: 'block' }}>{court.name}</Text>
+        <Tag color={court.courtType === 'VIP' ? 'purple' : 'blue'} style={{ marginTop: 8 }}>{court.courtType}</Tag>
+      </Card>
+    </div>
+  );
+}
 
 export default function CourtManagementPage() {
   const { venueId } = useParams<{ venueId: string }>();
+  const queryClient = useQueryClient();
   const [form] = Form.useForm();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isPricingModalOpen, setIsPricingModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
   const [editingCourt, setEditingCourt] = useState<Court | null>(null);
+  const [isEditLayout, setIsEditLayout] = useState(false);
+  const [sortedCourts, setSortedCourts] = useState<Court[]>([]);
+  const [activeId, setActiveId] = useState<string | null>(null);
 
-  const venue = mockVenues.find(v => v.id === venueId);
-  const [courts, setCourts] = useState(mockCourts[venueId!] || []);
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 5,
+      },
+    })
+  );
+
+  const { data: venue } = useQuery({
+    queryKey: ['venue', venueId],
+    queryFn: () => venueApi.getVenueById(venueId!),
+    enabled: !!venueId,
+  });
+
+  const { data: courts = [], isLoading: isLoadingCourts } = useQuery({
+    queryKey: ['venue-courts', venueId],
+    queryFn: () => venueApi.getVenueCourts(venueId!),
+    enabled: !!venueId,
+  });
+
+  useEffect(() => {
+    if (courts.length > 0) {
+      setSortedCourts(courts);
+    }
+  }, [courts]);
+
+  const handleDragStart = (event: any) => {
+    setActiveId(event.active.id);
+  };
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+
+    if (over && active.id !== over.id) {
+      setSortedCourts((items) => {
+        const oldIndex = items.findIndex((i) => i.id === active.id);
+        const newIndex = items.findIndex((i) => i.id === over.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+    setActiveId(null);
+  };
+
+  const activeCourt = activeId ? sortedCourts.find(c => c.id === activeId) : null;
 
   const handleCreate = () => {
     setEditingCourt(null);
@@ -54,9 +173,13 @@ export default function CourtManagementPage() {
     form.resetFields();
   };
 
-  const handleDelete = (courtId: string) => {
-    setCourts(courts.filter(c => c.id !== courtId));
-    message.success('Đã xóa sân thành công');
+  const handleDelete = async (courtId: string) => {
+    try {
+      await venueApi.deleteCourt(venueId!, courtId);
+      message.success('Đã xóa sân thành công');
+    } catch (error) {
+      message.error('Không thể xóa sân');
+    }
   };
 
   const columns = [
@@ -121,7 +244,6 @@ export default function CourtManagementPage() {
 
   return (
     <div style={{ padding: '24px' }}>
-      {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
            <Space align="baseline">
@@ -157,6 +279,7 @@ export default function CourtManagementPage() {
                         dataSource={courts}
                         rowKey="id"
                         pagination={false}
+                        loading={isLoadingCourts}
                       />
                     )
                   },
@@ -186,53 +309,88 @@ export default function CourtManagementPage() {
                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
                             <div>
                                <Title level={4} style={{ margin: 0 }}>Sơ đồ vị trí sân</Title>
-                               <Text type="secondary">Sắp xếp vị trí các sân theo thực tế mặt bằng của cơ sở.</Text>
+                               <Text type="secondary">Sắp xếp vị trí các sân theo thực tế mặt bằng của cơ sở (Kéo thả để thay đổi thứ tự).</Text>
                             </div>
-                            <Button type="dashed" icon={<ToolOutlined />}>Chế độ chỉnh sửa sơ đồ</Button>
+                            <Button 
+                              type={isEditLayout ? "primary" : "dashed"} 
+                              icon={<ToolOutlined />}
+                              onClick={async () => {
+                                if (isEditLayout) {
+                                  try {
+                                    const courtIds = sortedCourts.map(c => c.id);
+                                    await venueApi.reorderCourts(venueId!, courtIds);
+                                    message.success("Đã lưu sơ đồ vị trí mới!");
+                                    queryClient.invalidateQueries({ queryKey: ['venue-courts', venueId] });
+                                  } catch (error) {
+                                    message.error("Không thể lưu sơ đồ vị trí");
+                                  }
+                                }
+                                setIsEditLayout(!isEditLayout);
+                              }}
+                            >
+                              {isEditLayout ? "Lưu sơ đồ" : "Chế độ chỉnh sửa sơ đồ"}
+                            </Button>
                          </div>
                          
-                         <div style={{ 
-                            background: '#f1f5f9', 
-                            borderRadius: 20, 
-                            padding: 40, 
-                            minHeight: 400,
-                            display: 'grid',
-                            gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))',
-                            gap: 24,
-                            border: '2px dashed #cbd5e1'
-                         }}>
-                            {courts.map((court, idx) => (
-                               <Card 
-                                 key={court.id} 
-                                 hoverable 
-                                 style={{ 
+                         <DndContext 
+                           sensors={sensors}
+                           collisionDetection={closestCenter}
+                           onDragStart={handleDragStart}
+                           onDragEnd={handleDragEnd}
+                         >
+                           <SortableContext 
+                             items={sortedCourts.map(c => c.id)}
+                             strategy={rectSortingStrategy}
+                           >
+                             <div style={{ 
+                                background: '#f1f5f9', 
+                                borderRadius: 20, 
+                                padding: 40, 
+                                minHeight: 400,
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))',
+                                gap: 24,
+                                border: isEditLayout ? '2px dashed ' + BRAND.primary : '2px solid transparent',
+                                transition: 'all 0.3s'
+                             }}>
+                                {sortedCourts.map((court) => (
+                                   <SortableCourtCard 
+                                     key={court.id} 
+                                     court={court} 
+                                     isEditLayout={isEditLayout}
+                                   />
+                                ))}
+                             </div>
+                           </SortableContext>
+                           <DragOverlay dropAnimation={{
+                              sideEffects: defaultDropAnimationSideEffects({
+                                styles: {
+                                  active: {
+                                    opacity: '0.5',
+                                  },
+                                },
+                              }),
+                            }}>
+                              {activeCourt ? (
+                                <Card 
+                                  style={{ 
                                     borderRadius: 12, 
                                     textAlign: 'center', 
-                                    boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)',
-                                    cursor: 'move'
-                                 }}
-                                 bodyStyle={{ padding: '24px 16px' }}
-                               >
+                                    boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+                                    cursor: 'grabbing',
+                                    border: `2px solid ${BRAND.primary}`,
+                                    width: 200,
+                                    zIndex: 2000
+                                  }}
+                                  bodyStyle={{ padding: '24px 16px' }}
+                                >
                                   <div style={{ fontSize: 24, marginBottom: 8 }}>🏸</div>
-                                  <Text strong style={{ fontSize: 16, display: 'block' }}>{court.name}</Text>
-                                  <Tag color={court.courtType === 'VIP' ? 'purple' : 'blue'} style={{ marginTop: 8 }}>{court.courtType}</Tag>
-                               </Card>
-                            ))}
-                            <div style={{ 
-                               border: '2px dashed #cbd5e1', 
-                               borderRadius: 12, 
-                               display: 'flex', 
-                               flexDirection: 'column',
-                               alignItems: 'center', 
-                               justifyContent: 'center',
-                               background: 'rgba(255,255,255,0.5)',
-                               cursor: 'pointer',
-                               color: '#94a3b8'
-                            }} onClick={() => setIsBulkModalOpen(true)}>
-                               <PlusOutlined style={{ fontSize: 24, marginBottom: 8 }} />
-                               <Text type="secondary">Thêm sân vào sơ đồ</Text>
-                            </div>
-                         </div>
+                                  <Text strong style={{ fontSize: 16, display: 'block' }}>{activeCourt.name}</Text>
+                                  <Tag color={activeCourt.courtType === 'VIP' ? 'purple' : 'blue'} style={{ marginTop: 8 }}>{activeCourt.courtType}</Tag>
+                                </Card>
+                              ) : null}
+                           </DragOverlay>
+                         </DndContext>
                       </div>
                     )
                   }
@@ -241,7 +399,6 @@ export default function CourtManagementPage() {
            </Card>
         </Col>
 
-        {/* Global Pricing Rules for the Venue */}
         <Col span={24}>
            <Card 
              title={<Space><DollarOutlined style={{ color: BRAND.primary }} /> Quy tắc giá chung cho cụm sân</Space>}
@@ -275,7 +432,6 @@ export default function CourtManagementPage() {
         </Col>
       </Row>
 
-      {/* Pricing & Slot Config Modal */}
       <Modal
         title={
           <div style={{ paddingBottom: 12, borderBottom: '1px solid #f1f5f9' }}>
@@ -305,7 +461,7 @@ export default function CourtManagementPage() {
               <Divider />
               <Form.Item label={<Text strong>Thiết lập Slot (Khung giờ)</Text>}>
                  <Select mode="multiple" defaultValue={['5', '6', '7', '8']} style={{ width: '100%', borderRadius: 8 }}>
-                    {Array.from({ length: 20 }, (_, i) => i + 5).map(h => (
+                    {Array.from({ length: 19 }, (_, i) => i + 5).map(h => (
                        <Option key={h} value={String(h)}>{h}:00 - {h+1}:00</Option>
                     ))}
                  </Select>
@@ -315,7 +471,6 @@ export default function CourtManagementPage() {
         </div>
       </Modal>
 
-      {/* Bulk Create Modal */}
       <Modal
         title={
           <div style={{ paddingBottom: 12, borderBottom: '1px solid #f1f5f9' }}>
@@ -359,7 +514,6 @@ export default function CourtManagementPage() {
          </div>
       </Modal>
 
-      {/* Create/Edit Court Modal */}
       <Modal
         title={editingCourt ? 'Chỉnh sửa thông tin sân' : 'Thêm sân con mới'}
         open={isModalOpen}

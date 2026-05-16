@@ -1,7 +1,7 @@
 import axios, { AxiosError } from 'axios';
 import { useAuthStore } from '../stores/authStore';
 
-const DEFAULT_API_BASE_URL = 'http://localhost:8080/identity/api/v1';
+const DEFAULT_API_BASE_URL = 'http://localhost:8080';
 
 const getApiBaseUrl = () => {
   const envUrl = import.meta.env.VITE_API_BASE_URL?.trim();

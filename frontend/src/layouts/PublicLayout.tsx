@@ -12,7 +12,9 @@ import {
   YoutubeFilled 
 } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
-import { Avatar, Divider, Button, Typography } from 'antd';
+import { authApi } from '../services/authApi';
+import { Avatar, Divider, Button, Typography, Dropdown, type MenuProps } from 'antd';
+import { LogoutOutlined, UserOutlined, SettingOutlined, CalendarOutlined, ShopOutlined, DashboardOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
 
@@ -48,7 +50,49 @@ export const PublicLayout: React.FC = () => {
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, logout } = useAuthStore();
+
+  const handleLogout = () => {
+    const { refreshToken } = useAuthStore.getState();
+    if (refreshToken) {
+      authApi.logout({ refreshToken }).catch(console.error);
+    }
+    logout();
+    navigate('/');
+  };
+
+  const handleMenuClick = ({ key }: any) => {
+    if (key === 'logout') {
+      handleLogout();
+    } else if (key === 'owner-dashboard') {
+      navigate('/owner');
+    } else if (key === 'admin-dashboard') {
+      navigate('/admin');
+    } else {
+      navigate(`/user/${key}`);
+    }
+  };
+
+
+  const userMenuItems: MenuProps['items'] = [
+    { key: 'profile', icon: <UserOutlined />, label: 'Hồ sơ của tôi' },
+    { key: 'bookings', icon: <CalendarOutlined />, label: 'Đơn đặt sân' },
+    
+    // Links for special roles
+    ...(user?.roles?.includes('OWNER') ? [
+      { key: 'owner-dashboard', icon: <ShopOutlined />, label: 'Trang quản lý chủ sân' }
+    ] : []),
+
+    
+    ...(user?.roles?.includes('ADMIN') ? [
+      { key: 'admin-dashboard', icon: <DashboardOutlined />, label: 'Quản trị hệ thống', onClick: () => navigate('/admin') }
+    ] : []),
+
+    { key: 'settings', icon: <SettingOutlined />, label: 'Cài đặt' },
+    { type: 'divider' as const },
+    { key: 'logout', icon: <LogoutOutlined />, label: 'Đăng xuất', danger: true },
+  ];
+
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20);
@@ -114,12 +158,20 @@ export const PublicLayout: React.FC = () => {
               </div>
 
               {isAuthenticated ? (
-                <div 
-                  className="flex items-center gap-3 cursor-pointer p-1.5 hover:bg-slate-50 rounded-2xl transition-all"
-                  onClick={() => navigate('/user/profile')}
-                >
-                  <Avatar size={40} src={user?.avatarUrl} className="border-2 border-white shadow-md shadow-slate-200" icon={<User size={20} />} />
-                </div>
+                <Dropdown menu={{ items: userMenuItems, onClick: handleMenuClick }} trigger={['click']} placement="bottomRight">
+                  <div className="flex items-center gap-3 cursor-pointer p-1.5 hover:bg-slate-50 rounded-2xl transition-all">
+                    <Avatar 
+                      size={40} 
+                      src={user?.avatarUrl} 
+                      className="border-2 border-white shadow-md shadow-slate-200" 
+                      icon={<UserOutlined />} 
+                    />
+                    <div className="hidden md:flex flex-col items-start leading-none">
+                      <span className="text-[13px] font-bold text-slate-900">{user?.fullName || 'Thành viên'}</span>
+                      <span className="text-[10px] font-bold text-brand-green uppercase mt-1">Hội viên VIP</span>
+                    </div>
+                  </div>
+                </Dropdown>
               ) : (
                 <div className="flex items-center gap-1">
                   <button

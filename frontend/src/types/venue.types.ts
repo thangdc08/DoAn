@@ -24,16 +24,19 @@ export interface Venue {
   description?: string;
   address: string;
   ward?: string;
-  district?: string;
   city?: string;
   latitude?: number;
   longitude?: number;
   phone?: string;
+  email?: string;
+  openTime?: string;
+  closeTime?: string;
   status: 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED' | 'SUSPENDED';
   ratingAvg: number;
   ratingCount: number;
   images?: VenueImage[];
   amenities?: Amenity[];
+  utilities?: string[];
   courts?: Court[];
   businessHours?: BusinessHour[];
   priceRange?: string;
@@ -105,11 +108,15 @@ export interface CreateVenueRequest {
   description?: string;
   address: string;
   ward?: string;
-  district?: string;
   city?: string;
   latitude?: number;
   longitude?: number;
   phone?: string;
+  email?: string;
+  courtCount?: number;
+  openTime?: string;
+  closeTime?: string;
+  utilities?: string[];
 }
 
 export interface UpdateVenueRequest {
@@ -117,9 +124,13 @@ export interface UpdateVenueRequest {
   description?: string;
   address?: string;
   ward?: string;
-  district?: string;
   city?: string;
   latitude?: number;
   longitude?: number;
   phone?: string;
+  email?: string;
+  openTime?: string;
+  closeTime?: string;
+  utilities?: string[];
+  status?: string;
 }

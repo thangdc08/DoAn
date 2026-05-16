@@ -4,14 +4,14 @@ import lombok.Getter;
 
 @Getter
 public enum VenueStatus {
-    PENDING_APPROVAL("PENDING_APPROVAL"),
-    ACTIVE("ACTIVE"),
-    INACTIVE("INACTIVE"),
-    CLOSED("CLOSED");
+    PENDING_APPROVAL("Chờ duyệt"),
+    APPROVED("Đang hoạt động"),
+    REJECTED("Bị từ chối"),
+    SUSPENDED("Tạm dừng");
 
-    private final String value;
+    private final String displayName;
 
-    VenueStatus(String value) {
-        this.value = value;
+    VenueStatus(String displayName) {
+        this.displayName = displayName;
     }
 }

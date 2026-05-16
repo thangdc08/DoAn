@@ -6,5 +6,7 @@ import java.util.List;
 import java.util.UUID;
 
 public interface CourtRepository extends JpaRepository<Court, UUID> {
-    List<Court> findByVenueId(UUID venueId);
+    List<Court> findByVenueIdOrderByDisplayOrderAsc(UUID venueId);
+    Integer countByVenueId(UUID venueId);
+    void deleteByVenueId(UUID venueId);
 }

@@ -73,7 +73,15 @@ const LoginPage: React.FC = () => {
 
       hide();
       success('Đăng nhập thành công! Chào mừng trở lại 🏸');
-      navigate('/venues');
+      
+      // Điều hướng dựa trên Role
+      if (user.roles?.includes('ADMIN')) {
+        navigate('/admin/dashboard');
+      } else if (user.roles?.includes('OWNER')) {
+        navigate('/owner/dashboard');
+      } else {
+        navigate('/venues');
+      }
     } catch (err: any) {
       hide();
       error(getErrorMessage(err));

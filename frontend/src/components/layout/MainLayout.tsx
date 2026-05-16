@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  Avatar, Badge, Button, Drawer, Dropdown, Layout, Typography,
+  Avatar, Badge, Button, Drawer, Dropdown, Layout, Typography, Space,
 } from 'antd';
 import {
   BellOutlined, CalendarOutlined, GlobalOutlined, LogoutOutlined,
@@ -8,6 +8,7 @@ import {
 } from '@ant-design/icons';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../stores/authStore';
+import { authApi } from '../../services/authApi';
 import { BRAND } from '../../theme/antdTheme';
 
 const { Header, Content } = Layout;
@@ -88,10 +89,23 @@ const NavButton: React.FC<NavButtonProps> = ({ label, active, onClick }) => (
 // ─── Main component ───────────────────────────────────────────────────────
 
 const MainLayout: React.FC = () => {
-  const user = useAuthStore((state) => state.user);
+  const { user, logout } = useAuthStore();
   const location = useLocation();
   const navigate = useNavigate();
   const [drawerOpen, setDrawerOpen] = useState(false);
+
+  const handleMenuClick = ({ key }: { key: string }) => {
+    if (key === 'logout') {
+      const { refreshToken } = useAuthStore.getState();
+      if (refreshToken) {
+        authApi.logout({ refreshToken }).catch(console.error);
+      }
+      logout();
+      navigate('/');
+    } else {
+      navigate(`/${key}`);
+    }
+  };
 
   const userMenuItems = [
     { key: 'profile', icon: <UserOutlined />, label: 'Tài khoản của tôi' },
@@ -224,51 +238,75 @@ const MainLayout: React.FC = () => {
           {/* Divider */}
           <div style={{ width: 1, height: 26, background: '#e2e8f0', margin: '0 6px' }} />
 
-          {/* User profile */}
-          <Dropdown trigger={['click']} menu={{ items: userMenuItems }}>
-            <div
-              style={{
-                display: 'flex', alignItems: 'center', gap: 9,
-                background: '#f8fafc', border: '1px solid #e2e8f0',
-                borderRadius: 40, padding: '4px 12px 4px 4px',
-                cursor: 'pointer', transition: 'all 0.22s ease',
-              }}
-              onMouseEnter={(e) => {
-                const el = e.currentTarget as HTMLElement;
-                el.style.background = '#fff';
-                el.style.borderColor = BRAND.primary;
-                el.style.boxShadow = `0 3px 12px rgba(22,163,74,0.18)`;
-              }}
-              onMouseLeave={(e) => {
-                const el = e.currentTarget as HTMLElement;
-                el.style.background = '#f8fafc';
-                el.style.borderColor = '#e2e8f0';
-                el.style.boxShadow = 'none';
-              }}
-            >
-              <Avatar
-                size={30}
-                src={user?.avatarUrl || "https://api.dicebear.com/7.x/avataaars/svg?seed=SmashMate"}
-                style={{ boxShadow: '0 2px 6px rgba(15,23,42,0.12)', flexShrink: 0 }}
-              />
-              <div className="hidden md:block" style={{ lineHeight: 1.2 }}>
-                <Text strong style={{ fontSize: 12.5, color: '#0f172a', display: 'block', whiteSpace: 'nowrap' }}>
-                  {user?.fullName || 'Người dùng'}
-                </Text>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center',
-                    background: 'linear-gradient(90deg, #16a34a, #22c55e)',
-                    borderRadius: 4, padding: '1px 5px',
-                  }}>
-                    <Text style={{ fontSize: 9, fontWeight: 900, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                      ✦ VIP
-                    </Text>
-                  </span>
+          {/* User actions / Auth */}
+          {user ? (
+            <Dropdown trigger={['click']} menu={{ items: userMenuItems, onClick: handleMenuClick }}>
+              <div
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 9,
+                  background: '#f8fafc', border: '1px solid #e2e8f0',
+                  borderRadius: 40, padding: '4px 12px 4px 4px',
+                  cursor: 'pointer', transition: 'all 0.22s ease',
+                }}
+                onMouseEnter={(e) => {
+                  const el = e.currentTarget as HTMLElement;
+                  el.style.background = '#fff';
+                  el.style.borderColor = BRAND.primary;
+                  el.style.boxShadow = `0 3px 12px rgba(22,163,74,0.18)`;
+                }}
+                onMouseLeave={(e) => {
+                  const el = e.currentTarget as HTMLElement;
+                  el.style.background = '#f8fafc';
+                  el.style.borderColor = '#e2e8f0';
+                  el.style.boxShadow = 'none';
+                }}
+              >
+                <Avatar
+                  size={30}
+                  src={user?.avatarUrl || "https://api.dicebear.com/7.x/avataaars/svg?seed=SmashMate"}
+                  style={{ boxShadow: '0 2px 6px rgba(15,23,42,0.12)', flexShrink: 0 }}
+                />
+                <div className="hidden md:block" style={{ lineHeight: 1.2 }}>
+                  <Text strong style={{ fontSize: 12.5, color: '#0f172a', display: 'block', whiteSpace: 'nowrap' }}>
+                    {user?.fullName || 'Người dùng'}
+                  </Text>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
+                    <span style={{
+                      display: 'inline-flex', alignItems: 'center',
+                      background: 'linear-gradient(90deg, #16a34a, #22c55e)',
+                      borderRadius: 4, padding: '1px 5px',
+                    }}>
+                      <Text style={{ fontSize: 9, fontWeight: 900, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                        ✦ {user?.roles?.includes('OWNER') ? 'CHỦ SÂN' : 'VIP'}
+                      </Text>
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
-          </Dropdown>
+            </Dropdown>
+          ) : (
+            <Space size={8}>
+              <Button 
+                type="text" 
+                onClick={() => navigate('/login')}
+                style={{ fontWeight: 600, color: '#64748b' }}
+              >
+                Đăng nhập
+              </Button>
+              <Button 
+                type="primary" 
+                onClick={() => navigate('/register')}
+                style={{ 
+                  background: BRAND.primary, 
+                  borderRadius: 10, 
+                  fontWeight: 700,
+                  boxShadow: '0 4px 12px rgba(22,163,74,0.2)'
+                }}
+              >
+                Tham gia ngay
+              </Button>
+            </Space>
+          )}
 
           {/* Mobile menu button */}
           <Button

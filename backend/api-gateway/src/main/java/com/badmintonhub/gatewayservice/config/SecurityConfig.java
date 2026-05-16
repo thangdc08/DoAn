@@ -92,16 +92,18 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.POST, "/identity/api/v1/auth/register-owner").permitAll()
                         .pathMatchers(HttpMethod.POST, "/identity/api/v1/auth/refresh").permitAll()
                         .pathMatchers(HttpMethod.POST, "/identity/api/v1/auth/logout").permitAll()
+                        // Venue Onboarding & Management — Owner & Admin
+                        .pathMatchers(HttpMethod.POST, "/venues/api/v1/venues/onboard").hasAuthority("SCOPE_OWNER")
+                        .pathMatchers(HttpMethod.GET, "/venues/api/venues/my").hasAnyAuthority("SCOPE_OWNER", "SCOPE_ADMIN")
+                        .pathMatchers(HttpMethod.POST, "/venues/**").hasAnyAuthority("SCOPE_OWNER", "SCOPE_ADMIN")
+                        .pathMatchers(HttpMethod.PUT, "/venues/**").hasAnyAuthority("SCOPE_OWNER", "SCOPE_ADMIN")
+                        .pathMatchers(HttpMethod.DELETE, "/venues/**").hasAnyAuthority("SCOPE_OWNER", "SCOPE_ADMIN")
+
                         // Public — read-only venue & booking
                         .pathMatchers(HttpMethod.GET, "/venues/**").permitAll()
                         .pathMatchers(HttpMethod.GET, "/bookings/**").permitAll()
-                        // Venue Onboarding — Owner only
-                        .pathMatchers(HttpMethod.POST, "/venues/api/v1/venues/onboard").hasAuthority("SCOPE_OWNER")
                         // Admin only
                         .pathMatchers("/identity/admin/**").hasAuthority("SCOPE_ADMIN")
-                        .pathMatchers(HttpMethod.POST, "/venues/**").hasAuthority("SCOPE_ADMIN")
-                        .pathMatchers(HttpMethod.PUT, "/venues/**").hasAuthority("SCOPE_ADMIN")
-                        .pathMatchers(HttpMethod.DELETE, "/venues/**").hasAuthority("SCOPE_ADMIN")
                         // Tất cả còn lại phải authenticated
                         .anyExchange().authenticated()
                 )

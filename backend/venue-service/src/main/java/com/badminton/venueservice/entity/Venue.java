@@ -1,5 +1,6 @@
 package com.badminton.venueservice.entity;
 
+import com.badminton.common.constant.VenueStatus;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
@@ -36,13 +37,14 @@ public class Venue {
     private String address;
 
     private String ward;
-    private String district;
     private String city;
+    private String email;
 
     private Double latitude;
     private Double longitude;
 
     @Column(columnDefinition = "geography(Point, 4326)")
+    @com.fasterxml.jackson.annotation.JsonIgnore
     private Point location;
 
     private String phone;
@@ -50,6 +52,9 @@ public class Venue {
     private LocalTime openTime;
     
     private LocalTime closeTime;
+    
+    @Column(columnDefinition = "TEXT")
+    private String policy;
 
     @ElementCollection
     @CollectionTable(name = "venue_utilities", joinColumns = @JoinColumn(name = "venue_id"))
@@ -57,13 +62,17 @@ public class Venue {
     @Builder.Default
     private List<String> utilities = new ArrayList<>();
 
+    @Enumerated(EnumType.STRING)
     @Builder.Default
-    private String status = "PENDING_APPROVAL";
+    private VenueStatus status = VenueStatus.PENDING_APPROVAL;
 
     @Builder.Default
     private Double ratingAvg = 0.0;
     @Builder.Default
     private Integer ratingCount = 0;
+    
+    @Builder.Default
+    private Integer courtCount = 1;
 
     @CreationTimestamp
     private LocalDateTime createdAt;

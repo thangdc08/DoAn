@@ -1,5 +1,7 @@
-import { useState } from 'react';
-import { Card, Button, Table, Tag, Space, Modal, Form, Input, Select, message, Typography, Row, Col, Tabs, Checkbox, Divider, Avatar, Tooltip } from 'antd';
+import { useState, useEffect, useRef } from 'react';
+import dayjs from 'dayjs';
+import { Card, Button, Table, Tag, Space, Modal, Form, Input, Select, message, Typography, Row, Col, Tabs, Checkbox, Divider, Avatar, Tooltip, AutoComplete, InputNumber, Upload, TimePicker, Popconfirm } from 'antd';
+import type { UploadFile, UploadProps } from 'antd';
 import { 
   PlusOutlined, 
   EditOutlined, 
@@ -11,52 +13,259 @@ import {
   ThunderboltOutlined,
   GlobalOutlined,
   ShopOutlined,
-  CustomerServiceOutlined
+  CustomerServiceOutlined,
+  PictureOutlined,
+  DeleteOutlined,
+  ExclamationCircleOutlined
 } from '@ant-design/icons';
-import { mockVenues } from '../../data/mockVenues';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../../stores/authStore';
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
+import 'leaflet/dist/leaflet.css';
+import * as L from 'leaflet';
 import type { Venue } from '../../types/venue.types';
 import { BRAND } from '../../theme/antdTheme';
+import { venueApi } from '../../services/venueApi';
+import { VENUE_STATUS_MAP, UTILITIES } from '../../constants/venue.constants.tsx';
+import { AddressFields } from '../../components/forms/AddressFields';
+
+// Leaflet fix for Vite/Webpack
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerIconRetina from 'leaflet/dist/images/marker-icon-2x.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+
+const DefaultIcon = (L as any).icon({
+  iconUrl: markerIcon,
+  iconRetinaUrl: markerIconRetina,
+  shadowUrl: markerShadow,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+(L as any).Marker.prototype.options.icon = DefaultIcon;
+
+function LocationPicker({ position, setPosition }: { position: [number, number], setPosition: (p: [number, number]) => void }) {
+  useMapEvents({
+    click(e) {
+      setPosition([e.latlng.lat, e.latlng.lng]);
+    },
+  });
+
+  return position ? <Marker position={position} /> : null;
+}
+
+function MapController({ center }: { center: [number, number] }) {
+  const map = useMap() as any;
+  useEffect(() => {
+    if (map && center) {
+      map.setView(center, map.getZoom());
+    }
+  }, [center, map]);
+  return null;
+}
 
 const { Title, Text, Paragraph } = Typography;
-const { TextArea } = Input;
 const { Option } = Select;
+const { TextArea } = Input;
+
 
 export default function VenueManagementPage() {
   const navigate = useNavigate();
+  const { user } = useAuthStore();
+  const queryClient = useQueryClient();
   const [form] = Form.useForm();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingVenue, setEditingVenue] = useState<Venue | null>(null);
-  const [venues] = useState(mockVenues.filter(v => v.ownerId === 'owner-1'));
+  const [position, setPosition] = useState<[number, number] | null>([10.762622, 106.660172]);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [options, setOptions] = useState<{ value: string; label: string; lat: string; lon: string }[]>([]);
+  const [fileList, setFileList] = useState<UploadFile[]>([]);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewImage, setPreviewImage] = useState('');
+  const [activeTab, setActiveTab] = useState('1');
+  const searchTimeoutRef = useRef<any>(null);
+
+  // Lấy dữ liệu thật từ API
+  const { data: venues = [], isLoading } = useQuery({
+    queryKey: ['my-venues'],
+    queryFn: () => venueApi.getMyVenues(),
+  });
+
+  // Mutation tạo sân mới
+  const createMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const createdVenue = await venueApi.createVenue(data);
+      // Nếu có ảnh thì upload ảnh lên trong cùng mutation
+      if (fileList.length > 0) {
+        const files = fileList.map(f => f.originFileObj as File);
+        await venueApi.uploadVenueImages(createdVenue.id, files);
+      }
+      return createdVenue;
+    },
+    onSuccess: () => {
+      message.success('Đăng ký cơ sở mới thành công! Hồ sơ đang chờ duyệt.');
+      setIsModalOpen(false);
+      setFileList([]);
+      queryClient.invalidateQueries({ queryKey: ['my-venues'] });
+      form.resetFields();
+    },
+    onError: (error: any) => {
+      message.error(error.message || 'Có lỗi xảy ra khi tạo sân.');
+    }
+  });
+
+  // Mutation xóa sân
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => venueApi.deleteVenue(id),
+    onSuccess: () => {
+      message.success('Xóa cơ sở thành công!');
+      queryClient.invalidateQueries({ queryKey: ['my-venues'] });
+    },
+    onError: (error: any) => {
+      message.error(error.message || 'Có lỗi xảy ra khi xóa cơ sở.');
+    }
+  });
+
+  // Mutation cập nhật sân
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+      const updatedVenue = await venueApi.updateVenue(id, data);
+      // Nếu có ảnh mới thì upload trong cùng mutation
+      const newFiles = fileList
+        .filter(f => !f.url && f.originFileObj)
+        .map(f => f.originFileObj as File);
+        
+      if (newFiles.length > 0) {
+        await venueApi.uploadVenueImages(id, newFiles);
+      }
+      return updatedVenue;
+    },
+    onSuccess: () => {
+      message.success('Cập nhật thông tin cơ sở thành công!');
+      setIsModalOpen(false);
+      setFileList([]);
+      queryClient.invalidateQueries({ queryKey: ['my-venues'] });
+      form.resetFields();
+    },
+    onError: (error: any) => {
+      message.error(error.message || 'Có lỗi xảy ra khi cập nhật cơ sở.');
+    }
+  });
+
+  const handleDelete = (id: string) => {
+    Modal.confirm({
+      title: 'Xóa cơ sở',
+      icon: <ExclamationCircleOutlined />,
+      content: 'Bạn có chắc chắn muốn xóa cơ sở này? Hành động này không thể hoàn tác và toàn bộ dữ liệu liên quan (sân, ảnh) sẽ bị xóa.',
+      okText: 'Xóa',
+      okType: 'danger',
+      cancelText: 'Hủy',
+      onOk() {
+        deleteMutation.mutate(id);
+      },
+    });
+  };
+
+  const handleRemoveImage = async (file: UploadFile) => {
+    // Nếu là ảnh đã có trên server (có url)
+    if (file.url && editingVenue) {
+      try {
+        await venueApi.deleteVenueImage(editingVenue.id, file.uid);
+        message.success('Đã xóa ảnh thành công');
+        return true;
+      } catch (error) {
+        message.error('Lỗi khi xóa ảnh trên hệ thống');
+        return false;
+      }
+    }
+    return true; // Cho phép xóa khỏi UI đối với ảnh mới
+  };
 
   const handleCreate = () => {
     setEditingVenue(null);
     form.resetFields();
+    setFileList([]);
+    setActiveTab('1');
+    form.setFieldsValue({
+      phone: user?.phone,
+      email: user?.email
+    });
+    setPosition([10.762622, 106.660172]);
     setIsModalOpen(true);
   };
 
   const handleEdit = (venue: Venue) => {
     setEditingVenue(venue);
-    form.setFieldsValue(venue);
+    form.setFieldsValue({
+      ...venue,
+      openTime: venue.openTime ? dayjs(venue.openTime, 'HH:mm:ss') : undefined,
+      closeTime: venue.closeTime ? dayjs(venue.closeTime, 'HH:mm:ss') : undefined,
+    });
+    
+    // Load images
+    if (venue.images) {
+      setFileList(venue.images.map(img => ({
+        uid: img.id,
+        name: `image-${img.id}`,
+        status: 'done',
+        url: img.imageUrl,
+      })));
+    } else {
+      setFileList([]);
+    }
+
+    setActiveTab('1');
+    if (venue.latitude && venue.longitude) {
+      setPosition([venue.latitude, venue.longitude]);
+    }
     setIsModalOpen(true);
   };
 
   const handleSubmit = (values: any) => {
-    console.log('Mock create/update venue:', values);
-    message.success(editingVenue ? 'Cập nhật sân thành công!' : 'Tạo sân thành công! Hồ sơ đang chờ duyệt.');
-    setIsModalOpen(false);
-    form.resetFields();
-    setEditingVenue(null);
+    console.log('Form Submit Values:', values);
+    const formattedValues = {
+      ...values,
+      openTime: values.openTime?.format('HH:mm:00'),
+      closeTime: values.closeTime?.format('HH:mm:00'),
+    };
+
+    if (fileList.length === 0) {
+      message.error('Vui lòng tải lên ít nhất một hình ảnh thực tế của sân.');
+      setActiveTab('4');
+      return;
+    }
+
+    if (editingVenue) {
+      updateMutation.mutate({ id: editingVenue.id, data: formattedValues });
+    } else {
+      createMutation.mutate(formattedValues);
+    }
   };
 
+  const onFinishFailed = (errorInfo: any) => {
+    console.error('Validation Failed:', errorInfo);
+    message.error('Vui lòng kiểm tra lại thông tin trong các tab (các trường có dấu * đỏ).');
+    
+    if (errorInfo.errorFields.length > 0) {
+      const fieldName = errorInfo.errorFields[0].name[0];
+      const basicFields = ['name', 'description', 'phone', 'email', 'courtCount', 'openTime', 'closeTime'];
+      const locationFields = ['address', 'city', 'ward', 'latitude', 'longitude'];
+      
+      if (basicFields.includes(fieldName)) setActiveTab('1');
+      else if (locationFields.includes(fieldName)) setActiveTab('2');
+      else if (fieldName === 'utilities' || fieldName === 'policy') setActiveTab('3');
+    }
+  };
+
+
   const getStatusColor = (status: string) => {
-    const colors: Record<string, string> = {
-      PENDING_APPROVAL: 'warning',
-      APPROVED: 'success',
-      REJECTED: 'error',
-      SUSPENDED: 'default',
-    };
-    return colors[status] || 'default';
+    return VENUE_STATUS_MAP[status]?.color || 'default';
+  };
+
+  const getStatusLabel = (status: string) => {
+    return VENUE_STATUS_MAP[status]?.label || status;
   };
 
   const columns = [
@@ -69,7 +278,7 @@ export default function VenueManagementPage() {
           <div>
             <Text strong style={{ display: 'block', fontSize: 15 }}>{record.name}</Text>
             <Text type="secondary" style={{ fontSize: 12 }}>
-               <EnvironmentOutlined /> {record.district}, {record.city}
+               <EnvironmentOutlined /> {record.city}
             </Text>
           </div>
         </div>
@@ -95,7 +304,7 @@ export default function VenueManagementPage() {
       title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
-      render: (status: string) => <Tag color={getStatusColor(status)} style={{ borderRadius: 6, fontWeight: 600 }}>{status}</Tag>,
+      render: (status: string) => <Tag color={getStatusColor(status)} style={{ borderRadius: 6, fontWeight: 600 }}>{getStatusLabel(status)}</Tag>,
     },
     {
       title: 'Thao tác',
@@ -117,10 +326,120 @@ export default function VenueManagementPage() {
               onClick={() => handleEdit(record)}
             />
           </Tooltip>
+          <Tooltip title="Xóa cơ sở">
+            <Button
+              danger
+              icon={<DeleteOutlined />}
+              onClick={() => handleDelete(record.id)}
+            />
+          </Tooltip>
         </Space>
       ),
     },
   ];
+  const getBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = (error) => reject(error);
+    });
+
+  const handlePreview = async (file: UploadFile) => {
+    if (!file.url && !file.preview) {
+      file.preview = await getBase64(file.originFileObj as File);
+    }
+    setPreviewImage(file.url || (file.preview as string));
+    setPreviewOpen(true);
+  };
+
+  const handleChange: UploadProps['onChange'] = ({ fileList: newFileList }) => {
+    if (newFileList.length > 10) {
+      message.warning('Bạn chỉ có thể tải lên tối đa 10 hình ảnh.');
+      setFileList(newFileList.slice(0, 10));
+    } else {
+      setFileList(newFileList);
+    }
+  };
+
+  const uploadButton = (
+    <div>
+      <PlusOutlined />
+      <div style={{ marginTop: 8 }}>Tải ảnh</div>
+    </div>
+  );
+
+  // Logic tìm kiếm địa chỉ trên bản đồ
+  const fetchSuggestions = (value: string) => {
+    if (!value || value.length < 3) {
+      setOptions([]);
+      return;
+    }
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&countrycodes=vn&limit=5`,
+          { headers: { 'Accept-Language': 'vi' } }
+        );
+        const data = await response.json();
+        setOptions(data.map((item: any) => ({
+          value: item.display_name,
+          label: item.display_name,
+          lat: item.lat,
+          lon: item.lon,
+        })));
+      } catch (error) {
+        console.error('Error fetching suggestions:', error);
+      }
+    }, 800);
+  };
+
+  const onSelectLocation = (value: string, option: any) => {
+    const newPos: [number, number] = [parseFloat(option.lat), parseFloat(option.lon)];
+    setPosition(newPos);
+    form.setFieldsValue({
+      latitude: newPos[0],
+      longitude: newPos[1],
+      address: value
+    });
+    message.success(`Đã trỏ đến: ${value}`);
+  };
+
+  const handleMapSearch = async (value: string) => {
+    if (!value) return;
+    setSearchLoading(true);
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&countrycodes=vn&limit=1`);
+      const data = await response.json();
+      if (data && data.length > 0) {
+        const { lat, lon } = data[0];
+        const newPos: [number, number] = [parseFloat(lat), parseFloat(lon)];
+        setPosition(newPos);
+        form.setFieldsValue({
+          latitude: newPos[0],
+          longitude: newPos[1]
+        });
+        message.success(`Đã tìm thấy: ${data[0].display_name}`);
+      } else {
+        message.warning('Không tìm thấy địa điểm này trong lãnh thổ Việt Nam.');
+      }
+    } catch (error) {
+      message.error('Lỗi khi tìm kiếm vị trí. Vui lòng thử lại sau.');
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  // Đồng bộ position với form fields
+  useEffect(() => {
+    if (position) {
+      form.setFieldsValue({
+        latitude: position[0],
+        longitude: position[1]
+      });
+    }
+  }, [position, form]);
 
   const BasicInfoTab = (
     <div style={{ padding: '20px 0' }}>
@@ -161,53 +480,87 @@ export default function VenueManagementPage() {
                 <Input placeholder="contact@..." style={{ borderRadius: 10 }} />
              </Form.Item>
           </Col>
-       </Row>
-    </div>
+        </Row>
+        <Row gutter={16}>
+           <Col span={8}>
+              <Form.Item 
+                 label={<Text strong>Số lượng sân</Text>} 
+                 name="courtCount" 
+                 rules={[{ required: !editingVenue, message: 'Vui lòng nhập số lượng sân' }]}
+              >
+                 <InputNumber min={1} placeholder="10" style={{ borderRadius: 10, width: '100%' }} />
+              </Form.Item>
+           </Col>
+           <Col span={8}>
+              <Form.Item label={<Text strong>Giờ mở cửa</Text>} name="openTime" rules={[{ required: true }]}>
+                 <TimePicker format="HH:mm" style={{ borderRadius: 10, width: '100%' }} />
+              </Form.Item>
+           </Col>
+           <Col span={8}>
+              <Form.Item label={<Text strong>Giờ đóng cửa</Text>} name="closeTime" rules={[{ required: true }]}>
+                 <TimePicker format="HH:mm" style={{ borderRadius: 10, width: '100%' }} />
+              </Form.Item>
+           </Col>
+        </Row>
+     </div>
   );
 
   const LocationTab = (
     <div style={{ padding: '20px 0' }}>
        <Form.Item label={<Text strong>Địa chỉ chi tiết</Text>} name="address" rules={[{ required: true }]}>
-          <Input placeholder="Số nhà, tên đường..." style={{ borderRadius: 10 }} />
+          <AutoComplete
+            options={options}
+            onSearch={fetchSuggestions}
+            onSelect={onSelectLocation}
+            style={{ width: '100%' }}
+          >
+            <Input.Search 
+              placeholder="Số nhà, tên đường... hoặc tìm nhanh vị trí" 
+              style={{ borderRadius: 10 }}
+              loading={searchLoading}
+              onSearch={handleMapSearch}
+              enterButton={<Button type="primary" icon={<EnvironmentOutlined />}>Tìm</Button>}
+            />
+          </AutoComplete>
        </Form.Item>
-       <Row gutter={16}>
-          <Col span={8}>
-             <Form.Item 
-                label={<Text strong>Thành phố</Text>} 
-                name="city" 
-                rules={[{ required: true, message: 'Vui lòng chọn thành phố' }]}
-             >
-                <Select style={{ borderRadius: 10 }} placeholder="Chọn thành phố">
-                   <Option value="Hồ Chí Minh">TP. HCM</Option>
-                   <Option value="Hà Nội">Hà Nội</Option>
-                </Select>
-             </Form.Item>
-          </Col>
-          <Col span={8}>
-             <Form.Item 
-                label={<Text strong>Quận / Huyện</Text>} 
-                name="district" 
-                rules={[{ required: true, message: 'Vui lòng nhập quận/huyện' }]}
-             >
-                <Input placeholder="Bình Tân..." style={{ borderRadius: 10 }} />
-             </Form.Item>
-          </Col>
-          <Col span={8}>
-             <Form.Item label={<Text strong>Phường / Xã</Text>} name="ward" rules={[{ required: true, message: 'Vui lòng nhập phường/xã' }]}>
-                <Input placeholder="Phường..." style={{ borderRadius: 10 }} />
-             </Form.Item>
-          </Col>
-       </Row>
+        <Row gutter={16}>
+           <AddressFields 
+             size="middle" 
+             inputClassName="rounded-lg bg-white border-slate-200"
+             selectStyle={{ borderRadius: 8 }}
+           />
+        </Row>
+
+       <div style={{ height: 300, borderRadius: 12, overflow: 'hidden', border: '1px solid #f1f5f9', marginBottom: 20, zIndex: 0, position: 'relative' }}>
+          <MapContainer 
+            center={position || [10.762622, 106.660172]} 
+            zoom={13} 
+            style={{ height: '100%', width: '100%' }}
+          >
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <LocationPicker position={position as any} setPosition={setPosition as any} />
+            <MapController center={position as any} />
+          </MapContainer>
+       </div>
+
         <Divider orientation={"left" as any} orientationMargin={0}><Text type="secondary" style={{ fontSize: 12 }}>Tọa độ Bản đồ (GPS)</Text></Divider>
        <Row gutter={16}>
           <Col span={12}>
              <Form.Item label="Kinh độ (Longitude)" name="longitude">
-                <Input placeholder="106.6..." style={{ borderRadius: 10 }} />
+                <InputNumber 
+                  placeholder="106.6..." 
+                  style={{ borderRadius: 10, width: '100%' }} 
+                  onChange={(val) => val !== null && setPosition([position?.[0] || 0, Number(val)])}
+                />
              </Form.Item>
           </Col>
           <Col span={12}>
              <Form.Item label="Vĩ độ (Latitude)" name="latitude">
-                <Input placeholder="10.7..." style={{ borderRadius: 10 }} />
+                <InputNumber 
+                  placeholder="10.7..." 
+                  style={{ borderRadius: 10, width: '100%' }} 
+                  onChange={(val) => val !== null && setPosition([Number(val), position?.[1] || 0])}
+                />
              </Form.Item>
           </Col>
        </Row>
@@ -219,39 +572,21 @@ export default function VenueManagementPage() {
        <Title level={5}>Dịch vụ & Tiện ích tại sân</Title>
        <Paragraph type="secondary">Chọn các tiện ích mà cơ sở của bạn cung cấp để thu hút người chơi.</Paragraph>
        
-       <Form.Item name="amenities">
+       <Form.Item name="utilities">
           <Checkbox.Group style={{ width: '100%' }}>
              <Row gutter={[16, 16]}>
-                <Col span={8}>
-                   <Card size="small" style={{ borderRadius: 12 }}>
-                      <Checkbox value="wifi"><WifiOutlined /> Wifi miễn phí</Checkbox>
-                   </Card>
-                </Col>
-                <Col span={8}>
-                   <Card size="small" style={{ borderRadius: 12 }}>
-                      <Checkbox value="parking"><CarOutlined /> Bãi đỗ xe</Checkbox>
-                   </Card>
-                </Col>
-                <Col span={8}>
-                   <Card size="small" style={{ borderRadius: 12 }}>
-                      <Checkbox value="canteen"><CoffeeOutlined /> Canteen / Nước</Checkbox>
-                   </Card>
-                </Col>
-                <Col span={8}>
-                   <Card size="small" style={{ borderRadius: 12 }}>
-                      <Checkbox value="shower"><ThunderboltOutlined /> Nhà tắm / WC</Checkbox>
-                   </Card>
-                </Col>
-                <Col span={8}>
-                   <Card size="small" style={{ borderRadius: 12 }}>
-                      <Checkbox value="rent"><ShopOutlined /> Thuê vợt / Giày</Checkbox>
-                   </Card>
-                </Col>
-                <Col span={8}>
-                   <Card size="small" style={{ borderRadius: 12 }}>
-                      <Checkbox value="ac"><CustomerServiceOutlined /> Hệ thống quạt / AC</Checkbox>
-                   </Card>
-                </Col>
+                {UTILITIES.map(u => (
+                  <Col span={8} key={u.value}>
+                    <Card size="small" style={{ borderRadius: 12 }}>
+                       <Checkbox value={u.value}>
+                          <Space size={4}>
+                             {u.icon}
+                             {u.label}
+                          </Space>
+                       </Checkbox>
+                    </Card>
+                  </Col>
+                ))}
              </Row>
           </Checkbox.Group>
        </Form.Item>
@@ -260,6 +595,34 @@ export default function VenueManagementPage() {
        <Form.Item label={<Text strong>Chính sách riêng của cơ sở</Text>} name="policy">
           <TextArea rows={3} placeholder="VD: Không mang giày đế đen vào thảm, không hút thuốc..." style={{ borderRadius: 10 }} />
        </Form.Item>
+    </div>
+  );
+
+  const ImagesTab = (
+    <div style={{ padding: '20px 0' }}>
+       <Title level={5}>Hình ảnh cơ sở <Text type="danger">*</Text></Title>
+       <Paragraph type="secondary">Tải lên các hình ảnh thực tế của sân để khách hàng dễ dàng hình dung (Tối đa 10 ảnh).</Paragraph>
+       
+       <Upload
+         listType="picture-card"
+         fileList={fileList}
+         onPreview={handlePreview}
+         onChange={handleChange}
+         beforeUpload={() => false} // Không tự động upload
+         accept="image/*"
+         multiple
+       >
+         {fileList.length >= 10 ? null : uploadButton}
+       </Upload>
+
+       <Modal 
+         open={previewOpen} 
+         title="Xem trước ảnh" 
+         footer={null} 
+         onCancel={() => setPreviewOpen(false)}
+       >
+         <img alt="preview" style={{ width: '100%' }} src={previewImage} />
+       </Modal>
     </div>
   );
 
@@ -281,6 +644,7 @@ export default function VenueManagementPage() {
           dataSource={venues}
           rowKey="id"
           pagination={{ pageSize: 10 }}
+          loading={isLoading}
         />
       </Card>
 
@@ -296,22 +660,43 @@ export default function VenueManagementPage() {
           setIsModalOpen(false);
           setEditingVenue(null);
           form.resetFields();
+          setActiveTab('1');
         }}
         footer={[
-           <Button key="cancel" onClick={() => setIsModalOpen(false)}>Hủy bỏ</Button>,
-           <Button key="submit" type="primary" onClick={() => form.submit()} style={{ background: BRAND.primary, padding: '0 32px' }}>
-              {editingVenue ? 'Lưu thay đổi' : 'Gửi hồ sơ duyệt'}
-           </Button>
+           <Button key="cancel" onClick={() => {
+             setIsModalOpen(false);
+             setActiveTab('1');
+           }}>Hủy bỏ</Button>,
+           activeTab !== '1' && (
+             <Button key="back" onClick={() => setActiveTab((prev) => (parseInt(prev) - 1).toString())}> Quay lại</Button>
+           ),
+           activeTab !== '4' ? (
+             <Button key="next" type="primary" onClick={() => setActiveTab((prev) => (parseInt(prev) + 1).toString())} style={{ background: BRAND.primary, borderRadius: 8 }}>
+               Tiếp tục
+             </Button>
+           ) : (
+             <Button 
+               key="submit" 
+               type="primary" 
+               onClick={() => form.submit()} 
+               loading={createMutation.isPending || updateMutation.isPending}
+               style={{ background: BRAND.primary, padding: '0 32px', borderRadius: 8 }}
+             >
+                {editingVenue ? 'Lưu thay đổi' : 'Gửi hồ sơ duyệt'}
+             </Button>
+           )
         ]}
         width={800}
       >
-        <Form form={form} layout="vertical" onFinish={handleSubmit}>
+        <Form form={form} layout="vertical" onFinish={handleSubmit} onFinishFailed={onFinishFailed}>
            <Tabs
-             defaultActiveKey="1"
+             activeKey={activeTab}
+             onChange={setActiveTab}
              items={[
                { key: '1', label: <Space><ShopOutlined /> Thông tin chung</Space>, children: BasicInfoTab },
                { key: '2', label: <Space><EnvironmentOutlined /> Vị trí & Bản đồ</Space>, children: LocationTab },
                { key: '3', label: <Space><WifiOutlined /> Tiện ích & Dịch vụ</Space>, children: AmenitiesTab },
+               { key: '4', label: <Space><PictureOutlined /> Hình ảnh</Space>, children: ImagesTab },
              ]}
            />
         </Form>
@@ -319,3 +704,4 @@ export default function VenueManagementPage() {
     </div>
   );
 }
+

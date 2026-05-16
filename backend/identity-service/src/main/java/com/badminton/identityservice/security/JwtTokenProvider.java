@@ -40,6 +40,7 @@ public class JwtTokenProvider {
                         Instant.now().plus(validDuration, ChronoUnit.SECONDS).toEpochMilli()
                 ))
                 .jwtID(user.getId().toString())
+                .claim("userId", user.getId().toString())
                 .claim("scope", buildScope(user))
                 .build();
 

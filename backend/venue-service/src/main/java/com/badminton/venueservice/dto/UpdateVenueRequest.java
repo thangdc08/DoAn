@@ -1,17 +1,11 @@
 package com.badminton.venueservice.dto;
 
 import lombok.*;
-import java.util.UUID;
+import java.util.List;
 
-@Data
-@Builder
-@NoArgsConstructor
-@AllArgsConstructor
-public class VenueResponse {
-    private UUID id;
-    private UUID ownerId;
+@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+public class UpdateVenueRequest {
     private String name;
-    private String slug;
     private String description;
     private String address;
     private String ward;
@@ -20,13 +14,10 @@ public class VenueResponse {
     private Double longitude;
     private String phone;
     private String email;
-    private String status;
-    private Double ratingAvg;
-    private Integer ratingCount;
-    private java.util.List<String> utilities;
     private String openTime;
     private String closeTime;
+    private List<String> utilities;
     private String policy;
+    private String status;
     private Integer courtCount;
-    private java.util.List<VenueImageResponse> images;
 }

@@ -17,10 +17,12 @@ public class OnboardingEvent {
     private String userId;
     private String email;
     private String fullName;
+    private String phoneNumber;
 
     // Venue Info
     private String venueName;
     private String address;
+    private String ward;
     private String city;
     private Integer courtCount;
     private List<String> utilities;
