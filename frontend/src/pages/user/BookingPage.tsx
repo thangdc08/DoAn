@@ -1,24 +1,62 @@
 import { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Card, Row, Col, DatePicker, Typography, Alert, Space } from 'antd';
+import { Card, Row, Col, DatePicker, Typography, Alert, Space, Spin } from 'antd';
 import { CalendarOutlined, InfoCircleOutlined } from '@ant-design/icons';
-import { mockVenues, mockCourts } from '../../data/mockVenues';
 import BookingGrid from '../../components/ui/BookingGrid';
 import dayjs, { Dayjs } from 'dayjs';
+import { useQuery } from '@tanstack/react-query';
+import { venueApi } from '../../services/venueApi';
 
 const { Title } = Typography;
 
 export default function BookingPage() {
   const [searchParams] = useSearchParams();
-  const venueId = searchParams.get('venueId') || '1';
+  const venueId = searchParams.get('venueId') || '';
 
   const [selectedDate, setSelectedDate] = useState<Dayjs>(dayjs());
-  const venue = mockVenues.find(v => v.id === venueId);
-  const courts = mockCourts[venueId] || [];
+
+  // Fetch actual venue details
+  const { data: venue, isLoading: isLoadingVenue } = useQuery({
+    queryKey: ['venue', venueId],
+    queryFn: () => venueApi.getVenueById(venueId),
+    enabled: !!venueId,
+  });
+
+  // Fetch venue courts (filter out INACTIVE ones for booking view)
+  const { data: courts = [], isLoading: isLoadingCourts } = useQuery({
+    queryKey: ['courts', venueId],
+    queryFn: async () => {
+      const allCourts = await venueApi.getVenueCourts(venueId);
+      return allCourts.filter(c => c.status !== 'INACTIVE');
+    },
+    enabled: !!venueId,
+  });
+
+  const { data: priceRules = [], isLoading: isLoadingPriceRules } = useQuery({
+    queryKey: ['price-rules', venueId],
+    queryFn: () => venueApi.getPriceRules(venueId),
+    enabled: !!venueId,
+  });
 
   const handleSelectionChange = (slots: string[]) => {
     console.log('Selected slots:', slots);
   };
+
+  if (isLoadingVenue || isLoadingCourts || isLoadingPriceRules) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <Spin size="large" tip="Đang tải thông tin lịch đặt sân..." />
+      </div>
+    );
+  }
+
+  if (!venue) {
+    return (
+      <div style={{ padding: '24px', maxWidth: 1400, margin: '0 auto' }}>
+        <Alert message="Lỗi" description="Không tìm thấy thông tin sân cầu lông này." type="error" showIcon />
+      </div>
+    );
+  }
 
   return (
     <div style={{ padding: '24px', maxWidth: 1400, margin: '0 auto' }}>
@@ -62,8 +100,11 @@ export default function BookingPage() {
             bodyStyle={{ padding: '24px 12px' }}
           >
             <BookingGrid 
+              venueId={venue.id}
+              courts={courts}
+              priceRules={priceRules}
               courtNames={courts.map(c => c.name)}
-              pricePerSlot={venue?.priceMin}
+              selectedDate={selectedDate}
               onSelectionChange={handleSelectionChange}
             />
           </Card>

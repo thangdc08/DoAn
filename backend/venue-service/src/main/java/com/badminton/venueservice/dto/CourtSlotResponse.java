@@ -15,4 +15,5 @@ public class CourtSlotResponse {
     private String startTime;
     private String endTime;
     private String status;
+    private java.math.BigDecimal price;
 }

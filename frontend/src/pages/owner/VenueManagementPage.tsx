@@ -29,6 +29,7 @@ import { BRAND } from '../../theme/antdTheme';
 import { venueApi } from '../../services/venueApi';
 import { VENUE_STATUS_MAP, UTILITIES } from '../../constants/venue.constants.tsx';
 import { AddressFields } from '../../components/forms/AddressFields';
+import { PROVINCE_OPTIONS, AREA_OPTIONS } from '../../constants/areas';
 
 // Leaflet fix for Vite/Webpack
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
@@ -378,8 +379,23 @@ export default function VenueManagementPage() {
     if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     searchTimeoutRef.current = setTimeout(async () => {
       try {
+        const cityVal = form.getFieldValue('city');
+        const wardVal = form.getFieldValue('ward');
+        
+        const cityLabel = PROVINCE_OPTIONS.find(p => p.value === cityVal)?.label || '';
+        
+        let wardLabel = '';
+        if (cityLabel) {
+          const areaGroup = AREA_OPTIONS.find(group => group.label === cityLabel);
+          if (areaGroup) {
+            wardLabel = areaGroup.options.find(o => o.value === wardVal)?.label || '';
+          }
+        }
+        
+        const fullQuery = [value, wardLabel, cityLabel].filter(Boolean).join(', ');
+
         const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&countrycodes=vn&limit=5`,
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullQuery)}&countrycodes=vn&limit=5`,
           { headers: { 'Accept-Language': 'vi' } }
         );
         const data = await response.json();
@@ -410,7 +426,22 @@ export default function VenueManagementPage() {
     if (!value) return;
     setSearchLoading(true);
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&countrycodes=vn&limit=1`);
+      const cityVal = form.getFieldValue('city');
+      const wardVal = form.getFieldValue('ward');
+      
+      const cityLabel = PROVINCE_OPTIONS.find(p => p.value === cityVal)?.label || '';
+      
+      let wardLabel = '';
+      if (cityLabel) {
+        const areaGroup = AREA_OPTIONS.find(group => group.label === cityLabel);
+        if (areaGroup) {
+          wardLabel = areaGroup.options.find(o => o.value === wardVal)?.label || '';
+        }
+      }
+      
+      const fullQuery = [value, wardLabel, cityLabel].filter(Boolean).join(', ');
+
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullQuery)}&countrycodes=vn&limit=1`);
       const data = await response.json();
       if (data && data.length > 0) {
         const { lat, lon } = data[0];

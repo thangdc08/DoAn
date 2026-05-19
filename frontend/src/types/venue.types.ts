@@ -53,6 +53,7 @@ export interface Court {
   name: string;
   courtType: 'STANDARD' | 'PREMIUM' | 'VIP';
   status: 'ACTIVE' | 'INACTIVE' | 'MAINTENANCE';
+  defaultPrice?: number;
   createdAt: string;
   updatedAt: string;
 }

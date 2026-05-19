@@ -1,8 +1,9 @@
 import { useState, useMemo } from 'react';
-import { Row, Col, Input, Select, Button, Card, Pagination, Empty, Space, Typography } from 'antd';
+import { Row, Col, Input, Select, Button, Card, Pagination, Empty, Space, Typography, Spin } from 'antd';
 import { SearchOutlined, EnvironmentOutlined, StarFilled } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { mockVenues } from '../../data/mockVenues';
+import { useQuery } from '@tanstack/react-query';
+import { venueApi } from '../../services/venueApi';
 
 const { Title } = Typography;
 const { Option } = Select;
@@ -13,19 +14,27 @@ export default function VenueListPage() {
 
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [city, setCity] = useState(searchParams.get('city') || '');
-  const [district, setDistrict] = useState(searchParams.get('district') || '');
+  const [ward, setWard] = useState(searchParams.get('ward') || '');
   const [page, setPage] = useState(1);
   const pageSize = 12;
 
-  // Filter mock data
+  // Fetch actual venues from database
+  const { data: venues = [], isLoading } = useQuery({
+    queryKey: ['venues'],
+    queryFn: () => venueApi.getVenues(),
+  });
+
+  // Filter fetched data
   const filteredVenues = useMemo(() => {
-    return mockVenues.filter(venue => {
+    return venues.filter(venue => {
       const matchSearch = !search || venue.name.toLowerCase().includes(search.toLowerCase());
-      const matchCity = !city || venue.city === city;
-      const matchDistrict = !district || venue.district === district;
-      return matchSearch && matchCity && matchDistrict;
+      const matchCity = !city || (venue.city && venue.city.toLowerCase() === city.toLowerCase());
+      const matchWard = !ward || 
+        (venue.ward && venue.ward.toLowerCase() === ward.toLowerCase()) ||
+        (venue.address && venue.address.toLowerCase().includes(ward.toLowerCase()));
+      return matchSearch && matchCity && matchWard;
     });
-  }, [search, city, district]);
+  }, [venues, search, city, ward]);
 
   const data = {
     content: filteredVenues.slice((page - 1) * pageSize, page * pageSize),
@@ -38,14 +47,14 @@ export default function VenueListPage() {
     const params: any = {};
     if (search) params.search = search;
     if (city) params.city = city;
-    if (district) params.district = district;
+    if (ward) params.ward = ward;
     setSearchParams(params);
   };
 
   const handleReset = () => {
     setSearch('');
     setCity('');
-    setDistrict('');
+    setWard('');
     setPage(1);
     setSearchParams({});
   };
@@ -82,20 +91,20 @@ export default function VenueListPage() {
           </Col>
           <Col xs={24} md={6}>
             <Select
-              placeholder="Chọn quận/huyện"
+              placeholder="Chọn phường/xã"
               style={{ width: '100%' }}
-              value={district || undefined}
-              onChange={setDistrict}
+              value={ward || undefined}
+              onChange={setWard}
               allowClear
               disabled={!city}
             >
               {city === 'Hồ Chí Minh' && (
                 <>
-                  <Option value="Quận 1">Quận 1</Option>
-                  <Option value="Quận 3">Quận 3</Option>
-                  <Option value="Quận 7">Quận 7</Option>
-                  <Option value="Quận 9">Quận 9</Option>
-                  <Option value="Thủ Đức">Thủ Đức</Option>
+                  <Option value="Phường Tân Phú">Phường Tân Phú</Option>
+                  <Option value="Phường Hiệp Phú">Phường Hiệp Phú</Option>
+                  <Option value="Phường Linh Chiểu">Phường Linh Chiểu</Option>
+                  <Option value="Phường Bến Nghé">Phường Bến Nghé</Option>
+                  <Option value="Phường Đa Kao">Phường Đa Kao</Option>
                 </>
               )}
             </Select>
@@ -112,7 +121,11 @@ export default function VenueListPage() {
       </Card>
 
       {/* Venue Grid */}
-      {data.content.length === 0 ? (
+      {isLoading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '300px' }}>
+          <Spin size="large" tip="Đang tải danh sách sân..." />
+        </div>
+      ) : data.content.length === 0 ? (
         <Empty description="Không tìm thấy sân nào" />
       ) : (
         <>
@@ -134,14 +147,16 @@ export default function VenueListPage() {
                     title={venue.name}
                     description={
                       <div>
-                        <div style={{ marginBottom: 8 }}>
-                          <EnvironmentOutlined /> {venue.district}, {venue.city}
+                        <div style={{ marginBottom: 8, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
+                          <EnvironmentOutlined /> {venue.address}
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <span>
-                            <StarFilled style={{ color: '#faad14' }} /> {venue.ratingAvg.toFixed(1)} ({venue.ratingCount})
+                            <StarFilled style={{ color: '#faad14' }} /> {(venue.ratingAvg || 0).toFixed(1)} ({venue.ratingCount || 0})
                           </span>
-                          {venue.priceRange && <span style={{ color: '#52c41a', fontWeight: 'bold' }}>{venue.priceRange}</span>}
+                          <span style={{ color: '#52c41a', fontWeight: 'bold' }}>
+                            Theo sân &amp; khung giờ
+                          </span>
                         </div>
                       </div>
                     }

@@ -1,10 +1,31 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Row, Col, Typography, Button, Tag, Image, Space, Divider } from 'antd';
-import { EnvironmentOutlined, PhoneOutlined, ClockCircleOutlined, StarFilled, CalendarOutlined } from '@ant-design/icons';
-import { mockVenues, mockCourts } from '../../data/mockVenues';
+import { Card, Row, Col, Typography, Button, Tag, Image, Space, Divider, Spin } from 'antd';
+import { EnvironmentOutlined, PhoneOutlined, ClockCircleOutlined, StarFilled, CalendarOutlined, DollarOutlined } from '@ant-design/icons';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
+import * as L from 'leaflet';
 import BookingGrid from '../../components/ui/BookingGrid';
+import { useQuery } from '@tanstack/react-query';
+import { venueApi } from '../../services/venueApi';
+import dayjs from 'dayjs';
+import { UTILITIES } from '../../constants/venue.constants';
+import { AREA_MAP } from '../../constants/areas';
+
+// Leaflet default marker icon fix under Vite
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerIconRetina from 'leaflet/dist/images/marker-icon-2x.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+
+const DefaultIcon = (L as any).icon({
+  iconUrl: markerIcon,
+  iconRetinaUrl: markerIconRetina,
+  shadowUrl: markerShadow,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
+});
+(L as any).Marker.prototype.options.icon = DefaultIcon;
 
 const { Title, Paragraph } = Typography;
 
@@ -12,14 +33,52 @@ export default function VenueDetailPage() {
   const { venueId } = useParams<{ venueId: string }>();
   const navigate = useNavigate();
 
-  const venue = mockVenues.find(v => v.id === venueId);
-  const courts = mockCourts[venueId!] || [];
+  // Fetch actual venue details
+  const { data: venue, isLoading: isLoadingVenue } = useQuery({
+    queryKey: ['venue', venueId],
+    queryFn: () => venueApi.getVenueById(venueId!),
+    enabled: !!venueId,
+  });
+
+  // Fetch venue courts (filter out INACTIVE ones for public view)
+  const { data: courts = [], isLoading: isLoadingCourts } = useQuery({
+    queryKey: ['courts', venueId],
+    queryFn: async () => {
+      const allCourts = await venueApi.getVenueCourts(venueId!);
+      return allCourts.filter(c => c.status !== 'INACTIVE');
+    },
+    enabled: !!venueId,
+  });
+
+  const { data: priceRules = [], isLoading: isLoadingPriceRules } = useQuery({
+    queryKey: ['price-rules', venueId],
+    queryFn: () => venueApi.getPriceRules(venueId!),
+    enabled: !!venueId,
+  });
+
+  if (isLoadingVenue || isLoadingCourts || isLoadingPriceRules) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '400px' }}>
+        <Spin size="large" tip="Đang tải thông tin chi tiết sân..." />
+      </div>
+    );
+  }
 
   if (!venue) {
     return <div style={{ padding: '24px' }}>Không tìm thấy sân</div>;
   }
 
   const dayNames = ['Chủ nhật', 'Thứ 2', 'Thứ 3', 'Thứ 4', 'Thứ 5', 'Thứ 6', 'Thứ 7'];
+
+  const courtPrices = courts
+    .map((court) => court.defaultPrice)
+    .filter((price): price is number => price !== undefined && price !== null);
+  const averageCourtPrice = courtPrices.length > 0
+    ? courtPrices.reduce((total, price) => total + Number(price), 0) / courtPrices.length
+    : courts.find((court) => court.defaultPrice !== undefined)?.defaultPrice;
+  const formattedAverageCourtPrice = averageCourtPrice !== undefined && averageCourtPrice !== null
+    ? `${Math.round(averageCourtPrice).toLocaleString('vi-VN')}đ / giờ`
+    : null;
 
   return (
     <div style={{ padding: '24px' }}>
@@ -76,12 +135,15 @@ export default function VenueDetailPage() {
             <div style={{ padding: '0 12px' }}>
               <BookingGrid
                 readOnly
+                venueId={venue.id}
+                courts={courts}
+                priceRules={priceRules}
                 courtNames={courts.map(c => c.name)}
-                pricePerSlot={venue.priceMin}
+                selectedDate={dayjs()}
               />
             </div>
             <div style={{ textAlign: 'center', marginTop: 16, padding: '0 12px' }}>
-              <Button type="link" onClick={() => navigate(`/user/booking?venueId=${venue.id}`)}>
+              <Button type="link" onClick={() => navigate(`/booking?venueId=${venue.id}`)}>
                 Xem toàn bộ lịch và đặt sân →
               </Button>
             </div>
@@ -98,8 +160,8 @@ export default function VenueDetailPage() {
                       <Tag color={court.courtType === 'PREMIUM' ? 'gold' : court.courtType === 'VIP' ? 'purple' : 'blue'}>
                         {court.courtType}
                       </Tag>
-                      <Tag color={court.status === 'ACTIVE' ? 'green' : 'red'}>
-                        {court.status}
+                      <Tag color={court.status === 'ACTIVE' ? 'green' : court.status === 'MAINTENANCE' ? 'orange' : 'red'}>
+                        {court.status === 'ACTIVE' ? 'Đang hoạt động' : court.status === 'MAINTENANCE' ? 'Đang bảo trì' : 'Ngừng hoạt động'}
                       </Tag>
                     </div>
                   </Card>
@@ -139,19 +201,30 @@ export default function VenueDetailPage() {
               <div>
                 <StarFilled style={{ color: '#faad14', marginRight: 8 }} />
                 <span style={{ fontSize: 18, fontWeight: 'bold' }}>
-                  {venue.ratingAvg.toFixed(1)}
+                  {(venue.ratingAvg || 0).toFixed(1)}
                 </span>
                 <span style={{ color: '#8c8c8c', marginLeft: 8 }}>
-                  ({venue.ratingCount} đánh giá)
+                  ({venue.ratingCount || 0} đánh giá)
                 </span>
               </div>
+
+              {formattedAverageCourtPrice && (
+                <div>
+                  <DollarOutlined style={{ color: '#00a651', marginRight: 8 }} />
+                  <span style={{ fontWeight: 'bold' }}>Giá trung bình: </span>
+                  <span style={{ color: '#00a651', fontWeight: 'bold' }}>
+                    {formattedAverageCourtPrice}
+                  </span>
+                </div>
+              )}
 
               <Divider style={{ margin: '12px 0' }} />
 
               <div>
                 <EnvironmentOutlined style={{ marginRight: 8 }} />
-                {venue.address}, {venue.ward && `${venue.ward}, `}
-                {venue.district}, {venue.city}
+                {venue.address}
+                {venue.ward && AREA_MAP[venue.ward] ? `, ${AREA_MAP[venue.ward]}` : ''}
+                {venue.city && AREA_MAP[venue.city] ? `, ${AREA_MAP[venue.city]}` : ''}
               </div>
 
               {venue.phone && (
@@ -164,7 +237,7 @@ export default function VenueDetailPage() {
               <Divider style={{ margin: '12px 0' }} />
 
               {/* Business Hours */}
-              {venue.businessHours && venue.businessHours.length > 0 && (
+              {venue.businessHours && venue.businessHours.length > 0 ? (
                 <div>
                   <div style={{ fontWeight: 'bold', marginBottom: 8 }}>
                     <ClockCircleOutlined style={{ marginRight: 8 }} />
@@ -181,18 +254,45 @@ export default function VenueDetailPage() {
                     </div>
                   ))}
                 </div>
+              ) : (
+                (venue.openTime || venue.closeTime) && (
+                  <div>
+                    <div style={{ fontWeight: 'bold', marginBottom: 8 }}>
+                      <ClockCircleOutlined style={{ marginRight: 8 }} />
+                      Giờ hoạt động
+                    </div>
+                    <div style={{ marginLeft: 24, fontSize: 14 }}>
+                      {venue.openTime || '06:00'} - {venue.closeTime || '22:00'}
+                    </div>
+                  </div>
+                )
               )}
 
               <Divider style={{ margin: '12px 0' }} />
 
-              {/* Amenities */}
-              {venue.amenities && venue.amenities.length > 0 && (
+              {/* Amenities / Utilities */}
+              {((venue.utilities && venue.utilities.length > 0) || (venue.amenities && venue.amenities.length > 0)) && (
                 <div>
                   <div style={{ fontWeight: 'bold', marginBottom: 8 }}>Tiện ích</div>
                   <Space wrap>
-                    {venue.amenities.map((amenity) => (
+                    {venue.amenities?.map((amenity) => (
                       <Tag key={amenity.id}>{amenity.icon} {amenity.name}</Tag>
                     ))}
+                    {venue.utilities?.map((utilityKey, idx) => {
+                      const ut = UTILITIES.find(u => u.value === utilityKey.toLowerCase() || u.label.toLowerCase() === utilityKey.toLowerCase());
+                      return (
+                        <Tag key={idx}>
+                          {ut ? (
+                            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                              {ut.icon}
+                              <span>{ut.label}</span>
+                            </span>
+                          ) : (
+                            utilityKey
+                          )}
+                        </Tag>
+                      );
+                    })}
                   </Space>
                 </div>
               )}
@@ -202,7 +302,7 @@ export default function VenueDetailPage() {
                 size="large"
                 block
                 icon={<CalendarOutlined />}
-                onClick={() => navigate(`/user/booking?venueId=${venue.id}`)}
+                onClick={() => navigate(`/booking?venueId=${venue.id}`)}
                 style={{ marginTop: 16 }}
               >
                 Đặt sân ngay

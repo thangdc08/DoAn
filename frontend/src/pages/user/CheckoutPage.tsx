@@ -39,7 +39,7 @@ export default function CheckoutPage() {
 
   const handlePayment = () => {
     if (bookingId) {
-      navigate(`/user/payment?bookingId=${bookingId}`);
+      navigate(`/payment?bookingId=${bookingId}`);
     }
   };
 

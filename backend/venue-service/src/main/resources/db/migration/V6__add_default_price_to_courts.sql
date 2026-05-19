@@ -1,0 +1,1 @@
+ALTER TABLE venue.courts ADD COLUMN default_price NUMERIC(12,2) DEFAULT 80000.00;

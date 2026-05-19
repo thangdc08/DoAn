@@ -111,6 +111,27 @@ export default function CourtManagementPage() {
   const [sortedCourts, setSortedCourts] = useState<Court[]>([]);
   const [selectedCourtForPricing, setSelectedCourtForPricing] = useState<Court | null>(null);
   const [priceRuleForm] = Form.useForm();
+  const [selectedLockDate, setSelectedLockDate] = useState<dayjs.Dayjs>(dayjs());
+
+  const hasTimeOverlap = (
+    start: dayjs.Dayjs,
+    end: dayjs.Dayjs,
+    existingStart: string,
+    existingEnd: string
+  ) => {
+    const toMinutes = (time: string) => {
+      const [hour, minute] = time.split(':').map(Number);
+      return hour * 60 + minute;
+    };
+
+    const startMinutes = start.hour() * 60 + start.minute();
+    const endMinutes = end.hour() * 60 + end.minute();
+    return startMinutes < toMinutes(existingEnd) && toMinutes(existingStart) < endMinutes;
+  };
+
+  const getApiErrorMessage = (error: unknown) => {
+    return (error as { response?: { data?: { message?: string } } }).response?.data?.message;
+  };
 
   const handleSaveAvailability = async () => {
     try {
@@ -137,13 +158,26 @@ export default function CourtManagementPage() {
       const values = await priceRuleForm.validateFields();
       if (!venueId) return;
 
+      const startTime = values.timeRange[0] as dayjs.Dayjs;
+      const endTime = values.timeRange[1] as dayjs.Dayjs;
+      const overlappedRule = priceRules.find((rule) => (
+        values.days.includes(rule.dayOfWeek) &&
+        rule.status === 'ACTIVE' &&
+        hasTimeOverlap(startTime, endTime, rule.startTime, rule.endTime)
+      ));
+
+      if (overlappedRule) {
+        message.error(`Khung giờ ${startTime.format('HH:mm')} - ${endTime.format('HH:mm')} bị trùng với ${overlappedRule.startTime.substring(0, 5)} - ${overlappedRule.endTime.substring(0, 5)}`);
+        return;
+      }
+
       // Xử lý lưu từng ngày (nếu chọn nhiều ngày)
       const dayRequests = values.days.map((day: number) => {
         return venueApi.createPriceRule(venueId, {
           venueId,
           dayOfWeek: day,
-          startTime: values.timeRange[0].format('HH:mm'),
-          endTime: values.timeRange[1].format('HH:mm'),
+          startTime: startTime.format('HH:mm'),
+          endTime: endTime.format('HH:mm'),
           pricePerHour: values.pricePerHour,
           status: 'ACTIVE'
         });
@@ -157,7 +191,7 @@ export default function CourtManagementPage() {
       refetchPriceRules();
     } catch (error) {
       console.error('Failed to save price rule:', error);
-      message.error('Không thể lưu khung giờ giá');
+      message.error(getApiErrorMessage(error) || 'Không thể lưu khung giờ giá');
     }
   };
   const handleDeletePriceRule = async (ruleId: string) => {
@@ -304,7 +338,9 @@ export default function CourtManagementPage() {
       key: 'price',
       render: (_: any, record: Court) => (
         <Space direction="vertical" size={0}>
-          <Text strong style={{ color: BRAND.primary }}>80.000đ/h</Text>
+          <Text strong style={{ color: BRAND.primary }}>
+            {record.defaultPrice ? `${record.defaultPrice.toLocaleString('vi-VN')}đ/h` : '80.000đ/h'}
+          </Text>
           <Text type="secondary" style={{ fontSize: 11 }}>Khung giờ thường</Text>
         </Space>
       )
@@ -388,14 +424,26 @@ export default function CourtManagementPage() {
                   children: (
                     <div style={{ padding: '0 24px' }}>
                       <Alert
-                        message="Chế độ Quản trị: Click vào slot để Khóa/Mở khóa sân nhanh."
+                        message="Chế độ Quản trị: Chọn ngày và tích chọn các ô để Khóa hoặc Mở khóa sân hàng loạt."
                         type="warning"
                         showIcon
                         style={{ marginBottom: 20, borderRadius: 10 }}
                       />
+                      <div style={{ marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
+                        <Text strong>Chọn ngày cấu hình:</Text>
+                        <DatePicker
+                          value={selectedLockDate}
+                          onChange={(date) => date && setSelectedLockDate(date)}
+                          format="DD/MM/YYYY"
+                          style={{ borderRadius: 8 }}
+                          allowClear={false}
+                        />
+                      </div>
                       <BookingGrid
                         isAdmin={true}
-                        courtNames={courts.map(c => c.name)}
+                        venueId={venueId}
+                        courts={courts}
+                        selectedDate={selectedLockDate}
                       />
                     </div>
                   )
@@ -674,6 +722,26 @@ export default function CourtManagementPage() {
           <Form.Item label="Tên sân lẻ" name="name" rules={[{ required: true }]}>
             <Input placeholder="VD: Sân 1, Sân VIP 1..." style={{ borderRadius: 8 }} />
           </Form.Item>
+          <Form.Item
+            label="Giá mặc định (VNĐ/giờ)"
+            name="defaultPrice"
+            rules={[{ required: true, message: 'Vui lòng nhập giá mặc định' }]}
+            initialValue={80000}
+          >
+            <InputNumber<number>
+              formatter={value => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+              parser={(value) => {
+                if (!value) return 80000;
+                const normalized = String(value).replace(/\$\s?|(,*)/g, '');
+                const parsed = Number.parseFloat(normalized);
+                return Number.isNaN(parsed) ? 80000 : parsed;
+              }}
+              style={{ width: '100%', borderRadius: 8 }}
+              min={0}
+              step={1000}
+              placeholder="Nhập giá mặc định (VD: 80,000)"
+            />
+          </Form.Item>
           <Form.Item label="Mô tả đặc điểm" name="description">
             <TextArea rows={3} placeholder="Mô tả thảm, ánh sáng, quạt..." style={{ borderRadius: 10 }} />
           </Form.Item>
@@ -734,7 +802,17 @@ export default function CourtManagementPage() {
                 <Form.Item
                   label={<Text strong>Khoảng giờ</Text>}
                   name="timeRange"
-                  rules={[{ required: true, message: 'Vui lòng chọn khung giờ' }]}
+                  rules={[
+                    { required: true, message: 'Vui lòng chọn khung giờ' },
+                    {
+                      validator: (_, value) => {
+                        if (!value || value[0].isBefore(value[1])) {
+                          return Promise.resolve();
+                        }
+                        return Promise.reject(new Error('Giờ bắt đầu phải nhỏ hơn giờ kết thúc'));
+                      }
+                    }
+                  ]}
                 >
                   <TimePicker.RangePicker format="HH:mm" style={{ width: '100%', borderRadius: 8 }} minuteStep={30} />
                 </Form.Item>

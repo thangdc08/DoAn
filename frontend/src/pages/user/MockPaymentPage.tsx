@@ -18,10 +18,10 @@ export default function MockPaymentPage() {
     onSuccess: (_, variables) => {
       if (variables.success) {
         message.success('Thanh toán thành công');
-        navigate('/user/payment-result?status=success');
+        navigate('/payment-result?status=success');
       } else {
         message.error('Thanh toán thất bại');
-        navigate('/user/payment-result?status=failed');
+        navigate('/payment-result?status=failed');
       }
     },
     onError: () => {

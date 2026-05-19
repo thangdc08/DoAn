@@ -5,6 +5,7 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -34,6 +35,10 @@ public class Court {
     private String description;
 
     private Integer displayOrder;
+
+    @Builder.Default
+    @Column(name = "default_price", nullable = false)
+    private BigDecimal defaultPrice = BigDecimal.valueOf(80000);
 
     @CreationTimestamp
     private LocalDateTime createdAt;

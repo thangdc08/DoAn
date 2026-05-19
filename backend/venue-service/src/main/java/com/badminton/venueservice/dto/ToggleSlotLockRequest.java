@@ -5,15 +5,15 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
+import java.time.LocalDate;
 
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class CreateCourtRequest {
-    private String name;
-    private String courtType;
-    private String description;
-    private BigDecimal defaultPrice;
+public class ToggleSlotLockRequest {
+    private LocalDate slotDate;
+    private String startTime;
+    private String endTime;
+    private boolean lock;
 }

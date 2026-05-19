@@ -1,9 +1,14 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Badge, Button, Tooltip, Typography } from 'antd';
-import { ShoppingCartOutlined } from '@ant-design/icons';
+import { ShoppingCartOutlined, LockOutlined, UnlockOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
 import { courtNames, timeSlots } from '../../data/mockData';
 import { useNotify } from '../../hooks/useNotify';
 import { BRAND } from '../../theme/antdTheme';
+import { venueApi } from '../../services/venueApi';
+import { bookingApi } from '../../services/bookingApi';
+import dayjs from 'dayjs';
+import type { PriceRule } from '../../types/venue.types';
 
 const { Text } = Typography;
 
@@ -24,6 +29,10 @@ type BookingGridProps = {
   timeSlots?: string[];
   /** Chế độ quản trị (Lock sân) */
   isAdmin?: boolean;
+  venueId?: string;
+  courts?: any[];
+  selectedDate?: any;
+  priceRules?: PriceRule[];
 };
 
 // ─── Mock data (sẽ thay bằng API) ──────────────────────────────────────
@@ -76,7 +85,7 @@ function getSlotStyle(status: SlotStatus): React.CSSProperties {
     case 'booked':
       return { ...base, background: '#fee2e2', color: '#dc2626', cursor: 'not-allowed' };
     case 'locked':
-      return { ...base, background: '#fef3c7', color: '#d97706', cursor: 'not-allowed' };
+      return { ...base, background: '#fef3c7', color: '#d97706', cursor: 'pointer' };
     case 'selected':
       return {
         ...base,
@@ -92,59 +101,226 @@ function getSlotStyle(status: SlotStatus): React.CSSProperties {
 function getSlotLabel(status: SlotStatus): string {
   switch (status) {
     case 'booked': return 'Đặt';
-    case 'locked': return 'Giữ';
+    case 'locked': return 'Khóa';
     case 'selected': return '✓';
     default: return '';
   }
 }
 
+// Helper to calculate end time of 30-min slot
+const getEndTime = (startTime: string): string => {
+  const [hStr, mStr] = startTime.split(':');
+  let h = parseInt(hStr);
+  let m = parseInt(mStr);
+  
+  if (m === 30) {
+    if (h === 23) {
+      return '23:59';
+    }
+    return `${String(h + 1).padStart(2, '0')}:00`;
+  } else {
+    return `${String(h).padStart(2, '0')}:30`;
+  }
+};
+
 // ─── Main component ─────────────────────────────────────────────────────
 
 const BookingGrid: React.FC<BookingGridProps> = ({
   onSelectionChange,
-  pricePerSlot = 120_000,
+  pricePerSlot,
   readOnly = false,
   courtNames: propsCourtNames,
   timeSlots: propsTimeSlots,
   isAdmin = false,
+  venueId,
+  courts,
+  selectedDate,
+  priceRules = [],
 }) => {
+  const navigate = useNavigate();
   const { confirm, success, notify } = useNotify();
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [lockedByAdmin, setLockedByAdmin] = useState<Set<string>>(new Set(LOCKED_SLOTS));
+  
+  // States for Admin API operations
+  const [dbSlots, setDbSlots] = useState<{ [key: string]: { status: string; price: number } }>({});
+  const [loading, setLoading] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
-  const finalCourtNames = propsCourtNames || courtNames;
+  const finalCourtNames = propsCourtNames || (courts && courts.length > 0 ? courts.map(c => c.name) : courtNames);
   const finalTimeSlots = propsTimeSlots || timeSlots;
+  const selectedDayOfWeek = selectedDate
+    ? ((selectedDate.day() + 6) % 7) + 1
+    : (((dayjs().day() + 6) % 7) + 1);
 
-  const totalPrice = useMemo(
-    () => selectedSlots.length * pricePerSlot,
-    [selectedSlots.length, pricePerSlot],
-  );
+  const getHourlyPriceByRule = (time: string, courtId?: string) => {
+    const slotStart = `${time}:00`;
+    const exactCourtRule = courtId
+      ? priceRules.find((rule) =>
+          rule.status === 'ACTIVE' &&
+          rule.dayOfWeek === selectedDayOfWeek &&
+          rule.courtId === courtId &&
+          slotStart >= rule.startTime &&
+          slotStart < rule.endTime
+        )
+      : undefined;
 
-  const getStatus = (court: string, time: string): SlotStatus => {
-    const id = `${court}-${time}`;
+    if (exactCourtRule) return exactCourtRule.pricePerHour;
+
+    const venueRule = priceRules.find((rule) =>
+      rule.status === 'ACTIVE' &&
+      rule.dayOfWeek === selectedDayOfWeek &&
+      !rule.courtId &&
+      slotStart >= rule.startTime &&
+      slotStart < rule.endTime
+    );
+    return venueRule?.pricePerHour;
+  };
+
+  const getSlotPrice = (courtName: string, time: string) => {
+    const courtObj = courts?.find(c => c.name === courtName);
+    const selectionId = courtObj ? `${courtObj.id}_${time}` : '';
+    const slotDetail = selectionId ? dbSlots[selectionId] : undefined;
+    if (slotDetail?.price !== undefined) return slotDetail.price;
+
+    const hourlyRulePrice = getHourlyPriceByRule(time, courtObj?.id);
+    if (hourlyRulePrice !== undefined) return hourlyRulePrice / 2;
+
+    const hourlyDefault = courtObj?.defaultPrice ?? pricePerSlot ?? 80000;
+    return hourlyDefault / 2;
+  };
+
+  const displayPriceByTime = useMemo(() => {
+    const firstActiveCourt = courts?.find(c => c.status !== 'INACTIVE');
+    return finalTimeSlots.map((time) => {
+      const hourlyRulePrice = getHourlyPriceByRule(time, firstActiveCourt?.id);
+      if (hourlyRulePrice !== undefined) return hourlyRulePrice;
+      return firstActiveCourt?.defaultPrice ?? pricePerSlot ?? 80000;
+    });
+  }, [courts, finalTimeSlots, pricePerSlot, priceRules, selectedDayOfWeek]);
+
+  const totalPrice = useMemo(() => {
+    if (selectedSlots.length === 0) return 0;
+    return selectedSlots.reduce((sum, key) => {
+      const slot = dbSlots[key];
+      if (slot?.price !== undefined) {
+        return sum + slot.price;
+      }
+      // Fallback: use price rules first, then default court price.
+      const [courtId, time] = key.split('_');
+      const hourlyRulePrice = getHourlyPriceByRule(time, courtId);
+      if (hourlyRulePrice !== undefined) {
+        return sum + (hourlyRulePrice / 2);
+      }
+      const court = courts?.find(c => c.id === courtId);
+      const hourlyPrice = court?.defaultPrice || 80000;
+      return sum + (hourlyPrice / 2);
+    }, 0);
+  }, [selectedSlots, dbSlots, courts, priceRules, selectedDayOfWeek]);
+
+  // Fetch slots data from DB for BOTH Admin and User modes
+  useEffect(() => {
+    if (venueId && courts && courts.length > 0 && selectedDate) {
+      const fetchAllAvailabilities = async () => {
+        setLoading(true);
+        try {
+          const dateStr = selectedDate.format('YYYY-MM-DD');
+          const results = await Promise.all(
+            courts.map(async (court) => {
+              // Skip API call for maintenance or inactive courts
+              if (court.status === 'INACTIVE' || court.status === 'MAINTENANCE') {
+                return { courtId: court.id, slots: [] };
+              }
+              const slots = await venueApi.getCourtAvailability(venueId, court.id, dateStr);
+              return { courtId: court.id, slots };
+            })
+          );
+
+          const newMap: { [key: string]: { status: string; price: number } } = {};
+          results.forEach(({ courtId, slots }) => {
+            slots.forEach((slot: any) => {
+              const [h, m] = slot.startTime.split(':');
+              const timeKey = `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+              const courtDefaultPrice = courts.find((court) => court.id === courtId)?.defaultPrice ?? 80000;
+              newMap[`${courtId}_${timeKey}`] = {
+                status: slot.status,
+                price: slot.price ?? (courtDefaultPrice / 2),
+              };
+            });
+          });
+          setDbSlots(newMap);
+        } catch (error) {
+          console.error("Failed to fetch slots availability:", error);
+        } finally {
+          setLoading(false);
+        }
+      };
+
+      fetchAllAvailabilities();
+    }
+  }, [venueId, courts, selectedDate, refreshTrigger]);
+
+  const getStatus = (courtName: string, time: string): SlotStatus => {
+    if (courts && courts.length > 0) {
+      const courtObj = courts.find(c => c.name === courtName);
+      if (courtObj) {
+        // If court is undergoing maintenance or inactive, lock all its slots
+        if (courtObj.status === 'MAINTENANCE' || courtObj.status === 'INACTIVE') {
+          return 'locked';
+        }
+
+        const selectionId = `${courtObj.id}_${time}`;
+        if (selectedSlots.includes(selectionId)) return 'selected';
+        
+        const dbStatus = dbSlots[selectionId]?.status;
+        if (dbStatus === 'BOOKED') return 'booked';
+        if (dbStatus === 'LOCKED') return 'locked';
+        return 'available';
+      }
+    }
+
+    const id = `${courtName}-${time}`;
     if (BOOKED_SLOTS.has(id)) return 'booked';
     if (lockedByAdmin.has(id)) return 'locked';
     if (selectedSlots.includes(id)) return 'selected';
     return 'available';
   };
 
-  const toggleSlot = (court: string, time: string) => {
+  const toggleSlot = (courtName: string, time: string) => {
     if (readOnly && !isAdmin) return;
-    const id = `${court}-${time}`;
 
-    if (isAdmin) {
-      const newLocked = new Set(lockedByAdmin);
-      if (newLocked.has(id)) {
-        newLocked.delete(id);
-        notify('info', 'Đã mở khóa sân', `Sân ${court} khung giờ ${time} đã sẵn sàng cho khách.`);
-      } else {
-        newLocked.add(id);
-        notify('warning', 'Đã khóa sân', `Sân ${court} khung giờ ${time} đã được ẩn khỏi khách.`);
+    if (courts && courts.length > 0) {
+      const courtObj = courts.find(c => c.name === courtName);
+      if (!courtObj) return;
+
+      if (courtObj.status === 'MAINTENANCE' || courtObj.status === 'INACTIVE') {
+        notify('warning', 'Không thể chọn slot', `Sân ${courtName} hiện tại đang bảo trì hoặc ngừng hoạt động.`);
+        return;
       }
-      setLockedByAdmin(newLocked);
+      
+      const key = `${courtObj.id}_${time}`;
+      const dbStatus = dbSlots[key]?.status;
+      
+      if (dbStatus === 'BOOKED') {
+        notify('error', 'Không thể chọn slot này', `Sân ${courtName} lúc ${time} đã có khách đặt lịch.`);
+        return;
+      }
+      if (dbStatus === 'LOCKED' && !isAdmin) {
+        notify('error', 'Không thể chọn slot này', `Sân ${courtName} lúc ${time} đã bị khóa.`);
+        return;
+      }
+
+      setSelectedSlots((prev) => {
+        const next = prev.includes(key)
+          ? prev.filter((s) => s !== key)
+          : [...prev, key];
+        onSelectionChange?.(next);
+        return next;
+      });
       return;
     }
 
+    const id = `${courtName}-${time}`;
     if (BOOKED_SLOTS.has(id) || lockedByAdmin.has(id)) return;
 
     setSelectedSlots((prev) => {
@@ -157,7 +333,7 @@ const BookingGrid: React.FC<BookingGridProps> = ({
   };
 
   const handleConfirmBooking = () => {
-    if (selectedSlots.length === 0) return;
+    if (selectedSlots.length === 0 || !venueId) return;
 
     confirm({
       title: 'Xác nhận đặt sân',
@@ -175,16 +351,89 @@ const BookingGrid: React.FC<BookingGridProps> = ({
             .
           </p>
           <p style={{ color: '#64748b', fontSize: 13 }}>
-            Slot sẽ được giữ trong 10 phút để bạn hoàn tất thanh toán.
+            Slot sẽ được giữ trong 15 phút để bạn hoàn tất thanh toán.
           </p>
         </div>
       ),
       okText: 'Đặt sân',
-      onOk: () => {
-        success(`Đặt sân thành công! ${selectedSlots.length} slot đang được giữ chờ thanh toán.`);
-        setSelectedSlots([]);
-        onSelectionChange?.([]);
+      onOk: async () => {
+        setLoading(true);
+        try {
+          // Group selected slots by courtId
+          const slotsByCourt: { [courtId: string]: { startTime: string; endTime: string }[] } = {};
+          selectedSlots.forEach((slotKey) => {
+            const [courtId, startTime] = slotKey.split('_');
+            const endTime = getEndTime(startTime);
+            if (!slotsByCourt[courtId]) {
+              slotsByCourt[courtId] = [];
+            }
+            
+            // Format to LocalDateTime ISO format (YYYY-MM-DDTHH:mm:00)
+            const dateStr = selectedDate.format('YYYY-MM-DD');
+            const startIso = `${dateStr}T${startTime}:00`;
+            const endIso = `${dateStr}T${endTime}:00`;
+            slotsByCourt[courtId].push({ startTime: startIso, endTime: endIso });
+          });
+
+          // Call lock API for each court in parallel
+          const lockPromises = Object.entries(slotsByCourt).map(([courtId, slots]) =>
+            bookingApi.lockSlots({
+              venueId,
+              courtId,
+              slots,
+            })
+          );
+          const lockResponses = await Promise.all(lockPromises);
+          const allLockIds = lockResponses.flatMap((res) => res.lockIds);
+
+          success(`Chọn sân thành công! Đang chuyển đến trang thanh toán...`);
+          setSelectedSlots([]);
+          onSelectionChange?.([]);
+          
+          // Redirect to checkout with lockIds
+          navigate(`/checkout?lockIds=${allLockIds.join(',')}`);
+        } catch (error: any) {
+          console.error("Lock slots failed:", error);
+          notify('error', 'Lỗi đặt sân', error.response?.data?.message || 'Không thể giữ chỗ sân lúc này. Vui lòng thử lại.');
+        } finally {
+          setLoading(false);
+        }
       },
+    });
+  };
+
+  const handleToggleLockBulk = async (shouldLock: boolean) => {
+    if (selectedSlots.length === 0 || !venueId) return;
+
+    confirm({
+      title: shouldLock ? 'Xác nhận Khóa sân' : 'Xác nhận Mở khóa sân',
+      content: `Bạn có chắc chắn muốn ${shouldLock ? 'KHÓA' : 'MỞ KHÓA'} ${selectedSlots.length} slot đã chọn?`,
+      okText: 'Xác nhận',
+      onOk: async () => {
+        try {
+          const dateStr = selectedDate.format('YYYY-MM-DD');
+          
+          await Promise.all(
+            selectedSlots.map(async (slotKey) => {
+              const [courtId, time] = slotKey.split('_');
+              return venueApi.toggleSlotLock(venueId, courtId, {
+                slotDate: dateStr,
+                startTime: time,
+                endTime: getEndTime(time),
+                lock: shouldLock
+              });
+            })
+          );
+
+          success(`${shouldLock ? 'Khóa' : 'Mở khóa'} sân thành công!`);
+          setSelectedSlots([]);
+          setRefreshTrigger(prev => prev + 1);
+        } catch (error: any) {
+          console.error("Failed to toggle slot locks:", error);
+          const errorMsg = error?.response?.data?.message || "Không thể thực hiện yêu cầu.";
+          notify('error', 'Lỗi thực hiện', errorMsg);
+        }
+      }
     });
   };
 
@@ -246,6 +495,51 @@ const BookingGrid: React.FC<BookingGridProps> = ({
             ))}
           </div>
 
+          <div
+            style={{
+              display: 'flex',
+              borderBottom: '1px solid #e2e8f0',
+              background: '#f8fafc',
+            }}
+          >
+            <div
+              style={{
+                width: 96,
+                flexShrink: 0,
+                padding: '8px 12px',
+                fontSize: 12,
+                fontWeight: 700,
+                color: '#475569',
+                borderRight: '1px solid #e2e8f0',
+                position: 'sticky',
+                left: 0,
+                background: '#f8fafc',
+                zIndex: 10,
+              }}
+            >
+              Giá
+            </div>
+            {displayPriceByTime.map((hourlyPrice, idx) => (
+              <div
+                key={`price-${finalTimeSlots[idx]}`}
+                style={{
+                  width: 48,
+                  flexShrink: 0,
+                  padding: '8px 2px',
+                  textAlign: 'center',
+                  fontSize: 9,
+                  fontWeight: 700,
+                  color: '#16a34a',
+                  borderRight: '1px solid #f1f5f9',
+                  lineHeight: 1.2,
+                }}
+                title={`${hourlyPrice.toLocaleString('vi-VN')}đ / giờ`}
+              >
+                {(hourlyPrice / 1000).toFixed(0)}k
+              </div>
+            ))}
+          </div>
+
           {/* Court rows */}
           {finalCourtNames.map((court) => (
             <div
@@ -281,9 +575,10 @@ const BookingGrid: React.FC<BookingGridProps> = ({
               {finalTimeSlots.map((time) => {
                 const status = getStatus(court, time);
                 const label = getSlotLabel(status);
-                const tooltipTitle = `${court} · ${time} — ${
-                  status === 'booked' ? 'Đã được đặt'
-                  : status === 'locked' ? 'Đang được giữ tạm'
+                const price = getSlotPrice(court, time);
+                const tooltipTitle = `${court} · ${time} · Giá: ${price.toLocaleString('vi-VN')}đ — ${
+                  status === 'booked' ? 'Đã có khách đặt'
+                  : status === 'locked' ? (isAdmin ? 'Đã khóa' : 'Đang được giữ tạm')
                   : status === 'selected' ? 'Đang chọn'
                   : 'Còn trống, nhấn để chọn'
                 }`;
@@ -317,59 +612,112 @@ const BookingGrid: React.FC<BookingGridProps> = ({
       </div>
 
       {/* ── Footer: Legend + Summary ────────────────────────── */}
-      {!readOnly && (
+      {isAdmin ? (
         <div
-        style={{
-          marginTop: 16,
-          display: 'flex',
-          flexWrap: 'wrap',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 12,
-          padding: '14px 18px',
-          background: '#f8fafc',
-          borderRadius: 12,
-          border: '1px solid #f1f5f9',
-        }}
-      >
-        {/* Legend */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
-          <LegendItem color="#fff" label="Còn trống" />
-          <LegendItem color={BRAND.primary} label="Đang chọn" />
-          <LegendItem color="#fef3c7" label="Đang giữ" />
-          <LegendItem color="#fee2e2" label="Đã đặt" />
-        </div>
+          style={{
+            marginTop: 16,
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+            padding: '14px 18px',
+            background: '#f8fafc',
+            borderRadius: 12,
+            border: '1px solid #f1f5f9',
+          }}
+        >
+          {/* Legend */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
+            <LegendItem color="#fff" label="Còn trống" />
+            <LegendItem color={BRAND.primary} label="Đang chọn" />
+            <LegendItem color="#fef3c7" label="Đã khóa" />
+            <LegendItem color="#fee2e2" label="Đã đặt" />
+          </div>
 
-        {/* Summary + CTA */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          {selectedSlots.length > 0 && (
-            <div style={{ textAlign: 'right' }}>
-              <Text style={{ fontSize: 13, color: '#64748b' }}>
-                Đã chọn{' '}
-                <strong style={{ color: BRAND.text }}>
-                  {selectedSlots.length}
-                </strong>{' '}
-                slot
-              </Text>
-              <div style={{ fontSize: 15, fontWeight: 700, color: BRAND.primary }}>
-                {totalPrice.toLocaleString('vi-VN')}đ
-              </div>
-            </div>
-          )}
-          <Badge count={selectedSlots.length} showZero={false} color={BRAND.primary}>
+          {/* Action Buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            {selectedSlots.length > 0 && (
+              <span style={{ fontSize: 13, color: '#64748b', marginRight: 8 }}>
+                Đã chọn <strong>{selectedSlots.length}</strong> slot
+              </span>
+            )}
             <Button
               type="primary"
-              size="large"
-              icon={<ShoppingCartOutlined />}
-              disabled={selectedSlots.length === 0}
-              onClick={handleConfirmBooking}
-              style={{ fontWeight: 700 }}
+              danger
+              icon={<LockOutlined />}
+              disabled={selectedSlots.length === 0 || loading}
+              onClick={() => handleToggleLockBulk(true)}
+              style={{ fontWeight: 700, borderRadius: 8 }}
             >
-              Đặt sân
+              Khóa sân
             </Button>
-          </Badge>
+            <Button
+              type="default"
+              icon={<UnlockOutlined />}
+              disabled={selectedSlots.length === 0 || loading}
+              onClick={() => handleToggleLockBulk(false)}
+              style={{ fontWeight: 700, borderRadius: 8, borderColor: BRAND.primary, color: BRAND.primary }}
+            >
+              Mở khóa sân
+            </Button>
+          </div>
         </div>
-      </div>
+      ) : (
+        !readOnly && (
+          <div
+            style={{
+              marginTop: 16,
+              display: 'flex',
+              flexWrap: 'wrap',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              padding: '14px 18px',
+              background: '#f8fafc',
+              borderRadius: 12,
+              border: '1px solid #f1f5f9',
+            }}
+          >
+            {/* Legend */}
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
+              <LegendItem color="#fff" label="Còn trống" />
+              <LegendItem color={BRAND.primary} label="Đang chọn" />
+              <LegendItem color="#fef3c7" label="Đang giữ" />
+              <LegendItem color="#fee2e2" label="Đã đặt" />
+            </div>
+
+            {/* Summary + CTA */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+              {selectedSlots.length > 0 && (
+                <div style={{ textAlign: 'right' }}>
+                  <Text style={{ fontSize: 13, color: '#64748b' }}>
+                    Đã chọn{' '}
+                    <strong style={{ color: BRAND.text }}>
+                      {selectedSlots.length}
+                    </strong>{' '}
+                    slot
+                  </Text>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: BRAND.primary }}>
+                    {totalPrice.toLocaleString('vi-VN')}đ
+                  </div>
+                </div>
+              )}
+              <Badge count={selectedSlots.length} showZero={false} color={BRAND.primary}>
+                <Button
+                  type="primary"
+                  size="large"
+                  icon={<ShoppingCartOutlined />}
+                  disabled={selectedSlots.length === 0}
+                  onClick={handleConfirmBooking}
+                  style={{ fontWeight: 700 }}
+                >
+                  Đặt sân
+                </Button>
+              </Badge>
+            </div>
+          </div>
+        )
       )}
     </div>
   );

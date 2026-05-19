@@ -25,7 +25,7 @@ export const venueApi = {
     longitude?: number;
     page?: number;
     size?: number;
-  }): Promise<{ content: Venue[]; totalElements: number; totalPages: number }> => {
+  }): Promise<Venue[]> => {
     const response = await apiClient.get('/venues/api/venues', { params });
     return unwrapResult(response);
   },
@@ -94,6 +94,15 @@ export const venueApi = {
 
   getCourtAvailability: async (venueId: string, courtId: string, date: string): Promise<any[]> => {
     const response = await apiClient.get(`/venues/api/venues/${venueId}/courts/${courtId}/availability`, { params: { date } });
+    return unwrapResult(response);
+  },
+
+  toggleSlotLock: async (
+    venueId: string,
+    courtId: string,
+    data: { slotDate: string; startTime: string; endTime: string; lock: boolean }
+  ): Promise<any> => {
+    const response = await apiClient.put(`/venues/api/venues/${venueId}/courts/${courtId}/slots/toggle-lock`, data);
     return unwrapResult(response);
   },
 

@@ -128,6 +128,20 @@ public class VenueController {
                 .build();
     }
 
+    @PutMapping("/{venueId}/courts/{courtId}/slots/toggle-lock")
+    @Operation(summary = "Toggle slot lock", description = "Allows owners to quickly lock or unlock a specific slot")
+    public ApiResponse<CourtSlotResponse> toggleSlotLock(
+            @PathVariable UUID venueId,
+            @PathVariable UUID courtId,
+            @RequestBody ToggleSlotLockRequest request) {
+        log.info("API Request: Toggle lock for court {} in venue {}", courtId, venueId);
+        CourtSlotResponse result = venueService.toggleCourtSlotLock(venueId, courtId, request);
+        return ApiResponse.<CourtSlotResponse>builder()
+                .result(result)
+                .message(request.isLock() ? "Khóa sân thành công" : "Mở khóa sân thành công")
+                .build();
+    }
+
     @PostMapping("/{venueId}/courts")
     @Operation(summary = "Create new court", description = "Allows owners to add a new court to their venue")
     public ApiResponse<CourtResponse> createCourt(

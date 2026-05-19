@@ -14,7 +14,7 @@ import {
 } from '@ant-design/icons';
 import { MapPin, X, Search } from 'lucide-react';
 import { useNavigate, Link } from 'react-router-dom';
-import { PROVINCE_OPTIONS } from '../../constants/areas';
+import { PROVINCE_OPTIONS, AREA_OPTIONS } from '../../constants/areas';
 import { UTILITIES } from '../../constants/venue.constants.tsx';
 import { AddressFields } from '../../components/forms/AddressFields';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
@@ -92,12 +92,26 @@ export default function PartnerOnboardingPage() {
     // Đợi 800ms sau khi người dùng dừng gõ mới gửi request
     searchTimeoutRef.current = setTimeout(async () => {
       try {
+        const cityVal = form.getFieldValue('city');
+        const wardVal = form.getFieldValue('ward');
+        
+        const cityLabel = PROVINCE_OPTIONS.find(p => p.value === cityVal)?.label || '';
+        
+        let wardLabel = '';
+        if (cityLabel) {
+          const areaGroup = AREA_OPTIONS.find(group => group.label === cityLabel);
+          if (areaGroup) {
+            wardLabel = areaGroup.options.find(o => o.value === wardVal)?.label || '';
+          }
+        }
+        
+        const fullQuery = [value, wardLabel, cityLabel].filter(Boolean).join(', ');
+
         const response = await fetch(
-          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&countrycodes=vn&limit=5`,
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullQuery)}&countrycodes=vn&limit=5`,
           {
             headers: {
               'Accept-Language': 'vi',
-              // Nominatim yêu cầu thông tin định danh nếu dùng nhiều, ở mức dev thì dùng mặc định trình duyệt
             }
           }
         );
@@ -124,7 +138,22 @@ export default function PartnerOnboardingPage() {
     if (!value) return;
     setSearchLoading(true);
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(value)}&countrycodes=vn&limit=1`);
+      const cityVal = form.getFieldValue('city');
+      const wardVal = form.getFieldValue('ward');
+      
+      const cityLabel = PROVINCE_OPTIONS.find(p => p.value === cityVal)?.label || '';
+      
+      let wardLabel = '';
+      if (cityLabel) {
+        const areaGroup = AREA_OPTIONS.find(group => group.label === cityLabel);
+        if (areaGroup) {
+          wardLabel = areaGroup.options.find(o => o.value === wardVal)?.label || '';
+        }
+      }
+      
+      const fullQuery = [value, wardLabel, cityLabel].filter(Boolean).join(', ');
+
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullQuery)}&countrycodes=vn&limit=1`);
       const data = await response.json();
       if (data && data.length > 0) {
         const { lat, lon } = data[0];
