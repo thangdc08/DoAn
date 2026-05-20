@@ -1,4 +1,4 @@
-﻿package com.badminton.notificationservice;
+package com.badminton.notificationservice;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;

@@ -1,10 +1,14 @@
-﻿package com.badminton.bookingservice.repository;
+package com.badminton.bookingservice.repository;
 
 import com.badminton.bookingservice.entity.Booking;
 import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
 public interface BookingRepository extends JpaRepository<Booking, UUID> {
     List<Booking> findByUserId(UUID userId);
+    List<Booking> findByStatusAndExpiresAtBefore(String status, LocalDateTime now);
+    boolean existsByUserIdAndVenueIdAndStatus(UUID userId, UUID venueId, String status);
 }

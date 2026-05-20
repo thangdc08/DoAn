@@ -37,8 +37,8 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(value = {
-        org.springframework.web.bind.MissingRequestHeaderException.class,
-        org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class
+            org.springframework.web.bind.MissingRequestHeaderException.class,
+            org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class
     })
     public ResponseEntity<ApiResponse<Object>> handleBadRequestException(Exception ex) {
         ApiResponse<Object> res = new ApiResponse<>();
@@ -62,7 +62,7 @@ public class GlobalExceptionHandler {
 
         ApiResponse<Object> response = new ApiResponse<>();
         response.setCode(HttpStatus.BAD_REQUEST.value());
-        
+
         List<String> errors = fieldErrors.stream()
                 .map(FieldError::getDefaultMessage)
                 .collect(Collectors.toList());
@@ -73,7 +73,8 @@ public class GlobalExceptionHandler {
     }
 
     @ExceptionHandler(value = DataIntegrityViolationException.class)
-    public ResponseEntity<ApiResponse<Object>> handleDataIntegrityViolationException(DataIntegrityViolationException ex) {
+    public ResponseEntity<ApiResponse<Object>> handleDataIntegrityViolationException(
+            DataIntegrityViolationException ex) {
         ApiResponse<Object> response = new ApiResponse<>();
         response.setCode(HttpStatus.CONFLICT.value());
         response.setMessage("Vi phạm ràng buộc dữ liệu: " + ex.getMessage());

@@ -3,10 +3,12 @@ package com.badminton.common.config;
 import com.cloudinary.Cloudinary;
 import com.cloudinary.utils.ObjectUtils;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
 @Configuration
+@ConditionalOnProperty(name = "app.cloudinary.cloud-name")
 public class CloudinaryConfig {
 
     @Value("${app.cloudinary.cloud-name}")

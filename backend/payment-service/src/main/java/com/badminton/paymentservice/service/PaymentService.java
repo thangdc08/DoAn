@@ -17,19 +17,22 @@ public class PaymentService {
 
     private final PaymentTransactionRepository transactionRepository;
     private final PaymentEventPublisher eventPublisher;
+    private static final String SANDBOX_WEB_BASE_URL = "http://localhost:5173";
 
     @Transactional
-    public PaymentTransaction createPayment(UUID bookingId, UUID userId, BigDecimal amount) {
+    public PaymentTransaction createPayment(UUID bookingId, UUID userId, BigDecimal amount, String provider) {
+        String selectedProvider = (provider == null || provider.isBlank()) ? "MOCK" : provider.toUpperCase();
         PaymentTransaction transaction = PaymentTransaction.builder()
                 .bookingId(bookingId)
                 .userId(userId)
                 .amount(amount)
-                .provider("MOCK")
+                .provider(selectedProvider)
                 .status("PENDING")
-                .paymentUrl("http://localhost:3000/mock-payment?bookingId=" + bookingId)
                 .build();
 
-        return transactionRepository.save(transaction);
+        PaymentTransaction saved = transactionRepository.save(transaction);
+        saved.setPaymentUrl(SANDBOX_WEB_BASE_URL + "/mock-payment?transactionId=" + saved.getId());
+        return transactionRepository.save(saved);
     }
 
     @Transactional

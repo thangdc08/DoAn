@@ -45,6 +45,9 @@ springdoc:
     path: /swagger-ui.html
 
 app:
+  services:
+    booking-service:
+      url: http://localhost:8083
   cloudinary:
     cloud-name: drq5f0hg2
     api-key: "318313767569946"

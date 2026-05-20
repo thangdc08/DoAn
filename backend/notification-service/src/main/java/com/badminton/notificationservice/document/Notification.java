@@ -1,4 +1,4 @@
-﻿package com.badminton.notificationservice.document;
+package com.badminton.notificationservice.document;
 
 import lombok.*;
 import org.springframework.data.annotation.Id;

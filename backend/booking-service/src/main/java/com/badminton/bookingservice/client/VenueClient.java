@@ -1,5 +1,6 @@
 package com.badminton.bookingservice.client;
 
+import com.badminton.bookingservice.dto.VenueInternalResponse;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -14,7 +15,7 @@ import java.util.UUID;
 public interface VenueClient {
 
     @GetMapping("/internal/venues/{id}")
-    Object getVenueById(@PathVariable("id") UUID id);
+    VenueInternalResponse getVenueById(@PathVariable("id") UUID id);
 
     @GetMapping("/internal/courts/{courtId}/price")
     BigDecimal getPrice(

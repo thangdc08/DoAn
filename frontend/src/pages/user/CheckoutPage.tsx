@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
 import { Card, Row, Col, Button, Typography, Descriptions, Tag, Space, message, Spin, Alert } from 'antd';
@@ -6,36 +6,53 @@ import { ClockCircleOutlined, EnvironmentOutlined, CalendarOutlined } from '@ant
 import { bookingApi } from '../../services/bookingApi';
 import { useCountdown } from '../../hooks/useCountdown';
 import dayjs from 'dayjs';
+import type { CreateBookingResponse } from '../../types/booking.types';
 
 const { Title, Text } = Typography;
 
 export default function CheckoutPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const lockIds = searchParams.get('lockIds')?.split(',') || [];
+  const lockIdsParam = searchParams.get('lockIds') || '';
+  const lockIds = useMemo(
+    () => lockIdsParam.split(',').map((id) => id.trim()).filter(Boolean),
+    [lockIdsParam]
+  );
   const [bookingId, setBookingId] = useState<string>('');
+  const [bookingData, setBookingData] = useState<CreateBookingResponse | null>(null);
+  const requestedLockIdsRef = useRef<string>('');
 
-  // Create booking mutation
   const createBookingMutation = useMutation({
     mutationFn: bookingApi.createBooking,
     onSuccess: (data) => {
-      message.success('Tạo booking thành công');
+      message.success({ key: 'create-booking', content: 'Tao booking thanh cong' });
       setBookingId(data.bookingId);
+      setBookingData(data);
     },
-    onError: () => {
-      message.error('Tạo booking thất bại');
-      navigate('/venues');
+    onError: (error: any) => {
+      message.error({
+        key: 'create-booking',
+        content: error?.response?.data?.message || error?.message || 'Tao booking that bai',
+      });
     },
   });
+  const bookingError = createBookingMutation.error as any;
+  const bookingErrorMessage =
+    bookingError?.response?.data?.message ||
+    bookingError?.message ||
+    'Khong the tao booking. Vui long thu lai.';
 
   useEffect(() => {
-    if (lockIds.length > 0 && !bookingId) {
+    if (lockIds.length > 0 && !bookingId && requestedLockIdsRef.current !== lockIdsParam) {
+      requestedLockIdsRef.current = lockIdsParam;
       createBookingMutation.mutate({ lockIds });
     }
-  }, [lockIds]);
+  }, [lockIds, lockIdsParam, bookingId]);
 
-  // Countdown for booking expiration (15 minutes = 900 seconds)
-  const { display } = useCountdown(900, !!bookingId);
+  const expiresInSeconds = bookingData?.expiresAt
+    ? Math.max(0, dayjs(bookingData.expiresAt).diff(dayjs(), 'second'))
+    : 900;
+  const { display } = useCountdown(expiresInSeconds, !!bookingId);
 
   const handlePayment = () => {
     if (bookingId) {
@@ -47,17 +64,43 @@ export default function CheckoutPage() {
     return (
       <div style={{ textAlign: 'center', padding: '60px 0' }}>
         <Spin size="large" />
-        <div style={{ marginTop: 16 }}>Đang tạo booking...</div>
+        <div style={{ marginTop: 16 }}>Dang tao booking...</div>
       </div>
     );
   }
 
-  if (!bookingId) {
+  if (createBookingMutation.isError) {
+    return (
+      <div style={{ padding: '24px', maxWidth: 720, margin: '0 auto' }}>
+        <Alert
+          message="Tao booking that bai"
+          description={bookingErrorMessage}
+          type="error"
+          showIcon
+          action={(
+            <Space>
+              <Button onClick={() => {
+                requestedLockIdsRef.current = '';
+                createBookingMutation.reset();
+              }}>
+                Thu lai
+              </Button>
+              <Button type="primary" onClick={() => navigate('/venues')}>
+                Chon san khac
+              </Button>
+            </Space>
+          )}
+        />
+      </div>
+    );
+  }
+
+  if (!bookingId || !bookingData) {
     return (
       <div style={{ padding: '24px' }}>
         <Alert
-          message="Không tìm thấy booking"
-          description="Vui lòng quay lại trang đặt sân"
+          message="Khong tim thay booking"
+          description="Vui long quay lai trang dat san"
           type="error"
           showIcon
         />
@@ -65,73 +108,44 @@ export default function CheckoutPage() {
     );
   }
 
-  const mockBookingData = {
-    id: bookingId,
-    venueNameSnapshot: 'Sân ABC',
-    totalAmount: 240000,
-    status: 'PENDING',
-    paymentStatus: 'UNPAID',
-    expiresAt: dayjs().add(15, 'minute').toISOString(),
-    items: [
-      {
-        id: '1',
-        courtNameSnapshot: 'Sân 1',
-        startTime: '2024-05-20T18:00:00',
-        endTime: '2024-05-20T19:00:00',
-        priceSnapshot: 120000,
-      },
-      {
-        id: '2',
-        courtNameSnapshot: 'Sân 1',
-        startTime: '2024-05-20T19:00:00',
-        endTime: '2024-05-20T20:00:00',
-        priceSnapshot: 120000,
-      },
-    ],
-  };
-
   return (
     <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto' }}>
-      <Title level={2}>Xác nhận đặt sân</Title>
+      <Title level={2}>Xac nhan dat san</Title>
 
-      {/* Countdown Alert */}
       <Alert
-        message={
+        message={(
           <Space>
             <ClockCircleOutlined />
-            <Text strong>
-              Thời gian còn lại: {display}
-            </Text>
+            <Text strong>Thoi gian con lai: {display}</Text>
           </Space>
-        }
-        description="Vui lòng hoàn tất thanh toán trước khi hết thời gian"
+        )}
+        description="Vui long hoan tat thanh toan truoc khi het thoi gian"
         type="warning"
         showIcon
         style={{ marginBottom: 24 }}
       />
 
       <Row gutter={[24, 24]}>
-        {/* Booking Details */}
         <Col xs={24} lg={16}>
-          <Card title="Thông tin đặt sân">
+          <Card title="Thong tin dat san">
             <Descriptions column={1} bordered>
-              <Descriptions.Item label="Mã booking">
-                <Text copyable>{mockBookingData.id}</Text>
+              <Descriptions.Item label="Ma booking">
+                <Text copyable>{bookingData.bookingId}</Text>
               </Descriptions.Item>
-              <Descriptions.Item label="Sân">
-                <EnvironmentOutlined /> {mockBookingData.venueNameSnapshot}
+              <Descriptions.Item label="San">
+                <EnvironmentOutlined /> {bookingData.venueNameSnapshot}
               </Descriptions.Item>
-              <Descriptions.Item label="Trạng thái">
-                <Tag color="warning">{mockBookingData.status}</Tag>
+              <Descriptions.Item label="Trang thai">
+                <Tag color="warning">{bookingData.status}</Tag>
               </Descriptions.Item>
-              <Descriptions.Item label="Trạng thái thanh toán">
-                <Tag color="error">{mockBookingData.paymentStatus}</Tag>
+              <Descriptions.Item label="Trang thai thanh toan">
+                <Tag color="error">{bookingData.paymentStatus}</Tag>
               </Descriptions.Item>
             </Descriptions>
 
             <div style={{ marginTop: 24 }}>
-              <Title level={5}>Chi tiết slot</Title>
-              {mockBookingData.items.map((item) => (
+              <Title level={5}>Chi tiet slot</Title>
+              {bookingData.items?.map((item) => (
                 <Card key={item.id} size="small" style={{ marginBottom: 8 }}>
                   <Row justify="space-between" align="middle">
                     <Col>
@@ -141,14 +155,13 @@ export default function CheckoutPage() {
                           <CalendarOutlined /> {dayjs(item.startTime).format('DD/MM/YYYY')}
                         </Text>
                         <Text>
-                          <ClockCircleOutlined />{' '}
-                          {dayjs(item.startTime).format('HH:mm')} - {dayjs(item.endTime).format('HH:mm')}
+                          <ClockCircleOutlined /> {dayjs(item.startTime).format('HH:mm')} - {dayjs(item.endTime).format('HH:mm')}
                         </Text>
                       </Space>
                     </Col>
                     <Col>
                       <Text strong style={{ fontSize: 16, color: '#52c41a' }}>
-                        {item.priceSnapshot.toLocaleString()}đ
+                        {item.priceSnapshot.toLocaleString()}d
                       </Text>
                     </Col>
                   </Row>
@@ -158,53 +171,39 @@ export default function CheckoutPage() {
           </Card>
         </Col>
 
-        {/* Payment Summary */}
         <Col xs={24} lg={8}>
-          <Card title="Tóm tắt thanh toán" style={{ position: 'sticky', top: 24 }}>
+          <Card title="Tom tat thanh toan" style={{ position: 'sticky', top: 24 }}>
             <Space direction="vertical" size="middle" style={{ width: '100%' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Text>Số lượng slot:</Text>
-                <Text strong>{mockBookingData.items.length}</Text>
+                <Text>So luong slot:</Text>
+                <Text strong>{bookingData.items?.length || 0}</Text>
               </div>
 
               <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Text>Tạm tính:</Text>
-                <Text>{mockBookingData.totalAmount.toLocaleString()}đ</Text>
+                <Text>Tam tinh:</Text>
+                <Text>{bookingData.totalAmount.toLocaleString()}d</Text>
               </div>
 
-              <div
-                style={{
-                  borderTop: '1px solid #f0f0f0',
-                  paddingTop: 16,
-                  marginTop: 8,
-                }}
-              >
+              <div style={{ borderTop: '1px solid #f0f0f0', paddingTop: 16, marginTop: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 16 }}>
-                  <Text strong style={{ fontSize: 16 }}>
-                    Tổng cộng:
-                  </Text>
+                  <Text strong style={{ fontSize: 16 }}>Tong cong:</Text>
                   <Text strong style={{ fontSize: 20, color: '#52c41a' }}>
-                    {mockBookingData.totalAmount.toLocaleString()}đ
+                    {bookingData.totalAmount.toLocaleString()}d
                   </Text>
                 </div>
 
                 <Button type="primary" size="large" block onClick={handlePayment}>
-                  Thanh toán ngay
+                  Thanh toan ngay
                 </Button>
 
-                <Button
-                  size="large"
-                  block
-                  style={{ marginTop: 8 }}
-                  onClick={() => navigate('/venues')}
-                >
-                  Hủy
+                <Button size="large" block style={{ marginTop: 8 }} onClick={() => navigate('/venues')}>
+                  Huy
                 </Button>
               </div>
 
               <Alert
-                message="Lưu ý"
-                description="Booking sẽ tự động hủy nếu không thanh toán trong thời gian quy định"
+                message="Luu y"
+                description="Booking se tu dong huy neu khong thanh toan trong thoi gian quy dinh"
                 type="info"
                 showIcon
                 style={{ marginTop: 16 }}

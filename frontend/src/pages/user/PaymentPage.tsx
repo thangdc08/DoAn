@@ -46,6 +46,8 @@ export default function PaymentPage() {
 
     createPaymentMutation.mutate({
       bookingId,
+      userId: booking.userId,
+      amount: booking.totalAmount,
       provider: paymentMethod,
     });
   };

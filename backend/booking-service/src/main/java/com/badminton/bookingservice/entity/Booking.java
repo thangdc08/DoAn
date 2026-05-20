@@ -1,4 +1,4 @@
-﻿package com.badminton.bookingservice.entity;
+package com.badminton.bookingservice.entity;
 
 import jakarta.persistence.*;
 import lombok.*;

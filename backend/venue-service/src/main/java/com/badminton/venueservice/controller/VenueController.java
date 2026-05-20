@@ -7,6 +7,11 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.web.PageableDefault;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
 
@@ -251,6 +256,43 @@ public class VenueController {
         venueService.deletePriceRule(venueId, ruleId);
         return ApiResponse.<Void>builder()
                 .message("Xóa quy tắc giá thành công")
+                .build();
+    }
+
+    @GetMapping("/nearby")
+    @Operation(summary = "Get venues nearby", description = "Returns a list of approved venues sorted by distance")
+    public ApiResponse<List<VenueResponse>> getNearbyVenues(
+            @RequestParam(required = false) Double lat,
+            @RequestParam(required = false) Double lng,
+            @RequestParam(required = false) Double radiusKm,
+            @RequestParam(required = false) Integer limit) {
+        log.info("API Request: Get nearby venues lat={}, lng={}", lat, lng);
+        return ApiResponse.<List<VenueResponse>>builder()
+                .result(venueService.findNearbyVenues(lat, lng, radiusKm, limit))
+                .build();
+    }
+
+    @PostMapping("/{venueId}/ratings")
+    @Operation(summary = "Rate a venue", description = "Allows users with a paid booking to submit a rating")
+    public ApiResponse<VenueRatingResponse> createRating(
+            @PathVariable UUID venueId,
+            @RequestHeader("X-Auth-User-Id") UUID userId,
+            @RequestBody VenueRatingRequest request) {
+        log.info("API Request: User {} rating venue {}", userId, venueId);
+        return ApiResponse.<VenueRatingResponse>builder()
+                .result(venueService.createVenueRating(userId, venueId, request))
+                .message("Đánh giá sân thành công")
+                .build();
+    }
+
+    @GetMapping("/{venueId}/ratings")
+    @Operation(summary = "Get venue ratings", description = "Returns paginated list of ratings for a venue")
+    public ApiResponse<Page<VenueRatingResponse>> getVenueRatings(
+            @PathVariable UUID venueId,
+            @PageableDefault(size = 10, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        log.info("API Request: Get ratings for venue {}", venueId);
+        return ApiResponse.<Page<VenueRatingResponse>>builder()
+                .result(venueService.getVenueRatings(venueId, pageable))
                 .build();
     }
 }

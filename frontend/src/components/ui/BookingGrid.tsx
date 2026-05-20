@@ -193,11 +193,18 @@ const BookingGrid: React.FC<BookingGridProps> = ({
   const displayPriceByTime = useMemo(() => {
     const firstActiveCourt = courts?.find(c => c.status !== 'INACTIVE');
     return finalTimeSlots.map((time) => {
+      if (firstActiveCourt?.id) {
+        const slotDetail = dbSlots[`${firstActiveCourt.id}_${time}`];
+        if (slotDetail?.price !== undefined) return slotDetail.price;
+      }
+
       const hourlyRulePrice = getHourlyPriceByRule(time, firstActiveCourt?.id);
-      if (hourlyRulePrice !== undefined) return hourlyRulePrice;
-      return firstActiveCourt?.defaultPrice ?? pricePerSlot ?? 80000;
+      if (hourlyRulePrice !== undefined) return hourlyRulePrice / 2;
+
+      const hourlyDefault = firstActiveCourt?.defaultPrice ?? pricePerSlot ?? 80000;
+      return hourlyDefault / 2;
     });
-  }, [courts, finalTimeSlots, pricePerSlot, priceRules, selectedDayOfWeek]);
+  }, [courts, dbSlots, finalTimeSlots, pricePerSlot, priceRules, selectedDayOfWeek]);
 
   const totalPrice = useMemo(() => {
     if (selectedSlots.length === 0) return 0;
@@ -229,15 +236,18 @@ const BookingGrid: React.FC<BookingGridProps> = ({
             courts.map(async (court) => {
               // Skip API call for maintenance or inactive courts
               if (court.status === 'INACTIVE' || court.status === 'MAINTENANCE') {
-                return { courtId: court.id, slots: [] };
+                return { courtId: court.id, slots: [], activeLocks: [] };
               }
-              const slots = await venueApi.getCourtAvailability(venueId, court.id, dateStr);
-              return { courtId: court.id, slots };
+              const [slots, activeLocks] = await Promise.all([
+                venueApi.getCourtAvailability(venueId, court.id, dateStr),
+                bookingApi.getActiveLocks({ courtId: court.id, date: dateStr }),
+              ]);
+              return { courtId: court.id, slots, activeLocks };
             })
           );
 
           const newMap: { [key: string]: { status: string; price: number } } = {};
-          results.forEach(({ courtId, slots }) => {
+          results.forEach(({ courtId, slots, activeLocks = [] }) => {
             slots.forEach((slot: any) => {
               const [h, m] = slot.startTime.split(':');
               const timeKey = `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
@@ -247,8 +257,22 @@ const BookingGrid: React.FC<BookingGridProps> = ({
                 price: slot.price ?? (courtDefaultPrice / 2),
               };
             });
+            activeLocks.forEach((lock: any) => {
+              const timeKey = dayjs(lock.startTime).format('HH:mm');
+              const key = `${courtId}_${timeKey}`;
+              const courtDefaultPrice = courts.find((court) => court.id === courtId)?.defaultPrice ?? 80000;
+              newMap[key] = {
+                ...(newMap[key] || { price: courtDefaultPrice / 2 }),
+                status: lock.status === 'BOOKED' ? 'BOOKED' : 'LOCKED',
+              };
+            });
           });
           setDbSlots(newMap);
+          setSelectedSlots((prev) => {
+            const next = prev.filter((slotKey) => !['LOCKED', 'BOOKED'].includes(newMap[slotKey]?.status));
+            if (next.length !== prev.length) onSelectionChange?.(next);
+            return next;
+          });
         } catch (error) {
           console.error("Failed to fetch slots availability:", error);
         } finally {
@@ -395,6 +419,19 @@ const BookingGrid: React.FC<BookingGridProps> = ({
         } catch (error: any) {
           console.error("Lock slots failed:", error);
           notify('error', 'Lỗi đặt sân', error.response?.data?.message || 'Không thể giữ chỗ sân lúc này. Vui lòng thử lại.');
+          setDbSlots((prev) => {
+            const next = { ...prev };
+            selectedSlots.forEach((slotKey) => {
+              next[slotKey] = {
+                ...(next[slotKey] || { price: 0 }),
+                status: 'LOCKED',
+              };
+            });
+            return next;
+          });
+          setSelectedSlots([]);
+          onSelectionChange?.([]);
+          setRefreshTrigger(prev => prev + 1);
         } finally {
           setLoading(false);
         }
@@ -519,7 +556,7 @@ const BookingGrid: React.FC<BookingGridProps> = ({
             >
               Giá
             </div>
-            {displayPriceByTime.map((hourlyPrice, idx) => (
+            {displayPriceByTime.map((slotPrice, idx) => (
               <div
                 key={`price-${finalTimeSlots[idx]}`}
                 style={{
@@ -533,9 +570,9 @@ const BookingGrid: React.FC<BookingGridProps> = ({
                   borderRight: '1px solid #f1f5f9',
                   lineHeight: 1.2,
                 }}
-                title={`${hourlyPrice.toLocaleString('vi-VN')}đ / giờ`}
+                title={`${slotPrice.toLocaleString('vi-VN')}đ / slot 30 phút`}
               >
-                {(hourlyPrice / 1000).toFixed(0)}k
+                {(slotPrice / 1000).toFixed(0)}k
               </div>
             ))}
           </div>

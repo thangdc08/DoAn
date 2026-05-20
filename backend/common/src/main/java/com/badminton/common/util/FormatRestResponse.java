@@ -36,7 +36,8 @@ public class FormatRestResponse implements ResponseBodyAdvice<Object> {
         ApiResponse<Object> res = new ApiResponse<>();
         
         String path = request.getURI().getPath();
-        if (path.startsWith("/v3/api-docs") || path.startsWith("/swagger-ui") || path.startsWith("/api-docs")) {
+        if (path.startsWith("/v3/api-docs") || path.startsWith("/swagger-ui") || path.startsWith("/api-docs")
+                || path.contains("/internal")) {
             return body;
         }
 

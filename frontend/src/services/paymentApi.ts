@@ -8,19 +8,19 @@ import type {
 export const paymentApi = {
   // Create payment transaction
   createPayment: async (data: CreatePaymentRequest): Promise<CreatePaymentResponse> => {
-    const response = await apiClient.post('/payments/create', data);
+    const response = await apiClient.post('/payments/api/payments/create', data);
     return response.data;
   },
 
   // Get payment transaction detail
   getPaymentById: async (transactionId: string): Promise<PaymentTransaction> => {
-    const response = await apiClient.get(`/payments/${transactionId}`);
+    const response = await apiClient.get(`/payments/api/payments/${transactionId}`);
     return response.data;
   },
 
   // Mock payment callback (for testing)
   mockPaymentCallback: async (transactionId: string, success: boolean): Promise<void> => {
-    await apiClient.post('/payments/mock/callback', {
+    await apiClient.post('/payments/api/payments/mock/callback', {
       transactionId,
       success,
     });

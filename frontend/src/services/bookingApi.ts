@@ -9,6 +9,13 @@ import type {
   SupportTicket,
 } from '../types/booking.types';
 
+const unwrapResult = <T>(response: { data: { result?: T } }): T => {
+  if (response.data.result === undefined) {
+    throw new Error('Phản hồi từ máy chủ không hợp lệ.');
+  }
+  return response.data.result;
+};
+
 export const bookingApi = {
   // Get court availability for a specific date
   getAvailability: async (params: {
@@ -16,20 +23,34 @@ export const bookingApi = {
     courtId?: string;
     date: string;
   }): Promise<CourtAvailability[]> => {
-    const response = await apiClient.get('/bookings/availability', { params });
-    return response.data;
+    const response = await apiClient.get('/bookings/api/bookings/availability', { params });
+    return unwrapResult(response);
   },
 
   // Lock time slots
   lockSlots: async (data: LockSlotRequest): Promise<LockSlotResponse> => {
-    const response = await apiClient.post('/bookings/locks', data);
-    return response.data;
+    const response = await apiClient.post('/bookings/api/bookings/locks', data);
+    return unwrapResult(response);
+  },
+
+  getActiveLocks: async (params: {
+    courtId: string;
+    date: string;
+  }): Promise<Array<{
+    id: string;
+    courtId: string;
+    startTime: string;
+    endTime: string;
+    expiresAt: string;
+  }>> => {
+    const response = await apiClient.get('/bookings/api/bookings/locks/active', { params });
+    return unwrapResult(response);
   },
 
   // Create booking from locked slots
   createBooking: async (data: CreateBookingRequest): Promise<CreateBookingResponse> => {
-    const response = await apiClient.post('/bookings', data);
-    return response.data;
+    const response = await apiClient.post('/bookings/api/bookings', data);
+    return unwrapResult(response);
   },
 
   // Get my bookings
@@ -38,14 +59,14 @@ export const bookingApi = {
     page?: number;
     size?: number;
   }): Promise<{ content: Booking[]; totalElements: number; totalPages: number }> => {
-    const response = await apiClient.get('/bookings/my', { params });
-    return response.data;
+    const response = await apiClient.get('/bookings/api/bookings/my', { params });
+    return unwrapResult(response);
   },
 
   // Get booking detail
   getBookingById: async (bookingId: string): Promise<Booking> => {
-    const response = await apiClient.get(`/bookings/${bookingId}`);
-    return response.data;
+    const response = await apiClient.get(`/bookings/api/bookings/${bookingId}`);
+    return unwrapResult(response);
   },
 
   // Create support ticket
@@ -53,8 +74,8 @@ export const bookingApi = {
     bookingId: string,
     data: { subject: string; description: string }
   ): Promise<SupportTicket> => {
-    const response = await apiClient.post(`/bookings/${bookingId}/support-tickets`, data);
-    return response.data;
+    const response = await apiClient.post(`/bookings/api/bookings/${bookingId}/support-tickets`, data);
+    return unwrapResult(response);
   },
 
   // Owner APIs
@@ -66,8 +87,8 @@ export const bookingApi = {
     page?: number;
     size?: number;
   }): Promise<{ content: Booking[]; totalElements: number; totalPages: number }> => {
-    const response = await apiClient.get('/owner/bookings', { params });
-    return response.data;
+    const response = await apiClient.get('/bookings/api/owner/bookings', { params });
+    return unwrapResult(response);
   },
 
   getRevenue: async (params?: {
@@ -79,8 +100,8 @@ export const bookingApi = {
     bookingCount: number;
     chartData: Array<{ date: string; revenue: number; count: number }>;
   }> => {
-    const response = await apiClient.get('/owner/revenue', { params });
-    return response.data;
+    const response = await apiClient.get('/bookings/api/owner/revenue', { params });
+    return unwrapResult(response);
   },
 
   getSupportTickets: async (params?: {
@@ -88,12 +109,12 @@ export const bookingApi = {
     page?: number;
     size?: number;
   }): Promise<{ content: SupportTicket[]; totalElements: number; totalPages: number }> => {
-    const response = await apiClient.get('/owner/support-tickets', { params });
-    return response.data;
+    const response = await apiClient.get('/bookings/api/owner/support-tickets', { params });
+    return unwrapResult(response);
   },
 
   replySupportTicket: async (ticketId: string, reply: string): Promise<SupportTicket> => {
-    const response = await apiClient.patch(`/owner/support-tickets/${ticketId}/reply`, { reply });
-    return response.data;
+    const response = await apiClient.patch(`/bookings/api/owner/support-tickets/${ticketId}/reply`, { reply });
+    return unwrapResult(response);
   },
 };

@@ -2,7 +2,6 @@ package com.badminton.bookingservice.consumer;
 
 import com.badminton.bookingservice.entity.Booking;
 import com.badminton.bookingservice.entity.BookingItem;
-import com.badminton.bookingservice.event.PaymentSucceededEvent;
 import com.badminton.bookingservice.repository.BookingItemRepository;
 import com.badminton.bookingservice.repository.BookingRepository;
 import lombok.RequiredArgsConstructor;
@@ -24,7 +23,7 @@ public class PaymentEventConsumer {
 
     @KafkaListener(topics = "payment-events", groupId = "booking-group")
     @Transactional
-    public void consumePaymentSucceeded(PaymentSucceededEvent event) {
+    public void consumePaymentSucceeded(com.badminton.bookingservice.event.PaymentSucceededEvent event) {
         log.info("Received payment succeeded event for booking id: {}", event.getBookingId());
         
         Booking booking = bookingRepository.findById(event.getBookingId()).orElseThrow();

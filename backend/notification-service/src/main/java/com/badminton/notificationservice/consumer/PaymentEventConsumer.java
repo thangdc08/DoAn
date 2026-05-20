@@ -19,22 +19,35 @@ public class PaymentEventConsumer {
     private final NotificationRepository notificationRepository;
 
     @KafkaListener(topics = "booking-events", groupId = "notification-group")
-    public void handleBookingPaid(Map<String, Object> event) {
+    public void handleBookingEvent(Map<String, Object> event) {
         log.info("Received booking event: {}", event);
-        
-        UUID userId = UUID.fromString(event.get("userId").toString());
+
         UUID bookingId = UUID.fromString(event.get("bookingId").toString());
-        String venueName = event.get("venueName").toString();
+        String venueName = event.getOrDefault("venueName", "san").toString();
 
-        Notification notification = Notification.builder()
-                .receiverId(userId)
-                .type("BOOKING_PAID")
-                .title("Đặt sân thành công")
-                .content("Bạn đã đặt sân thành công tại " + venueName)
-                .data(Map.of("bookingId", bookingId, "venueName", venueName))
-                .createdAt(LocalDateTime.now())
-                .build();
+        if (event.containsKey("ownerId")) {
+            UUID ownerId = UUID.fromString(event.get("ownerId").toString());
+            String amount = event.getOrDefault("totalAmount", "0").toString();
+            notificationRepository.save(Notification.builder()
+                    .receiverId(ownerId)
+                    .type("OWNER_NEW_BOOKING")
+                    .title("Co don dat san moi")
+                    .content("Ban vua nhan don moi tai " + venueName + " (" + amount + "d)")
+                    .data(Map.of("bookingId", bookingId, "venueName", venueName))
+                    .createdAt(LocalDateTime.now())
+                    .build());
+        }
 
-        notificationRepository.save(notification);
+        if (event.containsKey("paidAt")) {
+            UUID userId = UUID.fromString(event.get("userId").toString());
+            notificationRepository.save(Notification.builder()
+                    .receiverId(userId)
+                    .type("BOOKING_PAID")
+                    .title("Dat san thanh cong")
+                    .content("Ban da dat san thanh cong tai " + venueName)
+                    .data(Map.of("bookingId", bookingId, "venueName", venueName))
+                    .createdAt(LocalDateTime.now())
+                    .build());
+        }
     }
 }

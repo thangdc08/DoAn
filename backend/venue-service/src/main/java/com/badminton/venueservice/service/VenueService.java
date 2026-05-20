@@ -9,6 +9,7 @@ import com.badminton.venueservice.entity.PriceRule;
 import com.badminton.venueservice.entity.Venue;
 import com.badminton.venueservice.mapper.VenueMapper;
 import com.badminton.venueservice.entity.VenueImage;
+import com.badminton.venueservice.entity.VenueRating;
 import com.badminton.venueservice.dto.*;
 import com.badminton.venueservice.entity.CourtSlot;
 import org.springframework.http.HttpStatus;
@@ -28,9 +29,17 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import com.cloudinary.utils.ObjectUtils;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.ParameterizedTypeReference;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.RestTemplate;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import com.badminton.venueservice.repository.*;
 
@@ -46,7 +55,12 @@ public class VenueService {
     private final CourtSlotRepository courtSlotRepository;
     private final VenueMapper venueMapper;
     private final com.cloudinary.Cloudinary cloudinary;
+    private final RestTemplate restTemplate;
+    private final VenueRatingRepository venueRatingRepository;
     private final GeometryFactory geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
+
+    @Value("${app.services.booking-service.url:http://localhost:8083}")
+    private String bookingServiceUrl;
 
     private String generateSlug(String name) {
         return name.toLowerCase()
@@ -450,6 +464,7 @@ public class VenueService {
                 .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy sân lẻ"));
         
         List<CourtSlot> slots = courtSlotRepository.findByCourtIdAndSlotDate(courtId, date);
+        Map<String, String> activeBookingStatuses = getActiveBookingStatuses(courtId, date);
         
         if (!slots.isEmpty()) {
             return slots.stream()
@@ -460,7 +475,7 @@ public class VenueService {
                         return CourtSlotResponse.builder()
                                 .startTime(s.getStartTime().toString())
                                 .endTime(s.getEndTime().toString())
-                                .status(s.getStatus())
+                                .status(activeBookingStatuses.getOrDefault(normalizeTimeKey(s.getStartTime()), s.getStatus()))
                                 .price(slotPrice)
                                 .build();
                     })
@@ -483,7 +498,7 @@ public class VenueService {
             defaultSlots.add(CourtSlotResponse.builder()
                     .startTime(t1Start.toString())
                     .endTime(t1End.toString())
-                    .status("AVAILABLE")
+                    .status(activeBookingStatuses.getOrDefault(normalizeTimeKey(t1Start), "AVAILABLE"))
                     .price(price1)
                     .build());
 
@@ -498,11 +513,46 @@ public class VenueService {
             defaultSlots.add(CourtSlotResponse.builder()
                     .startTime(t2Start.toString())
                     .endTime(t2End.toString())
-                    .status("AVAILABLE")
+                    .status(activeBookingStatuses.getOrDefault(normalizeTimeKey(t2Start), "AVAILABLE"))
                     .price(price2)
                     .build());
         }
         return defaultSlots;
+    }
+
+    private Map<String, String> getActiveBookingStatuses(UUID courtId, LocalDate date) {
+        try {
+            String url = UriComponentsBuilder
+                    .fromHttpUrl(bookingServiceUrl)
+                    .path("/api/bookings/locks/active")
+                    .queryParam("courtId", courtId)
+                    .queryParam("date", date)
+                    .toUriString();
+
+            ResponseEntity<com.badminton.common.dto.ApiResponse<List<ActiveBookingSlotResponse>>> response =
+                    restTemplate.exchange(
+                            url,
+                            HttpMethod.GET,
+                            null,
+                            new ParameterizedTypeReference<>() {});
+
+            List<ActiveBookingSlotResponse> locks = response.getBody() != null && response.getBody().getResult() != null
+                    ? response.getBody().getResult()
+                    : List.of();
+
+            return locks.stream()
+                    .collect(Collectors.toMap(
+                            lock -> normalizeTimeKey(lock.getStartTime().toLocalTime()),
+                            lock -> "BOOKED".equals(lock.getStatus()) ? "BOOKED" : "LOCKED",
+                            (existing, incoming) -> "BOOKED".equals(existing) || "BOOKED".equals(incoming) ? "BOOKED" : "LOCKED"));
+        } catch (Exception ex) {
+            log.warn("Failed to fetch active booking statuses for court {} on {}: {}", courtId, date, ex.getMessage());
+            return Map.of();
+        }
+    }
+
+    private String normalizeTimeKey(LocalTime time) {
+        return String.format("%02d:%02d", time.getHour(), time.getMinute());
     }
 
     public List<CourtResponse> findCourtsByVenueId(UUID venueId) {
@@ -800,6 +850,91 @@ public class VenueService {
                 .endTime(slot.getEndTime().toString())
                 .status(slot.getStatus())
                 .build();
+    }
+    public List<VenueResponse> findNearbyVenues(Double lat, Double lng, Double radiusKm, Integer limit) {
+        log.info("Finding venues nearby lat={}, lng={}, radiusKm={}, limit={}", lat, lng, radiusKm, limit);
+        if (lat == null || lng == null) {
+            return findAll();
+        }
+        if (radiusKm == null) radiusKm = 10.0;
+        if (limit == null) limit = 20;
+
+        Point point = geometryFactory.createPoint(new Coordinate(lng, lat));
+        List<Venue> venues = venueRepository.findNearby(point, radiusKm * 1000);
+        return venues.stream()
+                .limit(limit)
+                .map(this::toVenueResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public VenueRatingResponse createVenueRating(UUID userId, UUID venueId, VenueRatingRequest request) {
+        log.info("User {} rating venue {} with {} stars", userId, venueId, request.getStars());
+        
+        if (request.getStars() == null || request.getStars() < 1 || request.getStars() > 5) {
+            throw new AppException(HttpStatus.BAD_REQUEST, "Số sao đánh giá phải từ 1 đến 5");
+        }
+
+        Boolean hasPaid = checkUserHasPaidBooking(userId, venueId);
+        if (!hasPaid) {
+            throw new AppException(HttpStatus.FORBIDDEN, "Bạn chỉ có thể đánh giá sân sau khi đã hoàn thành đặt sân và thanh toán thành công");
+        }
+
+        VenueRating rating = venueRatingRepository.findByVenueIdAndUserId(venueId, userId)
+                .orElse(VenueRating.builder()
+                        .userId(userId)
+                        .venueId(venueId)
+                        .build());
+        
+        rating.setStars(request.getStars());
+        rating.setComment(request.getComment());
+        venueRatingRepository.save(rating);
+
+        Double avg = venueRatingRepository.getAverageStarsByVenueId(venueId);
+        long count = venueRatingRepository.countByVenueId(venueId);
+
+        Venue venue = findById(venueId);
+        venue.setRatingAvg(avg != null ? avg : 0.0);
+        venue.setRatingCount((int) count);
+        venueRepository.save(venue);
+
+        return VenueRatingResponse.builder()
+                .id(rating.getId())
+                .venueId(rating.getVenueId())
+                .userId(rating.getUserId())
+                .stars(rating.getStars())
+                .comment(rating.getComment())
+                .createdAt(rating.getCreatedAt() != null ? rating.getCreatedAt() : LocalDateTime.now())
+                .build();
+    }
+
+    public Page<VenueRatingResponse> getVenueRatings(UUID venueId, Pageable pageable) {
+        log.info("Fetching ratings for venue {}", venueId);
+        return venueRatingRepository.findByVenueId(venueId, pageable)
+                .map(r -> VenueRatingResponse.builder()
+                        .id(r.getId())
+                        .venueId(r.getVenueId())
+                        .userId(r.getUserId())
+                        .stars(r.getStars())
+                        .comment(r.getComment())
+                        .createdAt(r.getCreatedAt())
+                        .build());
+    }
+
+    private Boolean checkUserHasPaidBooking(UUID userId, UUID venueId) {
+        try {
+            String url = UriComponentsBuilder
+                    .fromHttpUrl(bookingServiceUrl)
+                    .path("/api/bookings/internal/has-paid")
+                    .queryParam("userId", userId)
+                    .queryParam("venueId", venueId)
+                    .toUriString();
+            ResponseEntity<Boolean> response = restTemplate.getForEntity(url, Boolean.class);
+            return response.getBody() != null && response.getBody();
+        } catch (Exception e) {
+            log.error("Failed to check if user has paid booking from booking-service", e);
+            return false;
+        }
     }
 }
 

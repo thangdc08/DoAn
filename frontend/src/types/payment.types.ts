@@ -15,6 +15,8 @@ export interface PaymentTransaction {
 
 export interface CreatePaymentRequest {
   bookingId: string;
+  userId: string;
+  amount: number;
   provider: 'MOCK' | 'VNPAY';
 }
 

@@ -76,6 +76,14 @@ export interface CreateBookingResponse {
   paymentStatus: string;
   totalAmount: number;
   expiresAt: string;
+  venueNameSnapshot: string;
+  items: {
+    id: string;
+    courtNameSnapshot: string;
+    startTime: string;
+    endTime: string;
+    priceSnapshot: number;
+  }[];
 }
 
 export interface SupportTicket {

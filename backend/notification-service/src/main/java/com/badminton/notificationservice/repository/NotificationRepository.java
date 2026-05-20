@@ -1,4 +1,4 @@
-﻿package com.badminton.notificationservice.repository;
+package com.badminton.notificationservice.repository;
 
 import com.badminton.notificationservice.document.Notification;
 import org.springframework.data.mongodb.repository.MongoRepository;
