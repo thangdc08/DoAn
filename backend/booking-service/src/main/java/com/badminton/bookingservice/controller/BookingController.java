@@ -6,6 +6,7 @@ import com.badminton.bookingservice.dto.CreateBookingRequest;
 import com.badminton.bookingservice.dto.CreateBookingResponse;
 import com.badminton.bookingservice.dto.LockSlotsRequest;
 import com.badminton.bookingservice.dto.LockSlotsResponse;
+import com.badminton.bookingservice.dto.PageResponse;
 import com.badminton.bookingservice.entity.SlotLock;
 import com.badminton.bookingservice.service.BookingService;
 import com.badminton.bookingservice.repository.BookingRepository;
@@ -16,6 +17,9 @@ import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
@@ -96,14 +100,35 @@ public class BookingController {
     }
 
     @GetMapping("/my")
-    @Operation(summary = "Get my bookings", description = "Returns a list of bookings for the specified user")
-    public ApiResponse<List<BookingResponse>> getMyBookings(@RequestHeader("X-Auth-User-Id") UUID userId) {
-        log.info("API Request: Get my bookings for user {}", userId);
-        List<BookingResponse> results = bookingRepository.findByUserId(userId).stream()
-                .map(bookingMapper::toBookingResponse)
-                .collect(Collectors.toList());
-        return ApiResponse.<List<BookingResponse>>builder()
-                .result(results)
+    @Operation(summary = "Get my bookings", description = "Returns a paginated list of bookings for the current user")
+    public ApiResponse<PageResponse<BookingResponse>> getMyBookings(
+            @RequestHeader("X-Auth-User-Id") UUID userId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(required = false) String status) {
+        log.info("API Request: Get my bookings for user {} - page: {}, size: {}, status: {}", userId, page, size, status);
+
+        Pageable pageable = PageRequest.of(page, size);
+        Page<BookingResponse> results;
+
+        if (status != null && !status.isEmpty()) {
+            results = bookingRepository.findByUserIdAndStatus(userId, status, pageable)
+                    .map(bookingMapper::toBookingResponse);
+        } else {
+            results = bookingRepository.findByUserId(userId, pageable)
+                    .map(bookingMapper::toBookingResponse);
+        }
+
+        PageResponse<BookingResponse> response = PageResponse.<BookingResponse>builder()
+                .content(results.getContent())
+                .totalElements(results.getTotalElements())
+                .totalPages(results.getTotalPages())
+                .currentPage(results.getNumber())
+                .pageSize(results.getSize())
+                .build();
+
+        return ApiResponse.<PageResponse<BookingResponse>>builder()
+                .result(response)
                 .build();
     }
 

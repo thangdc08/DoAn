@@ -1,14 +1,107 @@
 {
-    "configurations": [
-        {
-            "type": "java",
-            "name": "Spring Boot-IdentityServiceApplication<identity-service>",
-            "request": "launch",
-            "cwd": "${workspaceFolder}",
-            "mainClass": "com.badminton.identityservice.IdentityServiceApplication",
-            "projectName": "identity-service",
-            "args": "",
-            "envFile": "${workspaceFolder}/.env"
-        }
-    ]
+  "configurations": [
+    {
+      "type": "java",
+      "name": "Spring Boot-IdentityServiceApplication<identity-service>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.badminton.identityservice.IdentityServiceApplication",
+      "projectName": "identity-service",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env",
+      "vmArgs": " -Dcom.sun.management.jmxremote"
+    },
+    {
+      "type": "java",
+      "name": "Spring Boot-ServiceRegistryApplication<serviceRegistry>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.badmintonhub.serviceregistry.ServiceRegistryApplication",
+      "projectName": "serviceRegistry",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env",
+      "vmArgs": " -Dcom.sun.management.jmxremote"
+    },
+    {
+      "type": "java",
+      "name": "Spring Boot-ConfigServerApplication<configServer>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.badmintonhub.configserver.ConfigServerApplication",
+      "projectName": "configServer",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env",
+      "vmArgs": " -Dcom.sun.management.jmxremote"
+    },
+    {
+      "type": "java",
+      "name": "Spring Boot-GatewayServiceApplication<api-gateway>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.badmintonhub.gatewayservice.GatewayServiceApplication",
+      "projectName": "api-gateway",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "java",
+      "name": "Spring Boot-BookingApplication<booking-service>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.badminton.bookingservice.BookingApplication",
+      "projectName": "booking-service",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "java",
+      "name": "Spring Boot-CommunityApplication<community-service>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.badminton.communityservice.CommunityApplication",
+      "projectName": "community-service",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "java",
+      "name": "Spring Boot-NotificationApplication<notification-service>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.badminton.notificationservice.NotificationApplication",
+      "projectName": "notification-service",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "java",
+      "name": "Spring Boot-PaymentApplication<payment-service>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.badminton.paymentservice.PaymentApplication",
+      "projectName": "payment-service",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "java",
+      "name": "Spring Boot-RecommendationApplication<recommendation-service>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.badminton.recommendationservice.RecommendationApplication",
+      "projectName": "recommendation-service",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
+    },
+    {
+      "type": "java",
+      "name": "Spring Boot-VenueApplication<venue-service>",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "mainClass": "com.badminton.venueservice.VenueApplication",
+      "projectName": "venue-service",
+      "args": "",
+      "envFile": "${workspaceFolder}/.env"
+    }
+  ]
 }

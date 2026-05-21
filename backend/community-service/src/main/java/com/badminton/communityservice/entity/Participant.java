@@ -25,7 +25,7 @@ public class Participant {
     private String userFullName;
 
     @Builder.Default
-    private String status = "PENDING"; // PENDING | APPROVED | REJECTED
+    private String status = "PENDING"; // PENDING | APPROVED | REJECTED | CANCELLED_BY_USER | REMOVED_BY_HOST
 
     @CreationTimestamp
     private LocalDateTime joinedAt;

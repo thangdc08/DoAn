@@ -1,12 +1,10 @@
 package com.badminton.identityservice.controller;
 
 import com.badminton.common.annotation.ApiMessage;
-import com.badminton.identityservice.dto.request.LoginRequest;
-import com.badminton.identityservice.dto.request.LogoutRequest;
-import com.badminton.identityservice.dto.request.RefreshTokenRequest;
-import com.badminton.identityservice.dto.request.RegisterRequest;
+import com.badminton.identityservice.dto.request.*;
 import com.badminton.identityservice.dto.response.LoginResponse;
 import com.badminton.identityservice.service.AuthService;
+import com.badminton.identityservice.service.PasswordRecoveryService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -24,6 +22,7 @@ import com.badminton.identityservice.dto.model.UserDTO;
 public class AuthController {
 
     private final AuthService authService;
+    private final PasswordRecoveryService passwordRecoveryService;
 
     @ApiMessage("Đăng ký tài khoản")
     @PostMapping("/register")
@@ -62,5 +61,25 @@ public class AuthController {
     public ResponseEntity<Void> logout(@RequestBody @Valid LogoutRequest request) {
         authService.logout(request);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * Quên mật khẩu - Gửi OTP qua email
+     */
+    @ApiMessage("Gửi OTP quên mật khẩu")
+    @PostMapping("/forgot-password")
+    public ResponseEntity<Void> forgotPassword(@RequestBody @Valid ForgotPasswordRequest request) {
+        passwordRecoveryService.sendPasswordResetOtp(request.getEmail());
+        return ResponseEntity.ok().build();
+    }
+
+    /**
+     * Đặt lại mật khẩu với OTP
+     */
+    @ApiMessage("Đặt lại mật khẩu")
+    @PostMapping("/reset-password")
+    public ResponseEntity<Void> resetPassword(@RequestBody @Valid ResetPasswordRequest request) {
+        passwordRecoveryService.resetPassword(request);
+        return ResponseEntity.ok().build();
     }
 }

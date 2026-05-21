@@ -37,6 +37,9 @@ public class BookingItem {
     @Column(nullable = false)
     private BigDecimal priceSnapshot;
 
+    @Column(name = "price_snapshot_vnd", nullable = false)
+    private BigDecimal priceSnapshotVnd;
+
     @Builder.Default
     private String status = "PENDING";
 

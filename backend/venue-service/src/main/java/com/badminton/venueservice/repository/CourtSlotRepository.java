@@ -9,8 +9,15 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface CourtSlotRepository extends JpaRepository<CourtSlot, UUID> {
-    List<CourtSlot> findByCourtIdAndSlotDate(UUID courtId, LocalDate slotDate);
-    List<CourtSlot> findByCourtIdAndSlotDateBetween(UUID courtId, LocalDate startDate, LocalDate endDate);
-    void deleteByCourtIdAndSlotDateBetween(UUID courtId, LocalDate startDate, LocalDate endDate);
-    Optional<CourtSlot> findByCourtIdAndSlotDateAndStartTimeAndEndTime(UUID courtId, LocalDate slotDate, LocalTime startTime, LocalTime endTime);
+  List<CourtSlot> findByCourtIdAndSlotDate(UUID courtId, LocalDate slotDate);
+
+  List<CourtSlot> findByCourtIdAndSlotDateBetween(UUID courtId, LocalDate startDate, LocalDate endDate);
+
+  void deleteByCourtIdAndSlotDateBetween(UUID courtId, LocalDate startDate, LocalDate endDate);
+
+  Optional<CourtSlot> findByCourtIdAndSlotDateAndStartTimeAndEndTime(UUID courtId, LocalDate slotDate,
+      LocalTime startTime, LocalTime endTime);
+
+  // Delete all slots for courts that belong to a specific venue
+  void deleteByCourt_Venue_Id(UUID venueId);
 }

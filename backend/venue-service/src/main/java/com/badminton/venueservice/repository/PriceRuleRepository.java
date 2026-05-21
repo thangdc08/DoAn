@@ -6,8 +6,13 @@ import java.util.List;
 import java.util.UUID;
 
 public interface PriceRuleRepository extends JpaRepository<PriceRule, UUID> {
-    List<PriceRule> findByVenueId(UUID venueId);
-    List<PriceRule> findByCourtId(UUID courtId);
-    List<PriceRule> findByVenueIdAndDayOfWeek(UUID venueId, Integer dayOfWeek);
-    void deleteByCourtId(UUID courtId);
+  List<PriceRule> findByVenueId(UUID venueId);
+
+  List<PriceRule> findByCourtId(UUID courtId);
+
+  List<PriceRule> findByVenueIdAndDayOfWeek(UUID venueId, Integer dayOfWeek);
+
+  void deleteByCourtId(UUID courtId);
+
+  void deleteByVenueId(UUID venueId);
 }

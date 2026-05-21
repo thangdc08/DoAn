@@ -1,1 +1,10 @@
-{}
+{
+  "java.configuration.updateBuildConfiguration": "interactive",
+  "yaml.schemas": {
+    "https://www.schemastore.org/any.json": [
+      "backend/**/src/main/resources/application.yml",
+      "backend/**/src/main/resources/application.yaml"
+    ]
+  },
+  "java.compile.nullAnalysis.mode": "automatic"
+}

@@ -11,38 +11,45 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "bookings", schema = "booking")
-@Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
+@Builder
 public class Booking {
-    @Id
-    @GeneratedValue(strategy = GenerationType.AUTO)
-    private UUID id;
+  @Id
+  @GeneratedValue(strategy = GenerationType.AUTO)
+  private UUID id;
 
-    @Column(nullable = false)
-    private UUID userId;
+  @Column(nullable = false)
+  private UUID userId;
 
-    @Column(nullable = false)
-    private UUID venueId;
+  @Column(nullable = false)
+  private UUID venueId;
 
-    @Column(nullable = false)
-    private String venueNameSnapshot;
+  @Column(nullable = false)
+  private String venueNameSnapshot;
 
-    @Column(nullable = false)
-    private BigDecimal totalAmount;
+  @Column(nullable = false)
+  private BigDecimal totalAmount;
 
-    @Builder.Default
-    private String status = "PENDING";
+  @Column(name = "total_amount_vnd", nullable = false)
+  private BigDecimal totalAmountVnd;
 
-    @Builder.Default
-    private String paymentStatus = "UNPAID";
+  @Builder.Default
+  private String status = "PENDING";
 
-    @Column(nullable = false)
-    private LocalDateTime expiresAt;
+  @Builder.Default
+  private String paymentStatus = "UNPAID";
 
-    private LocalDateTime paidAt;
+  @Column(nullable = false)
+  private LocalDateTime expiresAt;
 
-    @CreationTimestamp
-    private LocalDateTime createdAt;
+  private LocalDateTime paidAt;
 
-    @UpdateTimestamp
-    private LocalDateTime updatedAt;
+  @CreationTimestamp
+  private LocalDateTime createdAt;
+
+  @UpdateTimestamp
+  private LocalDateTime updatedAt;
 }

@@ -1,10 +1,10 @@
-import { useState, useMemo } from 'react';
-import { Card, Table, Tag, Button, Select, Space, Typography, Modal, Input, Row, Col, Badge, Divider } from 'antd';
-import { 
-  EyeOutlined, 
-  CalendarOutlined, 
-  EnvironmentOutlined, 
-  SearchOutlined, 
+import { useState, useMemo, useEffect } from 'react';
+import { Card, Table, Tag, Button, Select, Space, Typography, Modal, Input, Row, Col, Badge, Divider, Spin, Empty, message } from 'antd';
+import {
+  EyeOutlined,
+  CalendarOutlined,
+  EnvironmentOutlined,
+  SearchOutlined,
   FilterOutlined,
   CreditCardOutlined,
   ClockCircleOutlined,
@@ -12,7 +12,7 @@ import {
   CloseCircleOutlined,
   InfoCircleOutlined
 } from '@ant-design/icons';
-import { mockBookings } from '../../data/mockBookings';
+import { bookingApi } from '../../services/bookingApi';
 import type { Booking } from '../../types/booking.types';
 import dayjs from 'dayjs';
 import { BRAND } from '../../theme/antdTheme';
@@ -42,21 +42,45 @@ export default function BookingHistoryPage() {
   const [searchText, setSearchText] = useState<string>('');
   const [page, setPage] = useState(1);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [totalElements, setTotalElements] = useState(0);
+  const [loading, setLoading] = useState(false);
   const pageSize = 10;
 
+  useEffect(() => {
+    const loadBookings = async () => {
+      try {
+        setLoading(true);
+        const response = await bookingApi.getMyBookings({
+          status: status || undefined,
+          page: page - 1,
+          size: pageSize,
+        });
+        setBookings(response.content || []);
+        setTotalElements(response.totalElements || 0);
+      } catch (error) {
+        message.error('Không thể tải danh sách đặt sân');
+        console.error(error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadBookings();
+  }, [status, page]);
+
   const filteredBookings = useMemo(() => {
-    return mockBookings.filter(booking => {
-      const matchesStatus = !status || booking.status === status;
+    return bookings.filter(booking => {
       const matchesPayment = !paymentStatus || booking.paymentStatus === paymentStatus;
-      const matchesSearch = !searchText || 
+      const matchesSearch = !searchText ||
         booking.venueNameSnapshot.toLowerCase().includes(searchText.toLowerCase()) ||
         booking.id.toLowerCase().includes(searchText.toLowerCase());
-      return matchesStatus && matchesPayment && matchesSearch;
+      return matchesPayment && matchesSearch;
     });
-  }, [status, paymentStatus, searchText]);
+  }, [bookings, paymentStatus, searchText]);
 
   const data = {
-    content: filteredBookings.slice((page - 1) * pageSize, page * pageSize),
+    content: filteredBookings,
     totalElements: filteredBookings.length,
   };
 
@@ -207,10 +231,12 @@ export default function BookingHistoryPage() {
           dataSource={data.content}
           rowKey="id"
           className="app-table"
+          loading={loading}
+          locale={{ emptyText: <Empty description="Không có đặt sân nào" /> }}
           pagination={{
             current: page,
             pageSize,
-            total: data.totalElements,
+            total: totalElements,
             onChange: setPage,
             showSizeChanger: false,
             className: "px-6 py-4",

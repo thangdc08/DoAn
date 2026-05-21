@@ -11,12 +11,14 @@ import java.util.Optional;
 import java.util.UUID;
 
 public interface VenueRatingRepository extends JpaRepository<VenueRating, UUID> {
-    Optional<VenueRating> findByVenueIdAndUserId(UUID venueId, UUID userId);
-    
-    Page<VenueRating> findByVenueId(UUID venueId, Pageable pageable);
+  Optional<VenueRating> findByVenueIdAndUserId(UUID venueId, UUID userId);
 
-    @Query("SELECT AVG(r.stars) FROM VenueRating r WHERE r.venueId = :venueId")
-    Double getAverageStarsByVenueId(@Param("venueId") UUID venueId);
+  Page<VenueRating> findByVenueId(UUID venueId, Pageable pageable);
 
-    long countByVenueId(UUID venueId);
+  @Query("SELECT AVG(r.stars) FROM VenueRating r WHERE r.venueId = :venueId")
+  Double getAverageStarsByVenueId(@Param("venueId") UUID venueId);
+
+  long countByVenueId(UUID venueId);
+
+  void deleteByVenueId(UUID venueId);
 }

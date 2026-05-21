@@ -53,7 +53,7 @@ public class MatchPost {
 
     @Column(nullable = false)
     @Builder.Default
-    private String joinMode = "AUTO"; // AUTO | MANUAL
+    private String joinMode = "APPROVAL"; // OPEN | APPROVAL
 
     @Builder.Default
     private String status = "OPEN"; // OPEN | CLOSED | FINISHED | CANCELLED

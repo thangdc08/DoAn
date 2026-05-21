@@ -1,0 +1,42 @@
+{
+  "groups": [
+    {
+      "name": "app",
+      "type": "com.badminton.venueservice.config.AppProperties",
+      "sourceType": "com.badminton.venueservice.config.AppProperties"
+    },
+    {
+      "name": "app.services",
+      "type": "com.badminton.venueservice.config.AppProperties$Services",
+      "sourceType": "com.badminton.venueservice.config.AppProperties"
+    },
+    {
+      "name": "app.cloudinary",
+      "type": "com.badminton.venueservice.config.AppProperties$Cloudinary",
+      "sourceType": "com.badminton.venueservice.config.AppProperties"
+    }
+  ],
+  "properties": [
+    {
+      "name": "app.services.booking-service.url",
+      "type": "java.lang.String",
+      "sourceType": "com.badminton.venueservice.config.AppProperties$Services"
+    },
+    {
+      "name": "app.cloudinary.cloud-name",
+      "type": "java.lang.String",
+      "sourceType": "com.badminton.venueservice.config.AppProperties$Cloudinary"
+    },
+    {
+      "name": "app.cloudinary.api-key",
+      "type": "java.lang.String",
+      "sourceType": "com.badminton.venueservice.config.AppProperties$Cloudinary"
+    },
+    {
+      "name": "app.cloudinary.api-secret",
+      "type": "java.lang.String",
+      "sourceType": "com.badminton.venueservice.config.AppProperties$Cloudinary"
+    }
+  ],
+  "hints": []
+}

@@ -1,3 +1,4 @@
+# yaml-language-server: $schema=https://www.schemastore.org/any.json
 server:
   port: 8082
 
@@ -12,6 +13,9 @@ spring:
     hibernate:
       ddl-auto: update
     show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.spatial.dialect.postgis.PostgisPG95Dialect
   servlet:
     multipart:
       max-file-size: 10MB
@@ -20,9 +24,6 @@ spring:
     enabled: true
     schemas: venue
     baseline-on-migrate: true
-    properties:
-      hibernate:
-        dialect: org.hibernate.spatial.dialect.postgis.PostgisPGDialect
   kafka:
     bootstrap-servers: localhost:9094
     producer:
@@ -34,9 +35,9 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
       properties:
-        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
-        spring.json.trusted.packages: "*"
-        spring.json.value.default.type: "com.badminton.common.dto.event.OnboardingEvent"
+        "[spring.deserializer.value.delegate.class]": org.springframework.kafka.support.serializer.JsonDeserializer
+        "[spring.json.trusted.packages]": "*"
+        "[spring.json.value.default.type]": "com.badminton.common.dto.event.OnboardingEvent"
 
 springdoc:
   api-docs:
