@@ -35,6 +35,7 @@ const UserDashboardPage = lazy(() => import('../pages/user/UserDashboardPage'));
 const UserChallengesPage = lazy(() => import('../pages/user/UserChallengesPage'));
 const UserSettingsPage = lazy(() => import('../pages/user/UserSettingsPage'));
 const CreateMatchPage = lazy(() => import('../pages/user/CreateMatchPage'));
+const MyMatchesPage = lazy(() => import('../pages/user/MyMatchesPage'));
 
 // Owner Pages
 const OwnerDashboardPage = lazy(() => import('../pages/owner/OwnerDashboardPage'));
@@ -101,6 +102,8 @@ export const router = createBrowserRouter([
       { path: 'dashboard', element: <Suspense fallback={<PageLoader />}><UserDashboardPage /></Suspense> },
       { path: 'profile', element: <Suspense fallback={<PageLoader />}><ProfilePage /></Suspense> },
       { path: 'bookings', element: <Suspense fallback={<PageLoader />}><BookingHistoryPage /></Suspense> },
+      { path: 'matches', element: <Suspense fallback={<PageLoader />}><MyMatchesPage /></Suspense> },
+      { path: 'create-match', element: <Suspense fallback={<PageLoader />}><CreateMatchPage /></Suspense> },
       { path: 'challenges', element: <Suspense fallback={<PageLoader />}><UserChallengesPage /></Suspense> },
       { path: 'challenges/create', element: <Suspense fallback={<PageLoader />}><CreateMatchPage /></Suspense> },
       { path: 'notifications', element: <Suspense fallback={<PageLoader />}><NotificationsPage /></Suspense> },

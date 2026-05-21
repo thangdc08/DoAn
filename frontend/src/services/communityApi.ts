@@ -23,6 +23,15 @@ export const communityApi = {
     return response.data;
   },
 
+  getMyMatches: async (params?: {
+    status?: string;
+    page?: number;
+    size?: number;
+  }): Promise<{ content: MatchPost[]; totalElements: number; totalPages: number }> => {
+    const response = await apiClient.get('/community/match-posts/my', { params });
+    return response.data;
+  },
+
   getMatchPostById: async (matchId: string): Promise<MatchPost> => {
     const response = await apiClient.get(`/community/matches/${matchId}`);
     return response.data;

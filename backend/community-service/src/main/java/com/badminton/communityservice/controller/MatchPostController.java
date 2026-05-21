@@ -56,9 +56,9 @@ public class MatchPostController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime toTime,
             @RequestParam(required = false) UUID hostId,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
-        
+
         log.info("API Request: Search match posts with filters");
-        
+
         Specification<com.badminton.communityservice.entity.MatchPost> spec = Specification
                 .where(MatchPostSpecification.titleContains(q))
                 .and(MatchPostSpecification.hasStatus(status != null ? status : "OPEN"))
@@ -67,7 +67,25 @@ public class MatchPostController {
                 .and(MatchPostSpecification.startTimeAfter(fromTime))
                 .and(MatchPostSpecification.startTimeBefore(toTime))
                 .and(MatchPostSpecification.hasHostId(hostId));
-        
+
+        return ApiResponse.<Page<MatchPostResponse>>builder()
+                .result(matchPostService.searchMatchPosts(spec, pageable))
+                .build();
+    }
+
+    @GetMapping("/my")
+    @Operation(summary = "Get my matches", description = "Get matches created by current user")
+    public ApiResponse<Page<MatchPostResponse>> getMyMatches(
+            @RequestHeader("X-Auth-User-Id") UUID userId,
+            @RequestParam(required = false) String status,
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+
+        log.info("API Request: Get my matches for user {}", userId);
+
+        Specification<com.badminton.communityservice.entity.MatchPost> spec = Specification
+                .where(MatchPostSpecification.hasHostId(userId))
+                .and(MatchPostSpecification.hasStatus(status));
+
         return ApiResponse.<Page<MatchPostResponse>>builder()
                 .result(matchPostService.searchMatchPosts(spec, pageable))
                 .build();
