@@ -9,6 +9,13 @@ import type {
 } from '../types/community.types';
 
 export const communityApi = {
+  unwrapResult: <T>(response: { data: { result?: T } }): T => {
+    if (response.data.result === undefined) {
+      throw new Error('Phan hoi tu may chu khong hop le.');
+    }
+    return response.data.result;
+  },
+
   // Match Posts
   getMatchPosts: async (params?: {
     level?: string;
@@ -19,8 +26,8 @@ export const communityApi = {
     page?: number;
     size?: number;
   }): Promise<{ content: MatchPost[]; totalElements: number; totalPages: number }> => {
-    const response = await apiClient.get('/community/matches', { params });
-    return response.data;
+    const response = await apiClient.get('/communities/api/community/match-posts', { params });
+    return communityApi.unwrapResult(response);
   },
 
   getMyMatches: async (params?: {
@@ -28,46 +35,50 @@ export const communityApi = {
     page?: number;
     size?: number;
   }): Promise<{ content: MatchPost[]; totalElements: number; totalPages: number }> => {
-    const response = await apiClient.get('/community/match-posts/my', { params });
-    return response.data;
+    const response = await apiClient.get('/communities/api/community/match-posts/my', { params });
+    return communityApi.unwrapResult(response);
   },
 
   getMatchPostById: async (matchId: string): Promise<MatchPost> => {
-    const response = await apiClient.get(`/community/matches/${matchId}`);
-    return response.data;
+    const response = await apiClient.get(`/communities/api/community/match-posts/${matchId}`);
+    return communityApi.unwrapResult(response);
   },
 
   createMatchPost: async (data: CreateMatchPostRequest): Promise<MatchPost> => {
-    const response = await apiClient.post('/community/matches', data);
-    return response.data;
+    const response = await apiClient.post('/communities/api/community/match-posts', data);
+    return communityApi.unwrapResult(response);
   },
 
   updateMatchPost: async (matchId: string, data: Partial<CreateMatchPostRequest>): Promise<MatchPost> => {
-    const response = await apiClient.put(`/community/matches/${matchId}`, data);
-    return response.data;
+    const response = await apiClient.put(`/communities/api/community/match-posts/${matchId}`, data);
+    return communityApi.unwrapResult(response);
   },
 
   deleteMatchPost: async (matchId: string): Promise<void> => {
-    await apiClient.delete(`/community/matches/${matchId}`);
+    await apiClient.delete(`/communities/api/community/match-posts/${matchId}`);
   },
 
   // Participants
   joinMatch: async (matchId: string): Promise<MatchParticipant> => {
-    const response = await apiClient.post(`/community/matches/${matchId}/join`);
-    return response.data;
+    const response = await apiClient.post(`/communities/api/community/match-posts/${matchId}/join`);
+    return communityApi.unwrapResult(response);
   },
 
   getMatchParticipants: async (matchId: string): Promise<MatchParticipant[]> => {
-    const response = await apiClient.get(`/community/matches/${matchId}/participants`);
-    return response.data;
+    const response = await apiClient.get(`/communities/api/community/match-posts/${matchId}/participants`);
+    return communityApi.unwrapResult(response);
   },
 
   approveParticipant: async (matchId: string, participantId: string): Promise<void> => {
-    await apiClient.patch(`/community/matches/${matchId}/participants/${participantId}/approve`);
+    await apiClient.post(`/communities/api/community/match-posts/${matchId}/participants/${participantId}/approve`);
   },
 
   rejectParticipant: async (matchId: string, participantId: string): Promise<void> => {
-    await apiClient.patch(`/community/matches/${matchId}/participants/${participantId}/reject`);
+    await apiClient.post(`/communities/api/community/match-posts/${matchId}/participants/${participantId}/reject`);
+  },
+
+  closeMatch: async (matchId: string): Promise<void> => {
+    await apiClient.post(`/communities/api/community/match-posts/${matchId}/close`);
   },
 
   // Comments

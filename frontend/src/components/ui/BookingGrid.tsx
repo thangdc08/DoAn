@@ -29,6 +29,8 @@ type BookingGridProps = {
   timeSlots?: string[];
   /** Chế độ quản trị (Lock sân) */
   isAdmin?: boolean;
+  /** Trạng thái đăng nhập */
+  isAuthenticated?: boolean;
   venueId?: string;
   courts?: any[];
   selectedDate?: any;
@@ -132,6 +134,7 @@ const BookingGrid: React.FC<BookingGridProps> = ({
   courtNames: propsCourtNames,
   timeSlots: propsTimeSlots,
   isAdmin = false,
+  isAuthenticated = false,
   venueId,
   courts,
   selectedDate,
@@ -141,7 +144,7 @@ const BookingGrid: React.FC<BookingGridProps> = ({
   const { confirm, success, notify } = useNotify();
   const [selectedSlots, setSelectedSlots] = useState<string[]>([]);
   const [lockedByAdmin, setLockedByAdmin] = useState<Set<string>>(new Set(LOCKED_SLOTS));
-  
+
   // States for Admin API operations
   const [dbSlots, setDbSlots] = useState<{ [key: string]: { status: string; price: number } }>({});
   const [loading, setLoading] = useState(false);
@@ -359,6 +362,13 @@ const BookingGrid: React.FC<BookingGridProps> = ({
   const handleConfirmBooking = () => {
     if (selectedSlots.length === 0 || !venueId) return;
 
+    // Check authentication first
+    if (!isAuthenticated) {
+      notify('error', 'Yêu cầu đăng nhập', 'Vui lòng đăng nhập để đặt sân.');
+      navigate('/login');
+      return;
+    }
+
     confirm({
       title: 'Xác nhận đặt sân',
       content: (
@@ -391,7 +401,7 @@ const BookingGrid: React.FC<BookingGridProps> = ({
             if (!slotsByCourt[courtId]) {
               slotsByCourt[courtId] = [];
             }
-            
+
             // Format to LocalDateTime ISO format (YYYY-MM-DDTHH:mm:00)
             const dateStr = selectedDate.format('YYYY-MM-DD');
             const startIso = `${dateStr}T${startTime}:00`;
@@ -413,7 +423,7 @@ const BookingGrid: React.FC<BookingGridProps> = ({
           success(`Chọn sân thành công! Đang chuyển đến trang thanh toán...`);
           setSelectedSlots([]);
           onSelectionChange?.([]);
-          
+
           // Redirect to checkout with lockIds
           navigate(`/checkout?lockIds=${allLockIds.join(',')}`);
         } catch (error: any) {

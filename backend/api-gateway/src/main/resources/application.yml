@@ -3,11 +3,13 @@ spring:
     name: gateway-service
   profiles:
     active: dev
-  config:
-    import: "optional:configserver:http://localhost:8888"
   cloud:
     config:
       enabled: false
+    stream:
+      kafka:
+        binder:
+          brokers: localhost:9094
     gateway:
       discovery:
         locator:
@@ -32,12 +34,20 @@ spring:
             - Path=/bookings/**
           filters:
             - RewritePath=/bookings/(?<path>.*), /$\{path}
+        - id: payment-service
+          uri: lb://payment-service
+          predicates:
+            - Path=/payments/**
+          filters:
+            - RewritePath=/payments/(?<path>.*), /$\{path}
 
   security:
     oauth2:
       resourceserver:
         jwt:
           issuer-uri: http://localhost:8081
+  kafka:
+    bootstrap-servers: localhost:9094
 
 jwt:
   signerKey: "zV9X7f6N8M2K5P4R1S3T0U9V8W7X6Y5Z4A3B2C1D0E9F8G7H6I5J4K3L2M1N0O9"

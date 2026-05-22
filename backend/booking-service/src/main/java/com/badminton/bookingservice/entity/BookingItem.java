@@ -16,25 +16,28 @@ public class BookingItem {
     @GeneratedValue(strategy = GenerationType.AUTO)
     private UUID id;
 
-    @Column(nullable = false)
+    @Column(name = "booking_id", nullable = false)
     private UUID bookingId;
 
-    @Column(nullable = false)
+    @Column(name = "venue_id", nullable = false)
     private UUID venueId;
 
-    @Column(nullable = false)
+    @Column(name = "venue_name_snapshot", nullable = false)
+    private String venueNameSnapshot;
+
+    @Column(name = "court_id", nullable = false)
     private UUID courtId;
 
-    @Column(nullable = false)
+    @Column(name = "court_name_snapshot", nullable = false)
     private String courtNameSnapshot;
 
-    @Column(nullable = false)
+    @Column(name = "start_time", nullable = false)
     private LocalDateTime startTime;
 
-    @Column(nullable = false)
+    @Column(name = "end_time", nullable = false)
     private LocalDateTime endTime;
 
-    @Column(nullable = false)
+    @Column(name = "price_snapshot", nullable = false)
     private BigDecimal priceSnapshot;
 
     @Column(name = "price_snapshot_vnd", nullable = false)
@@ -44,5 +47,6 @@ public class BookingItem {
     private String status = "PENDING";
 
     @CreationTimestamp
+    @Column(name = "created_at")
     private LocalDateTime createdAt;
 }

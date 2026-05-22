@@ -1,328 +1,127 @@
-import { useState, useMemo } from 'react';
-import { Row, Col, Card, Button, Select, Pagination, Empty, Tag, Space, Typography, Avatar, Input, DatePicker, TimePicker, Checkbox, Tooltip, Badge } from 'antd';
-import { 
-  EnvironmentOutlined, 
-  UserOutlined, 
-  LinkOutlined, 
-  InfoCircleOutlined,
-  SearchOutlined,
-  FilterOutlined,
-  ShareAltOutlined,
-  HeartOutlined,
-  ClockCircleOutlined,
-  CustomerServiceOutlined,
-  TeamOutlined,
-  FacebookFilled,
-  ThunderboltFilled
-} from '@ant-design/icons';
+import { useEffect, useState } from 'react';
+import { Card, Button, Select, Pagination, Empty, Space, Typography, message, Spin, Tag } from 'antd';
 import { useNavigate } from 'react-router-dom';
-import { mockMatchPosts } from '../../data/mockCommunity';
-import { BRAND } from '../../theme/antdTheme';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import { communityApi } from '../../services/communityApi';
+import type { MatchPost } from '../../types/community.types';
+import { useAuthStore } from '../../stores/authStore';
 
 dayjs.extend(relativeTime);
 
 const { Title, Text, Paragraph } = Typography;
-const { Option } = Select;
-
-const CATEGORIES = [
-  { icon: <UserOutlined />, label: 'Tìm kèo', id: 'matches' },
-  { icon: <ThunderboltFilled />, label: 'Pass sân', id: 'pass' },
-  { icon: <LinkOutlined />, label: 'Mua bán', id: 'shop' },
-  { icon: <CustomerServiceOutlined />, label: 'Lớp dạy', id: 'class' },
-  { icon: <TeamOutlined />, label: 'CLB', id: 'club' },
-];
-
-const LEVELS = ['Y', 'Y+', 'TBY', 'TBY+', 'TB-', 'TB', 'TB+', 'TB++', 'TBK'];
 
 export default function CommunityPage() {
   const navigate = useNavigate();
-
-  const [activeCategory, setActiveCategory] = useState('matches');
-  const [level, setLevel] = useState<string>('');
+  const user = useAuthStore((state) => state.user);
+  const [level, setLevel] = useState<string>();
   const [page, setPage] = useState(1);
+  const [loading, setLoading] = useState(false);
+  const [posts, setPosts] = useState<MatchPost[]>([]);
+  const [totalElements, setTotalElements] = useState(0);
   const pageSize = 10;
 
-  const filteredPosts = useMemo(() => {
-    return mockMatchPosts.filter(post => {
-      const matchLevel = !level || post.levelCode?.includes(level) || post.level === level;
-      return matchLevel;
-    });
-  }, [level]);
-
-  const matchData = {
-    content: filteredPosts.slice((page - 1) * pageSize, page * pageSize),
-    totalElements: filteredPosts.length,
+  const loadPosts = async () => {
+    setLoading(true);
+    try {
+      const data = await communityApi.getMatchPosts({
+        status: 'OPEN',
+        level,
+        page: page - 1,
+        size: pageSize,
+      });
+      setPosts(data.content || []);
+      setTotalElements(data.totalElements || 0);
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Khong the tai danh sach keo');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const renderSidebar = () => (
-    <div className="sticky top-8">
-      <Card 
-        title={
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '4px 0' }}>
-            <div style={{ width: 32, height: 32, borderRadius: 10, background: BRAND.primaryLight, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <FilterOutlined style={{ color: BRAND.primary }} />
-            </div>
-            <span style={{ fontSize: 16, fontWeight: 700 }}>Bộ lọc nâng cao</span>
-          </div>
-        } 
-        bodyStyle={{ padding: '24px' }}
-        style={{ 
-          borderRadius: 24, 
-          border: '1px solid #e2e8f0', 
-          boxShadow: '0 10px 30px -10px rgba(0,0,0,0.04)',
-          background: '#fff'
-        }}
-      >
-        <Space direction="vertical" size={24} style={{ width: '100%' }}>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
-              <Text strong style={{ fontSize: 13, color: BRAND.text }}>Tìm kiếm nhanh</Text>
-              <Tooltip title="Tìm theo tên chủ kèo, sân hoặc nội dung"><InfoCircleOutlined style={{ fontSize: 12, color: BRAND.textMuted }} /></Tooltip>
-            </div>
-            <Input 
-              prefix={<SearchOutlined style={{ color: BRAND.textMuted }} />} 
-              placeholder="Nhập từ khóa..." 
-              size="large" 
-              style={{ borderRadius: 12, border: '1px solid #f1f5f9', background: '#f8fafc' }}
-            />
-          </div>
+  useEffect(() => {
+    loadPosts();
+  }, [level, page]);
 
-          <div>
-            <Text strong style={{ display: 'block', marginBottom: 10, fontSize: 13, color: BRAND.text }}>Chọn sân cầu lông</Text>
-            <Select placeholder="Tất cả các sân" style={{ width: '100%' }} size="large" allowClear>
-              <Option value="1">Sân Lê Văn Lương</Option>
-              <Option value="2">BMC Nguyễn Xiển</Option>
-              <Option value="3">Sân Cầu Giấy</Option>
-            </Select>
-          </div>
-
-          <div>
-            <Text strong style={{ display: 'block', marginBottom: 10, fontSize: 13, color: BRAND.text }}>Ngày thi đấu</Text>
-            <DatePicker style={{ width: '100%' }} size="large" defaultValue={dayjs()} format="DD/MM/YYYY" />
-          </div>
-
-          <div>
-            <Text strong style={{ display: 'block', marginBottom: 10, fontSize: 13, color: BRAND.text }}>Khung giờ rảnh</Text>
-            <Row gutter={8}>
-              <Col span={11}><TimePicker placeholder="Từ" format="HH:mm" style={{ width: '100%' }} /></Col>
-              <Col span={2} style={{ textAlign: 'center', lineHeight: '42px', color: BRAND.textMuted }}>-</Col>
-              <Col span={11}><TimePicker placeholder="Đến" format="HH:mm" style={{ width: '100%' }} /></Col>
-            </Row>
-          </div>
-
-          <div style={{ background: '#f0fdf4', padding: '12px 16px', borderRadius: 12, border: '1px dashed #bbf7d0' }}>
-            <Checkbox><Text style={{ fontSize: 13, fontWeight: 600, color: BRAND.primaryDark }}>Ưu tiên sân đã có nữ</Text></Checkbox>
-          </div>
-
-          <div>
-            <Text strong style={{ display: 'block', marginBottom: 14, fontSize: 13, color: BRAND.text }}>Trình độ yêu cầu</Text>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {LEVELS.map(l => (
-                <Button 
-                  key={l} 
-                  size="small" 
-                  type={level === l ? 'primary' : 'default'}
-                  onClick={() => setLevel(level === l ? '' : l)}
-                  style={{ 
-                    fontSize: 11, 
-                    height: 30,
-                    minWidth: 42,
-                    borderRadius: 8,
-                    fontWeight: level === l ? 700 : 500,
-                    boxShadow: level === l ? `0 4px 10px ${BRAND.primary}40` : 'none'
-                  }}
-                >
-                  {l}
-                </Button>
-              ))}
-            </div>
-          </div>
-
-          <Button block size="large" style={{ marginTop: 8, borderRadius: 12, fontWeight: 700 }}>
-            Làm mới bộ lọc
-          </Button>
-        </Space>
-      </Card>
-    </div>
-  );
-
-  const renderMatchCard = (match: any) => (
-    <Card 
-      key={match.id}
-      hoverable
-      bodyStyle={{ padding: 0 }}
-      style={{ 
-        borderRadius: 24, 
-        marginBottom: 20, 
-        border: '1px solid #f1f5f9', 
-        overflow: 'hidden',
-        boxShadow: '0 4px 20px -5px rgba(0,0,0,0.03)' 
-      }}
-      onClick={() => navigate(`/community/matches/${match.id}`)}
-    >
-      <div style={{ display: 'flex' }}>
-        <div style={{ 
-          width: 140, 
-          background: '#f8fafc', 
-          borderRight: '1px solid #f1f5f9',
-          padding: '24px 16px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center',
-          textAlign: 'center'
-        }}>
-          <div style={{ color: BRAND.sky, marginBottom: 8 }}>
-            <ClockCircleOutlined style={{ fontSize: 24 }} />
-          </div>
-          <Text strong style={{ fontSize: 16, display: 'block' }}>{match.startTime}</Text>
-          <Text type="secondary" style={{ fontSize: 13 }}>{match.endTime}</Text>
-          <div style={{ marginTop: 16 }}>
-            <Badge count={match.levelCode} style={{ background: BRAND.warning, color: '#fff', fontWeight: 800, border: 'none' }} />
-          </div>
-        </div>
-
-        <div style={{ flex: 1, padding: '24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-            <Space direction="vertical" size={0}>
-              <Space style={{ marginBottom: 4 }}>
-                <EnvironmentOutlined style={{ color: BRAND.danger }} />
-                <Text strong style={{ color: BRAND.danger, fontSize: 14 }}>{match.location}</Text>
-              </Space>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Tag color="blue" style={{ border: 'none', borderRadius: 6 }}>{match.genderInfo}</Tag>
-                {match.genderInfo?.includes('Nữ') && (
-                  <Tag color="magenta" style={{ border: 'none', borderRadius: 6 }}>Đã có 2 Nữ</Tag>
-                )}
-              </div>
-            </Space>
-            <Space>
-              <Button shape="circle" icon={<FacebookFilled />} style={{ color: '#1877f2', border: 'none', background: '#eff6ff' }} />
-              <Button shape="circle" icon={<ShareAltOutlined />} style={{ border: 'none', background: '#f8fafc' }} />
-              <Button shape="circle" icon={<HeartOutlined />} style={{ border: 'none', background: '#f8fafc' }} />
-            </Space>
-          </div>
-          <Title level={4} style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 800 }}>{match.title}</Title>
-          <Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ marginBottom: 20, fontSize: 14, lineHeight: 1.6 }}>
-            {match.description}
-          </Paragraph>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Avatar size={40} src={match.userAvatar} icon={<UserOutlined />} style={{ border: `2px solid ${BRAND.primaryLight}` }} />
-              <div>
-                <Text strong style={{ display: 'block', fontSize: 15 }}>{match.userName}</Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>{dayjs(match.createdAt).fromNow()}</Text>
-              </div>
-            </div>
-            <Button type="primary" size="large" style={{ height: 44, padding: '0 32px', borderRadius: 12, fontWeight: 800 }}>
-              Tham gia ngay
-            </Button>
-          </div>
-        </div>
-      </div>
-    </Card>
-  );
+  const handleJoin = async (matchId: string) => {
+    try {
+      await communityApi.joinMatch(matchId);
+      message.success('Dang ky tham gia thanh cong');
+      await loadPosts();
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Khong the dang ky tham gia');
+    }
+  };
 
   return (
-    <div style={{ background: '#f8fafc', minHeight: '100vh', padding: '40px 0 100px' }}>
-      <div style={{ maxWidth: 1360, margin: '0 auto', padding: '0 24px' }}>
-        <Row gutter={40} align="top">
-          <Col xs={0} lg={8}>
-            {renderSidebar()}
-          </Col>
-          <Col xs={24} lg={16}>
-            <div style={{ marginBottom: 32 }}>
-              <div style={{ display: 'flex', gap: 12, overflowX: 'auto', paddingBottom: 8, scrollbarWidth: 'none' }}>
-                {CATEGORIES.map(cat => (
-                  <Button 
-                    key={cat.id}
-                    type={activeCategory === cat.id ? 'primary' : 'default'}
-                    icon={cat.icon}
-                    size="large"
-                    onClick={() => setActiveCategory(cat.id)}
-                    style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      fontWeight: 700, 
-                      height: 52,
-                      padding: '0 28px',
-                      borderRadius: 16,
-                      border: activeCategory === cat.id ? 'none' : '1px solid #e2e8f0',
-                      boxShadow: activeCategory === cat.id ? `0 8px 20px ${BRAND.primary}30` : 'none',
-                      background: activeCategory === cat.id ? BRAND.primary : '#fff'
-                    }}
-                  >
-                    {cat.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-            <Card 
-              style={{ 
-                borderRadius: 24, 
-                background: `linear-gradient(135deg, ${BRAND.primaryDark} 0%, ${BRAND.primary} 100%)`,
-                color: '#fff',
-                marginBottom: 24,
-                border: 'none',
-                overflow: 'hidden',
-                position: 'relative',
-                boxShadow: `0 10px 30px -5px rgba(22, 163, 74, 0.15)`
-              }}
-              bodyStyle={{ padding: '32px 40px' }}
-            >
-              <div style={{ position: 'relative', zIndex: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ maxWidth: '65%' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-                    <div style={{ padding: '4px 10px', background: 'rgba(255,255,255,0.15)', borderRadius: 6, fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                      Cộng đồng SmashMate
-                    </div>
-                  </div>
-                  <Title level={2} style={{ color: '#fff', margin: 0, fontSize: 26, fontWeight: 800, lineHeight: 1.2 }}>
-                    Tìm kèo cầu lông ưng ý ngay
-                  </Title>
-                  <Paragraph style={{ color: 'rgba(255,255,255,0.8)', fontSize: 15, marginTop: 8, marginBottom: 0, lineHeight: 1.5 }}>
-                    Kết nối hàng ngàn tay vợt, tìm đối thủ xứng tầm gần bạn nhất.
-                  </Paragraph>
-                </div>
-                
-                <div style={{ position: 'relative', height: 100, width: 100, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                   <div style={{ fontSize: 80, opacity: 0.2 }}>🏸</div>
-                </div>
-              </div>
-              
-              {/* Subtle background glow */}
-              <div style={{ position: 'absolute', top: '-50%', right: '-10%', width: '300px', height: '300px', background: 'radial-gradient(circle, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0) 70%)', pointerEvents: 'none' }}></div>
-            </Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, padding: '0 8px' }}>
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <div>
+          <Title level={2} style={{ marginBottom: 4 }}>Cong dong keo cau long</Title>
+          <Text type="secondary">Tai keo mo va dang ky tham gia truc tiep</Text>
+        </div>
+        <Button type="primary" onClick={() => navigate('/user/challenges/create')}>Tao keo moi</Button>
+      </div>
+
+      <Space style={{ marginBottom: 16 }}>
+        <Select
+          allowClear
+          placeholder="Loc theo trinh do"
+          style={{ minWidth: 220 }}
+          value={level}
+          onChange={(v) => {
+            setPage(1);
+            setLevel(v);
+          }}
+          options={[
+            { value: 'BEGINNER', label: 'Beginner' },
+            { value: 'INTERMEDIATE', label: 'Intermediate' },
+            { value: 'ADVANCED', label: 'Advanced' },
+          ]}
+        />
+      </Space>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '60px 0' }}><Spin /></div>
+      ) : posts.length === 0 ? (
+        <Empty description="Khong co keo phu hop" />
+      ) : (
+        posts.map((match) => (
+          <Card key={match.id} style={{ marginBottom: 12 }} hoverable onClick={() => navigate(`/community/matches/${match.id}`)}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 16 }}>
               <div>
-                <Title level={3} style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>Kèo mới đăng tải</Title>
-                <Text type="secondary" style={{ fontSize: 14 }}>Hiển thị {matchData.content.length} trên tổng số {matchData.totalElements} kết quả</Text>
+                <Title level={4} style={{ marginBottom: 6 }}>{match.title}</Title>
+                <Space wrap>
+                  <Tag>{match.level}</Tag>
+                  <Tag color="blue">{match.joinMode}</Tag>
+                  <Tag color={match.currentParticipants >= match.maxParticipants ? 'red' : 'green'}>
+                    {match.currentParticipants}/{match.maxParticipants} nguoi
+                  </Tag>
+                </Space>
+                <Paragraph style={{ margin: '8px 0 0 0' }}>{match.description || 'Khong co mo ta'}</Paragraph>
+                <Text type="secondary">
+                  {match.venueName || match.venueAddress || '-'} | {dayjs(match.startTime).format('DD/MM/YYYY HH:mm')} - {dayjs(match.endTime).format('HH:mm')} | Dang boi {match.hostName || 'Chu keo'} ({dayjs(match.createdAt).fromNow()})
+                </Text>
               </div>
-              <Button icon={<FilterOutlined />} shape="round" size="large" style={{ fontWeight: 600 }}>Sắp xếp: Mới nhất</Button>
+              <div>
+                <Button
+                  type="primary"
+                  disabled={match.currentParticipants >= match.maxParticipants || match.hostId === user?.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleJoin(match.id);
+                  }}
+                >
+                  Dang ky tham gia
+                </Button>
+              </div>
             </div>
-            {matchData.content.length > 0 ? (
-              matchData.content.map(renderMatchCard)
-            ) : (
-              <Empty 
-                image={Empty.PRESENTED_IMAGE_SIMPLE} 
-                description={<Text type="secondary">Không tìm thấy kèo phù hợp. Hãy thử thay đổi bộ lọc!</Text>} 
-                style={{ padding: '60px 0' }}
-              />
-            )}
-            <div style={{ textAlign: 'center', marginTop: 60 }}>
-              <Pagination 
-                current={page} 
-                total={matchData.totalElements} 
-                pageSize={pageSize} 
-                onChange={setPage} 
-                showSizeChanger={false} 
-                style={{ fontWeight: 600 }}
-              />
-            </div>
-          </Col>
-        </Row>
+          </Card>
+        ))
+      )}
+
+      <div style={{ textAlign: 'center', marginTop: 24 }}>
+        <Pagination current={page} total={totalElements} pageSize={pageSize} onChange={setPage} showSizeChanger={false} />
       </div>
     </div>
   );

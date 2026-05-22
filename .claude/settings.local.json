@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker-compose up *)",
+      "Bash(docker-compose ps *)",
+      "Bash(findstr badminton *)",
+      "Bash(Select-String -Pattern \"ERROR|WARN|SUCCESS|Built|Started|Failed\")",
+      "Bash(docker exec *)",
+      "Bash(netstat -tlnp)",
+      "Bash(powershell -Command \"Test-NetConnection -ComputerName localhost -Port 9092\")",
+      "Bash(docker port *)",
+      "Bash(curl -s http://localhost:8888/actuator/health)",
+      "Bash(cmd /c \"rmdir /S /Q backend\\\\configServer\")",
+      "Bash([ -f \"$dir/pom.xml\" ])",
+      "Bash(grep -c spring-boot-devtools __TRACKED_VAR__/pom.xml)",
+      "Bash(psql -h localhost -U admin -d badminton_db -c \"\\\\d payment.payment_transactions\")"
+    ]
+  }
+}

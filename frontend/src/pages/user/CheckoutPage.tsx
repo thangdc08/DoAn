@@ -22,17 +22,30 @@ export default function CheckoutPage() {
   const [bookingData, setBookingData] = useState<CreateBookingResponse | null>(null);
   const requestedLockIdsRef = useRef<string>('');
 
+  // Debug: log state changes
+  useEffect(() => {
+    console.log('📦 CheckoutPage state:', { bookingId, bookingData });
+  }, [bookingId, bookingData]);
+
   const createBookingMutation = useMutation({
     mutationFn: bookingApi.createBooking,
     onSuccess: (data) => {
-      message.success({ key: 'create-booking', content: 'Tao booking thanh cong' });
+      console.log('✅ Booking created successfully:', data);
+      message.success({ key: 'create-booking', content: 'Tạo booking thành công' });
       setBookingId(data.bookingId);
       setBookingData(data);
+
+      // Auto-redirect to payment page after short delay
+      setTimeout(() => {
+        navigate(`/payment?bookingId=${data.bookingId}`);
+      }, 500);
     },
     onError: (error: any) => {
+      console.error('❌ Create booking failed:', error);
+      const errorMsg = error?.response?.data?.message || error?.message || 'Tạo booking thất bại';
       message.error({
         key: 'create-booking',
-        content: error?.response?.data?.message || error?.message || 'Tao booking that bai',
+        content: errorMsg,
       });
     },
   });

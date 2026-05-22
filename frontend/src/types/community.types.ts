@@ -1,25 +1,23 @@
 export interface MatchPost {
   id: string;
-  userId: string;
-  userName: string;
-  userAvatar?: string;
-  userLevel?: string;
+  hostId: string;
+  hostName?: string;
   title: string;
-  description: string;
+  description?: string;
   venueId?: string;
   venueName?: string;
-  location?: string;
+  venueAddress?: string;
   latitude?: number;
   longitude?: number;
-  matchDate: string;
   startTime: string;
   endTime: string;
-  level: 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED' | 'PROFESSIONAL' | 'ANY';
-  levelCode?: string;
-  genderInfo?: string;
+  level: string;
   maxParticipants: number;
   currentParticipants: number;
-  status: 'OPEN' | 'FULL' | 'CANCELLED' | 'COMPLETED';
+  joinMode?: string;
+  status: string;
+  likeCount?: number;
+  commentCount?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -85,13 +83,14 @@ export interface Report {
 export interface CreateMatchPostRequest {
   title: string;
   description: string;
-  venueId?: string;
-  location?: string;
-  latitude?: number;
-  longitude?: number;
-  matchDate: string;
+  level: string;
   startTime: string;
   endTime: string;
-  level: string;
+  venueId?: string;
+  locationText?: string;
+  latitude?: number;
+  longitude?: number;
   maxParticipants: number;
+  joinMode: 'OPEN' | 'APPROVAL';
+  visibility: 'PUBLIC' | 'PRIVATE';
 }

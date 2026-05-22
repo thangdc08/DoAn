@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { Card, Row, Col, Button, Typography, Radio, Space, message, Spin, Alert, Divider } from 'antd';
 import { CreditCardOutlined, WalletOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { paymentApi } from '../../services/paymentApi';
 import { bookingApi } from '../../services/bookingApi';
+import { useAuthStore } from '../../stores/authStore';
 
 const { Title, Text } = Typography;
 
@@ -13,13 +14,23 @@ export default function PaymentPage() {
   const navigate = useNavigate();
   const bookingId = searchParams.get('bookingId');
   const [paymentMethod, setPaymentMethod] = useState<'MOCK' | 'VNPAY'>('MOCK');
+  const { user } = useAuthStore();
 
   // Get booking details
-  const { data: booking, isLoading: loadingBooking } = useQuery({
+  const { data: booking, isLoading: loadingBooking, error: bookingError } = useQuery({
     queryKey: ['booking', bookingId],
     queryFn: () => bookingApi.getBookingById(bookingId!),
     enabled: !!bookingId,
+    retry: false,
   });
+
+  // Check ownership after booking is loaded
+  useEffect(() => {
+    if (booking && user && booking.userId !== user.id) {
+      message.error('Bạn không có quyền thanh toán booking này');
+      navigate('/user/bookings', { replace: true });
+    }
+  }, [booking, user, navigate]);
 
   // Create payment mutation
   const createPaymentMutation = useMutation({
@@ -33,14 +44,26 @@ export default function PaymentPage() {
         window.location.href = data.paymentUrl;
       }
     },
-    onError: () => {
-      message.error('Tạo thanh toán thất bại');
+    onError: (error: any) => {
+      message.error('Tạo thanh toán thất bại: ' + (error?.message || 'Vui lòng thử lại'));
     },
   });
 
   const handlePayment = () => {
     if (!bookingId) {
       message.error('Không tìm thấy booking');
+      return;
+    }
+
+    if (!booking) {
+      message.error('Không thể tải thông tin booking');
+      return;
+    }
+
+    // Additional check: booking status must be PENDING and paymentStatus UNPAID
+    if (booking.status !== 'PENDING' || booking.paymentStatus !== 'UNPAID') {
+      message.error('Booking không hợp lệ hoặc đã được thanh toán');
+      navigate('/user/bookings', { replace: true });
       return;
     }
 
@@ -56,18 +79,24 @@ export default function PaymentPage() {
     return (
       <div style={{ textAlign: 'center', padding: '60px 0' }}>
         <Spin size="large" />
+        <div style={{ marginTop: 16 }}>Đang tải thông tin đơn hàng...</div>
       </div>
     );
   }
 
-  if (!booking) {
+  if (bookingError || !booking) {
     return (
-      <div style={{ padding: '24px' }}>
+      <div style={{ padding: '24px', maxWidth: 800, margin: '0 auto' }}>
         <Alert
           message="Không tìm thấy booking"
           description="Vui lòng quay lại trang đặt sân"
           type="error"
           showIcon
+          action={
+            <Button type="primary" onClick={() => navigate('/venues')}>
+              Về trang chủ
+            </Button>
+          }
         />
       </div>
     );

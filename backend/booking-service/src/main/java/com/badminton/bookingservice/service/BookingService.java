@@ -220,6 +220,10 @@ public class BookingService {
   }
 
   private void createBookingItems(Booking booking, List<SlotLock> locks) {
+    String venueName = (booking.getVenueNameSnapshot() == null || booking.getVenueNameSnapshot().isBlank())
+        ? "Unknown venue"
+        : booking.getVenueNameSnapshot();
+
     List<BookingItem> items = locks.stream().map(lock -> {
       BigDecimal itemPrice = venueClient.getPrice(lock.getCourtId(), lock.getStartTime(), lock.getEndTime());
       if (itemPrice == null) {
@@ -229,6 +233,7 @@ public class BookingService {
       return BookingItem.builder()
           .bookingId(booking.getId())
           .venueId(lock.getVenueId())
+          .venueNameSnapshot(venueName)
           .courtId(lock.getCourtId())
           .courtNameSnapshot("Court " + lock.getCourtId().toString().substring(0, 8))
           .startTime(lock.getStartTime())

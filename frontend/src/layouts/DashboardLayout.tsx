@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { Dropdown, Badge, Avatar, message, Typography, Space } from 'antd';
@@ -109,12 +109,19 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   role = 'USER',
 }) => {
   const user = useAuthStore((state) => state.user);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const navigate = useNavigate();
   const userName = user?.fullName || 'Người dùng';
   const userAvatar = user?.avatarUrl;
   const [collapsed, setCollapsed] = useState(false);
-  const navigate = useNavigate();
   const menu = MENUS[role];
   const sidebarW = collapsed ? 'w-16' : 'w-60';
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      navigate('/login', { replace: true });
+    }
+  }, [isAuthenticated, navigate]);
 
   const handleLogout = () => {
     message.success('Đã đăng xuất thành công');

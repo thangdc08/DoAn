@@ -6,6 +6,7 @@ import BookingGrid from '../../components/ui/BookingGrid';
 import dayjs, { Dayjs } from 'dayjs';
 import { useQuery } from '@tanstack/react-query';
 import { venueApi } from '../../services/venueApi';
+import { useAuthStore } from '../../stores/authStore';
 
 const { Title } = Typography;
 
@@ -14,6 +15,7 @@ export default function BookingPage() {
   const venueId = searchParams.get('venueId') || '';
 
   const [selectedDate, setSelectedDate] = useState<Dayjs>(dayjs());
+  const { isAuthenticated } = useAuthStore();
 
   // Fetch actual venue details
   const { data: venue, isLoading: isLoadingVenue } = useQuery({
@@ -99,13 +101,14 @@ export default function BookingPage() {
             title={`Lịch sân ngày ${selectedDate.format('DD/MM/YYYY')}`}
             bodyStyle={{ padding: '24px 12px' }}
           >
-            <BookingGrid 
+            <BookingGrid
               venueId={venue.id}
               courts={courts}
               priceRules={priceRules}
               courtNames={courts.map(c => c.name)}
               selectedDate={selectedDate}
               onSelectionChange={handleSelectionChange}
+              isAuthenticated={isAuthenticated}
             />
           </Card>
         </Col>

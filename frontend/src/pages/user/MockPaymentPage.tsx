@@ -1,9 +1,8 @@
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useMutation } from '@tanstack/react-query';
-import { Card, Button, Space, Typography, Alert } from 'antd';
+import { Card, Button, Space, Typography, Alert, message } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { paymentApi } from '../../services/paymentApi';
-import { message } from 'antd';
 
 const { Title, Text } = Typography;
 
@@ -12,9 +11,25 @@ export default function MockPaymentPage() {
   const navigate = useNavigate();
   const transactionId = searchParams.get('transactionId');
 
+  // Validate transactionId
+  if (!transactionId) {
+    message.error('Không tìm thấy transactionId');
+    setTimeout(() => navigate('/'), 2000);
+    return (
+      <div style={{ padding: '24px', maxWidth: 800, margin: '0 auto' }}>
+        <Alert
+          message="Lỗi"
+          description="Không tìm thấy transactionId. Vui lòng quay lại và thử lại."
+          type="error"
+          showIcon
+        />
+      </div>
+    );
+  }
+
   const mockCallbackMutation = useMutation({
     mutationFn: ({ success }: { success: boolean }) =>
-      paymentApi.mockPaymentCallback(transactionId!, success),
+      paymentApi.mockPaymentCallback(transactionId, success),
     onSuccess: (_, variables) => {
       if (variables.success) {
         message.success('Thanh toán thành công');
@@ -24,8 +39,8 @@ export default function MockPaymentPage() {
         navigate('/payment-result?status=failed');
       }
     },
-    onError: () => {
-      message.error('Có lỗi xảy ra');
+    onError: (error: any) => {
+      message.error('Có lỗi xảy ra: ' + (error?.message || 'Unknown error'));
     },
   });
 

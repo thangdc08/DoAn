@@ -1,0 +1,354 @@
+version: '3.8'
+
+services:
+  # Infrastructure Services
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: badminton-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: adminpassword
+      POSTGRES_DB: badminton_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/init-db:/docker-entrypoint-initdb.d
+    networks:
+      - badminton-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:7.0
+    container_name: badminton-mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: adminpassword
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - badminton-network
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.0-alpine
+    container_name: badminton-redis
+    ports:
+      - "6379:6379"
+    networks:
+      - badminton-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  kafka:
+    image: apache/kafka:3.7.0
+    container_name: badminton-kafka
+    ports:
+      - "9092:9092"
+      - "9094:9094"
+    environment:
+      - KAFKA_NODE_ID=0
+      - KAFKA_PROCESS_ROLES=controller,broker
+      - KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093,EXTERNAL://:9094
+      - KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092,EXTERNAL://localhost:9094
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+      - KAFKA_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
+      - KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+      - KAFKA_CLUSTER_ID=L629Z6Z9S6K7X6Z9S6K7X6
+      - KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR=1
+      - KAFKA_TRANSACTION_STATE_LOG_MIN_ISR=1
+    volumes:
+      - kafka_data:/var/lib/kafka/data
+    networks:
+      - badminton-network
+    healthcheck:
+      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: badminton-kafka-ui
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+      DYNAMIC_CONFIG_ENABLED: 'true'
+    depends_on:
+      - kafka
+    networks:
+      - badminton-network
+
+  # Service Registry
+  service-registry:
+    build:
+      context: ./backend
+      dockerfile: serviceRegistry/Dockerfile
+    container_name: badminton-service-registry
+    ports:
+      - "8761:8761"
+    environment:
+      - EUREKA_CLIENT_REGISTER_WITH_EUREKA=false
+      - EUREKA_CLIENT_FETCH_REGISTRY=false
+    networks:
+      - badminton-network
+    depends_on:
+      - postgres
+      - kafka
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8761/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Config Server
+  config-server:
+    build:
+      context: ./backend
+      dockerfile: serviceRegistry/Dockerfile
+    container_name: badminton-config-server
+    ports:
+      - "8888:8888"
+    volumes:
+      - ./backend/configServer/src/main/resources/configurations:/config
+    environment:
+      - SPRING_PROFILES_ACTIVE=docker
+    networks:
+      - badminton-network
+    depends_on:
+      - kafka
+      - service-registry
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8888/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./backend
+      dockerfile: serviceRegistry/Dockerfile
+    container_name: badminton-api-gateway
+    ports:
+      - "8080:8080"
+    networks:
+      - badminton-network
+    depends_on:
+      - service-registry
+      - config-server
+      - identity-service
+      - venue-service
+      - booking-service
+      - community-service
+      - notification-service
+      - payment-service
+      - recommendation-service
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Identity Service
+  identity-service:
+    build:
+      context: ./backend
+      dockerfile: serviceRegistry/Dockerfile
+    container_name: badminton-identity-service
+    ports:
+      - "8081:8081"
+    networks:
+      - badminton-network
+    depends_on:
+      - postgres
+      - kafka
+      - service-registry
+      - config-server
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Venue Service
+  venue-service:
+    build:
+      context: ./backend
+      dockerfile: serviceRegistry/Dockerfile
+    container_name: badminton-venue-service
+    ports:
+      - "8082:8082"
+    networks:
+      - badminton-network
+    depends_on:
+      - postgres
+      - kafka
+      - service-registry
+      - config-server
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8082/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Booking Service
+  booking-service:
+    build:
+      context: ./backend
+      dockerfile: serviceRegistry/Dockerfile
+    container_name: badminton-booking-service
+    ports:
+      - "8083:8083"
+    networks:
+      - badminton-network
+    depends_on:
+      - postgres
+      - kafka
+      - service-registry
+      - config-server
+      - venue-service
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8083/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Payment Service
+  payment-service:
+    build:
+      context: ./backend
+      dockerfile: serviceRegistry/Dockerfile
+    container_name: badminton-payment-service
+    ports:
+      - "8084:8084"
+    networks:
+      - badminton-network
+    depends_on:
+      - postgres
+      - kafka
+      - service-registry
+      - config-server
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8084/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Community Service
+  community-service:
+    build:
+      context: ./backend
+      dockerfile: serviceRegistry/Dockerfile
+    container_name: badminton-community-service
+    ports:
+      - "8085:8085"
+    networks:
+      - badminton-network
+    depends_on:
+      - postgres
+      - kafka
+      - service-registry
+      - config-server
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8085/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Notification Service
+  notification-service:
+    build:
+      context: ./backend
+      dockerfile: serviceRegistry/Dockerfile
+    container_name: badminton-notification-service
+    ports:
+      - "8086:8086"
+    networks:
+      - badminton-network
+    depends_on:
+      - mongodb
+      - kafka
+      - service-registry
+      - config-server
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8086/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Recommendation Service
+  recommendation-service:
+    build:
+      context: ./backend
+      dockerfile: serviceRegistry/Dockerfile
+    container_name: badminton-recommendation-service
+    ports:
+      - "8087:8087"
+    networks:
+      - badminton-network
+    depends_on:
+      - mongodb
+      - redis
+      - kafka
+      - service-registry
+      - config-server
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8087/actuator/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: badminton-frontend
+    ports:
+      - "80:80"
+    networks:
+      - badminton-network
+    depends_on:
+      - api-gateway
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+networks:
+  badminton-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  mongo_data:
+  kafka_data:
