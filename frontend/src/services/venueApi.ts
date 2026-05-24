@@ -138,6 +138,16 @@ export const venueApi = {
   },
 
   // Admin APIs
+  getAdminVenues: async (params?: {
+    status?: string;
+    search?: string;
+    page?: number;
+    size?: number;
+  }): Promise<{ content: Venue[]; totalElements: number; totalPages: number }> => {
+    const response = await apiClient.get('/venues/api/admin/venues', { params });
+    return unwrapResult(response);
+  },
+
   getPendingVenues: async (): Promise<Venue[]> => {
     const response = await apiClient.get('/venues/api/admin/venues/pending');
     return unwrapResult(response);
@@ -148,6 +158,8 @@ export const venueApi = {
   },
 
   rejectVenue: async (venueId: string, reason: string): Promise<void> => {
-    await apiClient.patch(`/venues/api/admin/venues/${venueId}/reject`, { reason });
+    await apiClient.patch(`/venues/api/admin/venues/${venueId}/reject`, null, {
+      params: { reason },
+    });
   },
 };

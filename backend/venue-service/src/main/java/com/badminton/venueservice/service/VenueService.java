@@ -71,6 +71,7 @@ public class VenueService {
   public List<VenueResponse> findAll() {
     log.info("Fetching all venues");
     return venueRepository.findAll().stream()
+        .filter(v -> v.getStatus() == VenueStatus.APPROVED)
         .map(this::toVenueResponse)
         .collect(Collectors.toList());
   }
@@ -887,6 +888,7 @@ public class VenueService {
     Point point = geometryFactory.createPoint(new Coordinate(lng, lat));
     List<Venue> venues = venueRepository.findNearby(point, radiusKm * 1000);
     return venues.stream()
+        .filter(v -> v.getStatus() == VenueStatus.APPROVED)
         .limit(limit)
         .map(this::toVenueResponse)
         .collect(Collectors.toList());
@@ -966,8 +968,14 @@ public class VenueService {
   // Admin methods
   public List<VenueResponse> findVenuesByStatus(String status) {
     log.info("Finding venues with status: {}", status);
-    // repository stores status as String, use that directly
-    return venueRepository.findByStatus(status).stream()
+    VenueStatus venueStatus;
+    try {
+      venueStatus = VenueStatus.valueOf(status);
+    } catch (Exception ex) {
+      throw new AppException(HttpStatus.BAD_REQUEST, "Trạng thái sân không hợp lệ: " + status);
+    }
+
+    return venueRepository.findByStatus(venueStatus).stream()
         .map(this::toVenueResponse)
         .collect(Collectors.toList());
   }
@@ -979,7 +987,12 @@ public class VenueService {
 
     // Filter by status
     if (status != null && !status.isEmpty()) {
-      VenueStatus venueStatus = VenueStatus.valueOf(status);
+      VenueStatus venueStatus;
+      try {
+        venueStatus = VenueStatus.valueOf(status);
+      } catch (Exception ex) {
+        throw new AppException(HttpStatus.BAD_REQUEST, "Trạng thái sân không hợp lệ: " + status);
+      }
       venues = venues.stream()
           .filter(v -> v.getStatus() == venueStatus)
           .collect(Collectors.toList());
@@ -997,6 +1010,9 @@ public class VenueService {
 
     // Manual pagination
     int start = (int) pageable.getOffset();
+    if (start >= venues.size()) {
+      return new org.springframework.data.domain.PageImpl<>(List.of(), pageable, venues.size());
+    }
     int end = Math.min((start + pageable.getPageSize()), venues.size());
     List<VenueResponse> pageContent = venues.subList(start, end).stream()
         .map(this::toVenueResponse)

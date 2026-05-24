@@ -2,6 +2,12 @@ import apiClient from './apiClient';
 import type { User } from '../types/auth.types';
 import type { PaymentTransaction } from '../types/payment.types';
 
+const unwrapData = <T>(payload: any): T => {
+  if (payload?.data !== undefined) return payload.data as T;
+  if (payload?.result !== undefined) return payload.result as T;
+  return payload as T;
+};
+
 export const adminApi = {
   // User Management
   getUsers: async (params?: {
@@ -11,21 +17,21 @@ export const adminApi = {
     page?: number;
     size?: number;
   }): Promise<{ content: User[]; totalElements: number; totalPages: number }> => {
-    const response = await apiClient.get('/admin/users', { params });
-    return response.data;
+    const response = await apiClient.get('/identity/api/v1/admin/users', { params });
+    return unwrapData(response.data);
   },
 
   getUserById: async (userId: string): Promise<User> => {
-    const response = await apiClient.get(`/admin/users/${userId}`);
-    return response.data;
+    const response = await apiClient.get(`/identity/api/v1/admin/users/${userId}`);
+    return unwrapData(response.data);
   },
 
   updateUserStatus: async (userId: string, status: string): Promise<void> => {
-    await apiClient.patch(`/admin/users/${userId}/status`, { status });
+    await apiClient.patch(`/identity/api/v1/admin/users/${userId}/status`, { status });
   },
 
   updateUserRoles: async (userId: string, roleCodes: string[]): Promise<void> => {
-    await apiClient.patch(`/admin/users/${userId}/roles`, { roleCodes });
+    await apiClient.patch(`/identity/api/v1/admin/users/${userId}/roles`, { roleCodes });
   },
 
   // Payment Oversight
@@ -36,22 +42,22 @@ export const adminApi = {
     page?: number;
     size?: number;
   }): Promise<{ content: PaymentTransaction[]; totalElements: number; totalPages: number }> => {
-    const response = await apiClient.get('/admin/payments', { params });
-    return response.data;
+    const response = await apiClient.get('/payments/api/payments', { params });
+    return unwrapData(response.data);
   },
 
   getPaymentById: async (transactionId: string): Promise<PaymentTransaction> => {
-    const response = await apiClient.get(`/admin/payments/${transactionId}`);
-    return response.data;
+    const response = await apiClient.get(`/payments/api/payments/${transactionId}`);
+    return unwrapData(response.data);
   },
 
   // System Settings
   getSettings: async (): Promise<Record<string, any>> => {
-    const response = await apiClient.get('/admin/settings');
-    return response.data;
+    const raw = localStorage.getItem('admin_settings');
+    return raw ? JSON.parse(raw) : {};
   },
 
   updateSettings: async (settings: Record<string, any>): Promise<void> => {
-    await apiClient.put('/admin/settings', settings);
+    localStorage.setItem('admin_settings', JSON.stringify(settings));
   },
 };

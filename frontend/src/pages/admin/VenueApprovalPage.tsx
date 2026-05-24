@@ -1,88 +1,95 @@
-import { Card, Table, Button, Space, Modal, Input, message, Typography, Tag, Avatar, Badge, Row, Col, Tabs, List, Divider, Alert } from 'antd';
-import { 
-  CheckOutlined, 
-  CloseOutlined, 
-  EyeOutlined, 
-  ShopOutlined, 
-  EnvironmentOutlined, 
-  UserOutlined,
-  DollarOutlined,
-  ClockCircleOutlined,
-  SafetyCertificateOutlined,
-  TeamOutlined,
-  WifiOutlined,
-  CarOutlined,
-  CoffeeOutlined,
-  ThunderboltOutlined,
-  SettingOutlined
-} from '@ant-design/icons';
-import { useState } from 'react';
+import { Card, Table, Button, Space, Modal, Input, message, Typography, Tag, Avatar, Badge, Row, Col, List, Select } from 'antd';
+import { CheckOutlined, CloseOutlined, EyeOutlined, ShopOutlined, EnvironmentOutlined, UserOutlined, SearchOutlined } from '@ant-design/icons';
+import { useEffect, useMemo, useState } from 'react';
 import { BRAND } from '../../theme/antdTheme';
-import { useNavigate } from 'react-router-dom';
 import dayjs from 'dayjs';
+import { venueApi } from '../../services/venueApi';
+import type { Venue } from '../../types/venue.types';
 
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
-const MOCK_PENDING_VENUES = [
-  {
-    id: 'venue-101',
-    name: 'Sân Cầu Lông Ngôi Sao',
-    address: '123 Đường Số 7, Bình Tân',
-    district: 'Bình Tân',
-    city: 'TP. HCM',
-    ownerName: 'Nguyễn Văn A',
-    ownerId: 'owner-1',
-    createdAt: '2024-05-10T08:00:00Z',
-    courtCount: 12,
-    status: 'PENDING',
-    phone: '0901234567',
-    description: 'Sân mới nâng cấp thảm, ánh sáng chuẩn thi đấu.',
-    amenities: ['Wifi', 'Parking', 'Canteen', 'Locker']
-  },
-  {
-    id: 'venue-102',
-    name: 'Badminton Center Q10',
-    address: '456 Tô Hiến Thành, Quận 10',
-    district: 'Quận 10',
-    city: 'TP. HCM',
-    ownerName: 'Trần Thị B',
-    ownerId: 'owner-2',
-    createdAt: '2024-05-11T14:30:00Z',
-    courtCount: 8,
-    status: 'PENDING',
-    phone: '0908889990',
-    description: 'Vị trí trung tâm, sân thảm gỗ chất lượng cao.',
-    amenities: ['Wifi', 'Parking', 'Shower']
-  }
-];
+type AdminVenue = Venue & { ownerName?: string; courtCount?: number };
 
 export default function VenueApprovalPage() {
-  const navigate = useNavigate();
-  const [rejectVenue, setRejectVenue] = useState<any | null>(null);
-  const [viewVenue, setViewVenue] = useState<any | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [rejectVenue, setRejectVenue] = useState<AdminVenue | null>(null);
+  const [viewVenue, setViewVenue] = useState<AdminVenue | null>(null);
   const [rejectReason, setRejectReason] = useState('');
-  const [venues, setVenues] = useState(MOCK_PENDING_VENUES);
+  const [venues, setVenues] = useState<AdminVenue[]>([]);
+  const [totalElements, setTotalElements] = useState(0);
+  const [page, setPage] = useState(1);
+  const [size] = useState(10);
+  const [search, setSearch] = useState('');
+  const [status, setStatus] = useState<string>('');
 
-  const handleApprove = (id: string) => {
-    message.success('Đã duyệt sân thành công!');
-    setVenues(prev => prev.filter(v => v.id !== id));
-    setViewVenue(null);
+  const fetchVenues = async () => {
+    setLoading(true);
+    try {
+      const data = await venueApi.getAdminVenues({
+        page: page - 1,
+        size,
+        search: search || undefined,
+        status: status || undefined,
+      });
+      setVenues((data?.content || []) as AdminVenue[]);
+      setTotalElements(data?.totalElements || 0);
+    } catch (error) {
+      console.error(error);
+      message.error('Khong tai duoc danh sach co so');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleReject = () => {
-    if (!rejectReason) return message.warning('Vui lòng nhập lý do từ chối');
-    message.error('Đã từ chối sân!');
-    setVenues(prev => prev.filter(v => v.id !== rejectVenue.id));
-    setRejectVenue(null);
-    setRejectReason('');
+  useEffect(() => {
+    fetchVenues();
+  }, [page, size, search, status]);
+
+  const handleApprove = async (id: string) => {
+    try {
+      setSubmitting(true);
+      await venueApi.approveVenue(id);
+      message.success('Da duyet san thanh cong');
+      setViewVenue(null);
+      await fetchVenues();
+    } catch (error) {
+      console.error(error);
+      message.error('Duyet san that bai');
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  const handleReject = async () => {
+    if (!rejectVenue) return;
+    if (!rejectReason.trim()) return message.warning('Vui long nhap ly do tu choi');
+    try {
+      setSubmitting(true);
+      await venueApi.rejectVenue(rejectVenue.id, rejectReason.trim());
+      message.success('Da tu choi san');
+      setRejectVenue(null);
+      setRejectReason('');
+      await fetchVenues();
+    } catch (error) {
+      console.error(error);
+      message.error('Tu choi that bai');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const pendingCount = useMemo(
+    () => venues.filter((v) => v.status === 'PENDING_APPROVAL').length,
+    [venues]
+  );
 
   const columns = [
     {
-      title: 'Cơ sở đăng ký',
+      title: 'Co so dang ky',
       key: 'venue',
-      render: (_: any, record: any) => (
+      render: (_: unknown, record: AdminVenue) => (
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ width: 44, height: 44, borderRadius: 12, background: 'rgba(0,91,172,0.1)', color: BRAND.sky, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>
             <ShopOutlined />
@@ -91,241 +98,152 @@ export default function VenueApprovalPage() {
             <Text strong style={{ display: 'block' }}>{record.name}</Text>
             <Text type="secondary" style={{ fontSize: 12 }}>
               <EnvironmentOutlined style={{ marginRight: 4 }} />
-              {record.address}, {record.district}
+              {record.address}
             </Text>
           </div>
         </div>
-      )
+      ),
     },
     {
-      title: 'Chủ sở hữu',
+      title: 'Chu so huu',
       key: 'owner',
-      render: (_: any, record: any) => (
+      render: (_: unknown, record: AdminVenue) => (
         <Space>
           <Avatar size="small" icon={<UserOutlined />} />
-          <Text>{record.ownerName}</Text>
+          <Text>{record.ownerName || record.ownerId || 'Chua ro'}</Text>
         </Space>
-      )
+      ),
     },
     {
-      title: 'Quy mô',
-      dataIndex: 'courtCount',
-      key: 'courts',
-      render: (count: number) => <Tag color="blue" style={{ borderRadius: 4 }}>{count} sân</Tag>
+      title: 'Trang thai',
+      dataIndex: 'status',
+      key: 'status',
+      render: (value: string) => {
+        const color = value === 'PENDING_APPROVAL' ? 'gold' : value === 'APPROVED' ? 'green' : value === 'REJECTED' ? 'red' : 'default';
+        return <Tag color={color}>{value}</Tag>;
+      },
     },
     {
-      title: 'Ngày gửi',
+      title: 'Ngay gui',
       dataIndex: 'createdAt',
       key: 'date',
-      render: (date: string) => dayjs(date).format('DD/MM/YYYY HH:mm')
+      render: (date: string) => dayjs(date).format('DD/MM/YYYY HH:mm'),
     },
     {
-      title: 'Thao tác',
+      title: 'Thao tac',
       key: 'action',
       align: 'right' as const,
-      render: (_: any, record: any) => (
+      render: (_: unknown, record: AdminVenue) => (
         <Space>
-          <Button icon={<EyeOutlined />} onClick={() => setViewVenue(record)}>Chi tiết</Button>
-          <Button
-            type="primary"
-            icon={<CheckOutlined />}
-            onClick={() => handleApprove(record.id)}
-            style={{ background: BRAND.primary, border: 'none' }}
-          >
-            Duyệt
-          </Button>
-          <Button
-            danger
-            icon={<CloseOutlined />}
-            onClick={() => setRejectVenue(record)}
-          >
-            Từ chối
-          </Button>
+          <Button icon={<EyeOutlined />} onClick={() => setViewVenue(record)}>Chi tiet</Button>
+          {record.status === 'PENDING_APPROVAL' && (
+            <>
+              <Button type="primary" icon={<CheckOutlined />} loading={submitting} onClick={() => handleApprove(record.id)} style={{ background: BRAND.primary, border: 'none' }}>
+                Duyet
+              </Button>
+              <Button danger icon={<CloseOutlined />} onClick={() => setRejectVenue(record)}>Tu choi</Button>
+            </>
+          )}
         </Space>
       ),
     },
   ];
 
+  const utilities = useMemo(() => viewVenue?.utilities || [], [viewVenue]);
+
   return (
     <div style={{ padding: '24px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
-          <Title level={2} style={{ margin: 0 }}>Phê duyệt Sân mới</Title>
-          <Text type="secondary">Xem xét và xác minh thông tin các cơ sở cầu lông mới tham gia hệ thống.</Text>
+          <Title level={2} style={{ margin: 0 }}>Quan ly tat ca co so</Title>
+          <Text type="secondary">Danh sach toan bo co so trong he thong va bo loc theo trang thai.</Text>
         </div>
-        <Badge count={venues.length} offset={[10, 0]}>
-           <Text strong style={{ background: '#fff', padding: '8px 16px', borderRadius: 10, border: '1px solid #f1f5f9' }}>
-             Đang chờ: {venues.length} đơn
-           </Text>
+        <Badge count={pendingCount} offset={[10, 0]}>
+          <Text strong style={{ background: '#fff', padding: '8px 16px', borderRadius: 10, border: '1px solid #f1f5f9' }}>Dang cho: {pendingCount} don</Text>
         </Badge>
       </div>
 
       <Row gutter={[20, 20]} style={{ marginBottom: 24 }}>
         <Col span={24}>
-          <Card 
-            bodyStyle={{ padding: 0 }} 
-            style={{ borderRadius: 16, overflow: 'hidden', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}
-          >
+          <Card style={{ borderRadius: 16, overflow: 'hidden', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+            <div style={{ display: 'flex', gap: 12, marginBottom: 16 }}>
+              <Input
+                placeholder="Tim theo ten, dia chi..."
+                value={search}
+                onChange={(e) => {
+                  setPage(1);
+                  setSearch(e.target.value);
+                }}
+                prefix={<SearchOutlined style={{ color: '#94a3b8' }} />}
+                style={{ width: 320 }}
+              />
+              <Select
+                placeholder="Loc trang thai"
+                allowClear
+                value={status || undefined}
+                style={{ width: 220 }}
+                onChange={(value) => {
+                  setPage(1);
+                  setStatus(value || '');
+                }}
+                options={[
+                  { label: 'PENDING_APPROVAL', value: 'PENDING_APPROVAL' },
+                  { label: 'APPROVED', value: 'APPROVED' },
+                  { label: 'REJECTED', value: 'REJECTED' },
+                  { label: 'SUSPENDED', value: 'SUSPENDED' },
+                ]}
+              />
+            </div>
             <Table
               columns={columns}
               dataSource={venues}
               rowKey="id"
-              pagination={false}
-              locale={{ emptyText: 'Hiện không có đơn đăng ký nào đang chờ duyệt' }}
+              loading={loading}
+              pagination={{
+                current: page,
+                pageSize: size,
+                total: totalElements,
+                onChange: setPage,
+                showSizeChanger: false,
+              }}
+              locale={{ emptyText: 'Khong co co so nao' }}
             />
           </Card>
         </Col>
       </Row>
 
-      {/* Detailed Review Modal (Owner-like capabilities) */}
-      <Modal
-        title={
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingRight: 40 }}>
-             <Space><ShopOutlined style={{ color: BRAND.primary }} /> <Text strong>Hồ sơ cơ sở: {viewVenue?.name}</Text></Space>
-             <Tag color="warning">Đang chờ duyệt</Tag>
-          </div>
-        }
-        open={!!viewVenue}
-        onCancel={() => setViewVenue(null)}
-        width={900}
-        footer={[
-          <Button key="close" onClick={() => setViewVenue(null)}>Đóng</Button>,
-          <Button key="reject" danger icon={<CloseOutlined />} onClick={() => { setRejectVenue(viewVenue); setViewVenue(null); }}>Từ chối</Button>,
-          <Button key="approve" type="primary" icon={<CheckOutlined />} style={{ background: BRAND.primary }} onClick={() => handleApprove(viewVenue.id)}>Duyệt hệ thống</Button>
-        ]}
-      >
-        <Tabs
-          defaultActiveKey="1"
-          items={[
-            {
-              key: '1',
-              label: 'Thông tin chung',
-              children: (
-                <div style={{ padding: '16px 0' }}>
-                   <Row gutter={[32, 32]}>
-                      <Col span={14}>
-                         <Title level={5}>Mô tả</Title>
-                         <Paragraph>{viewVenue?.description}</Paragraph>
-                         <Divider />
-                         <Title level={5}>Địa chỉ & Liên hệ</Title>
-                         <List size="small">
-                            <List.Item><Space><EnvironmentOutlined /> {viewVenue?.address}, {viewVenue?.district}, {viewVenue?.city}</Space></List.Item>
-                            <List.Item><Space><UserOutlined /> Chủ sân: {viewVenue?.ownerName}</Space></List.Item>
-                            <List.Item><Space><ThunderboltOutlined /> Hotline: {viewVenue?.phone}</Space></List.Item>
-                         </List>
-                      </Col>
-                      <Col span={10}>
-                         <Card size="small" title="Hình ảnh cơ sở" style={{ borderRadius: 12 }}>
-                            <div style={{ width: '100%', height: 180, background: '#f1f5f9', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#94a3b8' }}>
-                               No Preview Image
-                            </div>
-                         </Card>
-                         <div style={{ marginTop: 20 }}>
-                            <Title level={5}>Tiện ích</Title>
-                            <Space wrap>
-                               <Tag icon={<WifiOutlined />}>Free Wifi</Tag>
-                               <Tag icon={<CarOutlined />}>Bãi đỗ xe</Tag>
-                               <Tag icon={<CoffeeOutlined />}>Canteen</Tag>
-                            </Space>
-                         </div>
-                      </Col>
-                   </Row>
-                </div>
-              )
-            },
-            {
-              key: '2',
-              label: `Danh sách sân (${viewVenue?.courtCount})`,
-              children: (
-                <div style={{ padding: '16px 0' }}>
-                   <Alert message="Admin có quyền quản lý trực tiếp sân lẻ của cơ sở này sau khi duyệt." type="info" showIcon style={{ marginBottom: 16 }} />
-                   <Table
-                      size="small"
-                      columns={[
-                        { title: 'Tên sân', dataIndex: 'name', key: 'name' },
-                        { title: 'Loại', dataIndex: 'type', key: 'type', render: (t) => <Tag color="blue">{t}</Tag> },
-                        { title: 'Giá mặc định', dataIndex: 'price', key: 'price' }
-                      ]}
-                      dataSource={[
-                        { id: 1, name: 'Sân 1', type: 'STANDARD', price: '80.000đ' },
-                        { id: 2, name: 'Sân 2', type: 'STANDARD', price: '80.000đ' },
-                        { id: 3, name: 'Sân 3 (VIP)', type: 'VIP', price: '120.000đ' },
-                      ]}
-                      pagination={false}
-                   />
-                   <Button 
-                    type="link" 
-                    icon={<SettingOutlined />} 
-                    style={{ marginTop: 12 }}
-                    onClick={() => navigate(`/owner/venues/${viewVenue.id}/courts`)}
-                   >
-                      Truy cập trang quản lý sân chi tiết
-                   </Button>
-                </div>
-              )
-            },
-            {
-              key: '3',
-              label: 'Chính sách vận hành',
-              children: (
-                <div style={{ padding: '16px 0' }}>
-                   <Row gutter={[16, 16]}>
-                      <Col span={12}>
-                         <Card size="small" style={{ borderRadius: 10 }}>
-                            <Space direction="vertical">
-                               <Text strong><ClockCircleOutlined /> Thời gian hủy tối thiểu</Text>
-                               <Text>24 giờ trước trận đấu</Text>
-                            </Space>
-                         </Card>
-                      </Col>
-                      <Col span={12}>
-                         <Card size="small" style={{ borderRadius: 10 }}>
-                            <Space direction="vertical">
-                               <Text strong><SafetyCertificateOutlined /> Đặt cọc bắt buộc</Text>
-                               <Text>100% giá trị slot</Text>
-                            </Space>
-                         </Card>
-                      </Col>
-                   </Row>
-                </div>
-              )
-            }
-          ]}
-        />
+      <Modal title={<Space><ShopOutlined style={{ color: BRAND.primary }} /> <Text strong>Ho so co so: {viewVenue?.name}</Text></Space>} open={!!viewVenue} onCancel={() => setViewVenue(null)} width={760} footer={[<Button key="close" onClick={() => setViewVenue(null)}>Dong</Button>, viewVenue?.status === 'PENDING_APPROVAL' ? <Button key="reject" danger icon={<CloseOutlined />} onClick={() => { setRejectVenue(viewVenue); setViewVenue(null); }}>Tu choi</Button> : null, viewVenue?.status === 'PENDING_APPROVAL' ? <Button key="approve" type="primary" loading={submitting} icon={<CheckOutlined />} style={{ background: BRAND.primary }} onClick={() => viewVenue && handleApprove(viewVenue.id)}>Duyet he thong</Button> : null].filter(Boolean as any)}>
+        <div style={{ padding: '16px 0' }}>
+          <Row gutter={[24, 24]}>
+            <Col span={14}>
+              <Title level={5}>Mo ta</Title>
+              <Paragraph>{viewVenue?.description || 'Chua co mo ta'}</Paragraph>
+              <Title level={5}>Dia chi va lien he</Title>
+              <List size="small">
+                <List.Item><Space><EnvironmentOutlined /> {viewVenue?.address}</Space></List.Item>
+                <List.Item><Space><UserOutlined /> Chu san: {viewVenue?.ownerName || viewVenue?.ownerId || 'Chua ro'}</Space></List.Item>
+                <List.Item><Space>SDT: {viewVenue?.phone || '-'}</Space></List.Item>
+              </List>
+            </Col>
+            <Col span={10}>
+              <Title level={5}>Tien ich</Title>
+              <Space wrap>
+                {utilities.length ? utilities.map((item) => <Tag key={item}>{item}</Tag>) : <Text type="secondary">Chua co tien ich</Text>}
+              </Space>
+            </Col>
+          </Row>
+        </div>
       </Modal>
 
-      <Modal
-        title={
-          <div style={{ color: '#ff4d4f' }}>
-             <CloseOutlined style={{ marginRight: 8 }} />
-             Từ chối yêu cầu đăng ký
-          </div>
-        }
-        open={!!rejectVenue}
-        onCancel={() => {
-          setRejectVenue(null);
-          setRejectReason('');
-        }}
-        onOk={handleReject}
-        okText="Gửi thông báo từ chối"
-        okButtonProps={{ danger: true }}
-      >
+      <Modal title={<div style={{ color: '#ff4d4f' }}><CloseOutlined style={{ marginRight: 8 }} />Tu choi yeu cau dang ky</div>} open={!!rejectVenue} confirmLoading={submitting} onCancel={() => { setRejectVenue(null); setRejectReason(''); }} onOk={handleReject} okText="Gui thong bao tu choi" okButtonProps={{ danger: true }}>
         <div style={{ marginBottom: 16 }}>
-           <Text type="secondary">Bạn đang từ chối sân:</Text>
-           <div style={{ fontWeight: 'bold', fontSize: 16, marginTop: 4 }}>{rejectVenue?.name}</div>
+          <Text type="secondary">Ban dang tu choi san:</Text>
+          <div style={{ fontWeight: 'bold', fontSize: 16, marginTop: 4 }}>{rejectVenue?.name}</div>
         </div>
-        <Text strong>Lý do từ chối:</Text>
-        <TextArea
-          rows={4}
-          placeholder="Ví dụ: Hình ảnh không rõ ràng, thông tin địa chỉ sai lệch, chưa có giấy phép kinh doanh..."
-          value={rejectReason}
-          onChange={(e) => setRejectReason(e.target.value)}
-          style={{ marginTop: 8, borderRadius: 10 }}
-        />
-        <div style={{ marginTop: 12, fontSize: 13, color: '#94a3b8' }}>
-           * Lý do này sẽ được gửi trực tiếp đến email của chủ sân.
-        </div>
+        <Text strong>Ly do tu choi:</Text>
+        <TextArea rows={4} placeholder="Nhap ly do tu choi..." value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} style={{ marginTop: 8, borderRadius: 10 }} />
       </Modal>
     </div>
   );
 }
+

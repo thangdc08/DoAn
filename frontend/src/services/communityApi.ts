@@ -140,7 +140,7 @@ export const communityApi = {
     size?: number;
   }): Promise<{ content: Report[]; totalElements: number; totalPages: number }> => {
     const response = await apiClient.get('/admin/reports', { params });
-    return response.data;
+    return communityApi.unwrapResult(response);
   },
 
   resolveReport: async (reportId: string, action: string): Promise<void> => {
