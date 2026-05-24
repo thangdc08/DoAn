@@ -110,5 +110,3 @@ TaiLieu/
 
 # Agent config (local tooling)
 .agent/
-
-backend/chat-service/

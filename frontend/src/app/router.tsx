@@ -36,6 +36,7 @@ const UserChallengesPage = lazy(() => import('../pages/user/UserChallengesPage')
 const UserSettingsPage = lazy(() => import('../pages/user/UserSettingsPage'));
 const CreateMatchPage = lazy(() => import('../pages/user/CreateMatchPage'));
 const MyMatchesPage = lazy(() => import('../pages/user/MyMatchesPage'));
+const ChatPage = lazy(() => import('../pages/user/ChatPage'));
 
 // Owner Pages
 const OwnerDashboardPage = lazy(() => import('../pages/owner/OwnerDashboardPage'));
@@ -103,6 +104,7 @@ export const router = createBrowserRouter([
       { path: 'profile', element: <Suspense fallback={<PageLoader />}><ProfilePage /></Suspense> },
       { path: 'bookings', element: <Suspense fallback={<PageLoader />}><BookingHistoryPage /></Suspense> },
       { path: 'matches', element: <Suspense fallback={<PageLoader />}><MyMatchesPage /></Suspense> },
+      { path: 'chat', element: <Suspense fallback={<PageLoader />}><ChatPage /></Suspense> },
       { path: 'create-match', element: <Suspense fallback={<PageLoader />}><CreateMatchPage /></Suspense> },
       { path: 'challenges', element: <Suspense fallback={<PageLoader />}><UserChallengesPage /></Suspense> },
       { path: 'challenges/create', element: <Suspense fallback={<PageLoader />}><CreateMatchPage /></Suspense> },
@@ -124,6 +126,7 @@ export const router = createBrowserRouter([
       { path: 'venues', element: <Suspense fallback={<PageLoader />}><VenueManagementPage /></Suspense> },
       { path: 'venues/:venueId/courts', element: <Suspense fallback={<PageLoader />}><CourtManagementPage /></Suspense> },
       { path: 'bookings', element: <Suspense fallback={<PageLoader />}><OwnerBookingPage /></Suspense> },
+      { path: 'chat', element: <Suspense fallback={<PageLoader />}><ChatPage /></Suspense> },
       { path: 'revenue', element: <Suspense fallback={<PageLoader />}><OwnerRevenuePage /></Suspense> },
       { path: 'settings', element: <Suspense fallback={<PageLoader />}><OwnerSettingsPage /></Suspense> },
       { path: 'support', element: <Suspense fallback={<PageLoader />}><OwnerSupportPage /></Suspense> },

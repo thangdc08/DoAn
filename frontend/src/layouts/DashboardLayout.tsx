@@ -6,7 +6,7 @@ import type { MenuProps } from 'antd';
 import {
   LayoutDashboard, CalendarDays, Users, BarChart3,
   Building2, Settings, Bell, ChevronLeft, ChevronRight,
-  LogOut, HelpCircle, FileCheck, Swords,
+  LogOut, HelpCircle, FileCheck, Swords, MessageSquare,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { BRAND } from '../theme/antdTheme';
@@ -34,6 +34,7 @@ const USER_MENU: MenuItem[] = [
   { to: '/user/dashboard',         label: 'Tổng quan',        icon: <LayoutDashboard size={18} /> },
   { to: '/user/bookings',          label: 'Booking của tôi',  icon: <CalendarDays    size={18} /> },
   { to: '/user/challenges',        label: 'Kèo của tôi',      icon: <Swords          size={18} /> },
+  { to: '/user/chat',              label: 'Tin nhắn',         icon: <MessageSquare    size={18} /> },
   { to: '/user/notifications',     label: 'Thông báo',        icon: <Bell            size={18} /> },
   { to: '/user/profile',           label: 'Hồ sơ',            icon: <Users           size={18} /> },
 ];
@@ -42,6 +43,7 @@ const OWNER_MENU: MenuItem[] = [
   { to: '/owner',            label: 'Tổng quan',      icon: <LayoutDashboard size={18} /> },
   { to: '/owner/venues',     label: 'Quản lý sân',    icon: <Building2       size={18} /> },
   { to: '/owner/bookings',   label: 'Booking',         icon: <CalendarDays    size={18} /> },
+  { to: '/owner/chat',       label: 'Tin nhắn',        icon: <MessageSquare    size={18} /> },
   { to: '/owner/revenue',    label: 'Doanh thu',       icon: <BarChart3       size={18} /> },
   { to: '/owner/settings',   label: 'Cấu hình',        icon: <Settings        size={18} /> },
   { to: '/owner/support',    label: 'Hỗ trợ',          icon: <HelpCircle      size={18} /> },

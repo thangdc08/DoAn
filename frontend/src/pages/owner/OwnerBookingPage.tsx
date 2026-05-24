@@ -1,12 +1,16 @@
 import { Card, Table, Tag, Typography, Space, Input, Button } from 'antd';
-import { SearchOutlined, FilterOutlined, ExportOutlined } from '@ant-design/icons';
+import { SearchOutlined, FilterOutlined, ExportOutlined, MessageOutlined } from '@ant-design/icons';
 import { mockBookings } from '../../data/mockBookings';
 import dayjs from 'dayjs';
 import { BRAND } from '../../theme/antdTheme';
+import { useNavigate } from 'react-router-dom';
+
+const { Title, Text } = Typography;
 
 const { Title, Text } = Typography;
 
 export default function OwnerBookingPage() {
+  const navigate = useNavigate();
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       PENDING: 'warning',
@@ -72,8 +76,19 @@ export default function OwnerBookingPage() {
     {
       title: 'Thao tác',
       key: 'actions',
-      render: () => (
-        <Button type="link" style={{ fontWeight: 700 }}>Chi tiết</Button>
+      render: (_: any, record: any) => (
+        <Space>
+          <Button
+            type="primary"
+            ghost
+            icon={<MessageOutlined />}
+            size="small"
+            onClick={() => navigate('/owner/chat')}
+          >
+            Chat
+          </Button>
+          <Button type="link" style={{ fontWeight: 700 }} size="small">Chi tiết</Button>
+        </Space>
       ),
     },
   ];

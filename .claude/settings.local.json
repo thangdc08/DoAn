@@ -13,7 +13,9 @@
       "Bash(cmd /c \"rmdir /S /Q backend\\\\configServer\")",
       "Bash([ -f \"$dir/pom.xml\" ])",
       "Bash(grep -c spring-boot-devtools __TRACKED_VAR__/pom.xml)",
-      "Bash(psql -h localhost -U admin -d badminton_db -c \"\\\\d payment.payment_transactions\")"
+      "Bash(psql -h localhost -U admin -d badminton_db -c \"\\\\d payment.payment_transactions\")",
+      "Bash(npm run *)",
+      "Bash(npx tsc *)"
     ]
   }
 }

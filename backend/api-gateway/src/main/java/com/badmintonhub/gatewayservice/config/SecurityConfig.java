@@ -99,9 +99,10 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.PUT, "/venues/**").hasAnyAuthority("SCOPE_OWNER", "SCOPE_ADMIN")
                         .pathMatchers(HttpMethod.DELETE, "/venues/**").hasAnyAuthority("SCOPE_OWNER", "SCOPE_ADMIN")
 
-                        // Public — read-only venue & booking
+                        // Public — read-only venue, booking & community
                         .pathMatchers(HttpMethod.GET, "/venues/**").permitAll()
                         .pathMatchers(HttpMethod.GET, "/bookings/**").permitAll()
+                        .pathMatchers(HttpMethod.GET, "/communities/**").permitAll()
                         // Admin only
                         .pathMatchers("/identity/admin/**").hasAuthority("SCOPE_ADMIN")
                         // Tất cả còn lại phải authenticated
