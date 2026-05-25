@@ -7,6 +7,8 @@ import org.hibernate.annotations.UpdateTimestamp;
 import org.locationtech.jts.geom.Point;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -20,6 +22,10 @@ public class MatchPost {
     @Column(nullable = false)
     private UUID hostId;
 
+    // Backward compatibility for databases that still require author_id NOT NULL.
+    @Column(name = "author_id", nullable = false)
+    private UUID authorId;
+
     @Column(nullable = false)
     private String title;
 
@@ -28,6 +34,16 @@ public class MatchPost {
 
     @Column(nullable = false)
     private String level;
+
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(
+            name = "match_post_levels",
+            schema = "community",
+            joinColumns = @JoinColumn(name = "match_post_id")
+    )
+    @Column(name = "level", nullable = false)
+    @Builder.Default
+    private List<String> levels = new ArrayList<>();
 
     @Column(nullable = false)
     private LocalDateTime startTime;
@@ -45,6 +61,8 @@ public class MatchPost {
     @com.fasterxml.jackson.annotation.JsonIgnore
     private Point location;
 
+    // DB compatibility: legacy schema uses max_players.
+    @Column(name = "max_players", nullable = false)
     @Builder.Default
     private Integer maxParticipants = 4;
 
@@ -69,4 +87,15 @@ public class MatchPost {
 
     @UpdateTimestamp
     private LocalDateTime updatedAt;
+
+    @PrePersist
+    @PreUpdate
+    public void syncAuthorAndHost() {
+        if (authorId == null && hostId != null) {
+            authorId = hostId;
+        }
+        if (hostId == null && authorId != null) {
+            hostId = authorId;
+        }
+    }
 }

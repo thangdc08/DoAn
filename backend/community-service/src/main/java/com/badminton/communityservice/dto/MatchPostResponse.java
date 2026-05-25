@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 @Data
@@ -19,6 +20,7 @@ public class MatchPostResponse {
     private String title;
     private String description;
     private String level;
+    private List<String> levels;
     private LocalDateTime startTime;
     private LocalDateTime endTime;
     private String venueName;
@@ -31,6 +33,9 @@ public class MatchPostResponse {
     private String status;
     private Integer likeCount;
     private Integer commentCount;
+    private String genderPreference;
+    private String paymentType;
+    private String contactPhone;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     

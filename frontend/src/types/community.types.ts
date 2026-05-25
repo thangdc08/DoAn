@@ -12,10 +12,14 @@ export interface MatchPost {
   startTime: string;
   endTime: string;
   level: string;
+  levels?: string[];
   maxParticipants: number;
   currentParticipants: number;
   joinMode?: string;
   status: string;
+  genderPreference?: 'ANY' | 'MALE' | 'FEMALE';
+  paymentType?: 'SHARE' | 'FIXED' | 'FREE';
+  contactPhone?: string;
   likeCount?: number;
   commentCount?: number;
   createdAt: string;
@@ -84,6 +88,7 @@ export interface CreateMatchPostRequest {
   title: string;
   description: string;
   level: string;
+  levels?: string[];
   startTime: string;
   endTime: string;
   venueId?: string;
@@ -93,4 +98,7 @@ export interface CreateMatchPostRequest {
   maxParticipants: number;
   joinMode: 'OPEN' | 'APPROVAL';
   visibility: 'PUBLIC' | 'PRIVATE';
+  genderPreference?: 'ANY' | 'MALE' | 'FEMALE';
+  paymentType?: 'SHARE' | 'FIXED' | 'FREE';
+  contactPhone?: string;
 }

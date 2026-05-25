@@ -46,6 +46,12 @@ export const authApi = {
     return unwrapResult<User>(response);
   },
 
+  // Get user by id
+  getUserById: async (userId: string): Promise<User> => {
+    const response = await apiClient.get(`/identity/api/v1/users/${userId}`);
+    return unwrapResult<User>(response);
+  },
+
   // Update current user profile
   updateMe: async (data: Partial<User>): Promise<User> => {
     const response = await apiClient.put('/identity/api/v1/users/me', data);

@@ -1,6 +1,6 @@
 import { Kafka } from 'kafkajs';
 import { kafkaServer, enableKafka } from './dotenv.js';
-import { listenersliveStatus } from '../service/conversationService.js';
+import { listenersliveStatus, handleMatchApprovedEvent } from '../service/conversationService.js';
 
 const kafka = new Kafka({
   clientId: 'social-app',
@@ -41,6 +41,7 @@ export const connectConsumer = async () => {
   // Subscribe 2 topic
   await consumer.subscribe({ topic: 'social.user.online', fromBeginning: false });
   await consumer.subscribe({ topic: 'social.user.offline', fromBeginning: false });
+  await consumer.subscribe({ topic: 'community.events', fromBeginning: false });
 
   // Lắng nghe message
   await consumer.run({
@@ -62,6 +63,10 @@ export const connectConsumer = async () => {
       if (topic === "social.user.offline") {
         console.log("User OFFLINE:", data);
         await listenersliveStatus(data);
+      }
+
+      if (topic === "community.events" && data?.eventType === "MatchApproved") {
+        await handleMatchApprovedEvent(data);
       }
     },
   });

@@ -18,8 +18,13 @@ export const communityApi = {
 
   // Match Posts
   getMatchPosts: async (params?: {
+    q?: string;
     level?: string;
+    levels?: string;
     status?: string;
+    joinMode?: string;
+    fromTime?: string;
+    toTime?: string;
     latitude?: number;
     longitude?: number;
     radius?: number;

@@ -6,6 +6,8 @@ import com.badminton.communityservice.entity.Participant;
 import com.badminton.communityservice.repository.MatchPostRepository;
 import com.badminton.communityservice.repository.ParticipantRepository;
 import com.badminton.common.exception.AppException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.locationtech.jts.geom.Coordinate;
@@ -20,7 +22,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -33,6 +40,8 @@ public class MatchPostService {
   private final ParticipantRepository participantRepository;
   private final CommunityEventPublisher eventPublisher;
   private static final GeometryFactory geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
+  private static final String META_PREFIX = "\n__MATCH_META__:";
+  private final ObjectMapper objectMapper = new ObjectMapper();
 
   @Transactional
   public MatchPostResponse createMatchPost(UUID hostId, CreateMatchPostRequest request) {
@@ -48,16 +57,27 @@ public class MatchPostService {
     }
 
     if (request.getVenueId() == null &&
-        (request.getLocationText() == null || request.getLatitude() == null || request.getLongitude() == null)) {
-      throw new AppException(HttpStatus.BAD_REQUEST, "Either venueId or locationText with coordinates is required");
+        (request.getLocationText() == null || request.getLocationText().isBlank())) {
+      throw new AppException(HttpStatus.BAD_REQUEST, "Either venueId or locationText is required");
     }
 
     // Create entity
+    String persistedDescription = appendMetaDescription(
+        request.getDescription(),
+        request.getGenderPreference(),
+        request.getPaymentType(),
+        request.getContactPhone()
+    );
+
+    List<String> resolvedLevels = resolveLevels(request);
+
     MatchPost matchPost = MatchPost.builder()
         .hostId(hostId)
+        .authorId(hostId)
         .title(request.getTitle())
-        .description(request.getDescription())
-        .level(request.getLevel())
+        .description(persistedDescription)
+        .level(resolvedLevels.get(0))
+        .levels(resolvedLevels)
         .startTime(request.getStartTime())
         .endTime(request.getEndTime())
         .maxParticipants(request.getMaxParticipants())
@@ -164,12 +184,17 @@ public class MatchPostService {
   }
 
   private MatchPostResponse toResponse(MatchPost matchPost) {
+    ParsedMeta parsedMeta = extractMeta(matchPost.getDescription());
+
     return MatchPostResponse.builder()
         .id(matchPost.getId())
         .hostId(matchPost.getHostId())
         .title(matchPost.getTitle())
-        .description(matchPost.getDescription())
+        .description(parsedMeta.cleanDescription)
         .level(matchPost.getLevel())
+        .levels(matchPost.getLevels() == null || matchPost.getLevels().isEmpty()
+            ? List.of(matchPost.getLevel())
+            : matchPost.getLevels())
         .startTime(matchPost.getStartTime())
         .endTime(matchPost.getEndTime())
         .venueName(matchPost.getVenueName())
@@ -182,8 +207,108 @@ public class MatchPostService {
         .status(matchPost.getStatus())
         .likeCount(matchPost.getLikeCount())
         .commentCount(matchPost.getCommentCount())
+        .genderPreference(parsedMeta.genderPreference)
+        .paymentType(parsedMeta.paymentType)
+        .contactPhone(parsedMeta.contactPhone)
         .createdAt(matchPost.getCreatedAt())
         .updatedAt(matchPost.getUpdatedAt())
         .build();
+  }
+
+  private List<String> resolveLevels(CreateMatchPostRequest request) {
+    Set<String> merged = new LinkedHashSet<>();
+    if (request.getLevels() != null) {
+      request.getLevels().stream()
+          .filter(v -> v != null && !v.isBlank())
+          .map(String::trim)
+          .forEach(merged::add);
+    }
+    if (request.getLevel() != null && !request.getLevel().isBlank()) {
+      merged.add(request.getLevel().trim());
+    }
+    if (merged.isEmpty()) {
+      merged.add("INTERMEDIATE");
+    }
+    return new ArrayList<>(merged);
+  }
+
+  private String appendMetaDescription(String description, String genderPreference, String paymentType, String contactPhone) {
+    try {
+      Map<String, String> meta = new HashMap<>();
+      if (genderPreference != null && !genderPreference.isBlank()) meta.put("genderPreference", genderPreference);
+      if (paymentType != null && !paymentType.isBlank()) meta.put("paymentType", paymentType);
+      if (contactPhone != null && !contactPhone.isBlank()) meta.put("contactPhone", contactPhone);
+
+      if (meta.isEmpty()) return description;
+      String base = description == null ? "" : description.trim();
+      return base + META_PREFIX + objectMapper.writeValueAsString(meta);
+    } catch (Exception e) {
+      log.warn("Cannot append match metadata, fallback to plain description", e);
+      return description;
+    }
+  }
+
+  private ParsedMeta extractMeta(String rawDescription) {
+    if (rawDescription == null || !rawDescription.contains(META_PREFIX)) {
+      return extractLegacyMeta(rawDescription);
+    }
+    try {
+      int idx = rawDescription.lastIndexOf(META_PREFIX);
+      String clean = rawDescription.substring(0, idx).trim();
+      String metaJson = rawDescription.substring(idx + META_PREFIX.length()).trim();
+      Map<String, String> meta = objectMapper.readValue(metaJson, new TypeReference<Map<String, String>>() {});
+      return ParsedMeta.builder()
+          .cleanDescription(clean)
+          .genderPreference(meta.get("genderPreference"))
+          .paymentType(meta.get("paymentType"))
+          .contactPhone(meta.get("contactPhone"))
+          .build();
+    } catch (Exception e) {
+      log.warn("Cannot parse match metadata, keep original description", e);
+      return extractLegacyMeta(rawDescription);
+    }
+  }
+
+  private ParsedMeta extractLegacyMeta(String rawDescription) {
+    if (rawDescription == null) {
+      return ParsedMeta.builder().cleanDescription(null).build();
+    }
+
+    String gender = null;
+    String payment = null;
+    String clean = rawDescription;
+
+    String[] lines = rawDescription.split("\\r?\\n");
+    StringBuilder cleanBuilder = new StringBuilder();
+    for (String line : lines) {
+      String trimmed = line.trim();
+      if (trimmed.startsWith("Gioi tinh:")) {
+        gender = trimmed.replace("Gioi tinh:", "").trim();
+        continue;
+      }
+      if (trimmed.startsWith("Hinh thuc dong phi:")) {
+        payment = trimmed.replace("Hinh thuc dong phi:", "").trim();
+        continue;
+      }
+      if (!trimmed.startsWith("Chi phi moi nguoi:")) {
+        if (cleanBuilder.length() > 0) cleanBuilder.append("\n");
+        cleanBuilder.append(line);
+      }
+    }
+    clean = cleanBuilder.toString().trim();
+
+    return ParsedMeta.builder()
+        .cleanDescription(clean)
+        .genderPreference(gender)
+        .paymentType(payment)
+        .build();
+  }
+
+  @lombok.Builder
+  private static class ParsedMeta {
+    private String cleanDescription;
+    private String genderPreference;
+    private String paymentType;
+    private String contactPhone;
   }
 }

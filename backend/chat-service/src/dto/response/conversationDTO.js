@@ -11,6 +11,7 @@ export class ConversationDTO {
     this.lastMessage = data.lastMessage || '';
     this.lastMessageDate = data.lastMessageDate || '';
     this.participants = data.participants || [];
+    this.matchPostId = data.matchPostId || null;
     this.group = data.group || null;
     this.createdDate = data.createdDate;
     this.modifiedDate = data.modifiedDate;

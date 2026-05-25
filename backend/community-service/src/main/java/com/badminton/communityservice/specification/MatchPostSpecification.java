@@ -4,6 +4,7 @@ import com.badminton.communityservice.entity.MatchPost;
 import org.springframework.data.jpa.domain.Specification;
 
 import java.time.LocalDateTime;
+import java.util.List;
 import java.util.UUID;
 
 public class MatchPostSpecification {
@@ -14,6 +15,15 @@ public class MatchPostSpecification {
 
     public static Specification<MatchPost> hasLevel(String level) {
         return (root, query, cb) -> level == null ? null : cb.equal(root.get("level"), level);
+    }
+
+    public static Specification<MatchPost> hasAnyLevels(List<String> levels) {
+        return (root, query, cb) -> {
+            if (levels == null || levels.isEmpty()) return null;
+            query.distinct(true);
+            var join = root.join("levels");
+            return join.in(levels);
+        };
     }
 
     public static Specification<MatchPost> hasJoinMode(String joinMode) {

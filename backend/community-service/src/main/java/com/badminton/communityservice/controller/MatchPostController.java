@@ -22,6 +22,8 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
+import java.util.Arrays;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/community/match-posts")
@@ -51,6 +53,7 @@ public class MatchPostController {
             @RequestParam(required = false) String q,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String level,
+            @RequestParam(required = false) String levels,
             @RequestParam(required = false) String joinMode,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime fromTime,
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime toTime,
@@ -59,10 +62,18 @@ public class MatchPostController {
 
         log.info("API Request: Search match posts with filters");
 
+        List<String> parsedLevels = levels == null || levels.isBlank()
+                ? null
+                : Arrays.stream(levels.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isBlank())
+                    .collect(Collectors.toList());
+
         Specification<com.badminton.communityservice.entity.MatchPost> spec = Specification
                 .where(MatchPostSpecification.titleContains(q))
                 .and(MatchPostSpecification.hasStatus(status != null ? status : "OPEN"))
                 .and(MatchPostSpecification.hasLevel(level))
+                .and(MatchPostSpecification.hasAnyLevels(parsedLevels))
                 .and(MatchPostSpecification.hasJoinMode(joinMode))
                 .and(MatchPostSpecification.startTimeAfter(fromTime))
                 .and(MatchPostSpecification.startTimeBefore(toTime))

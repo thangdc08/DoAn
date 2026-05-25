@@ -7,6 +7,7 @@ const conversationSchema = new mongoose.Schema(
     type: { type: String, required: true },
     participantsHash: { type: String, index: true },
     participants: [participantInfoSchema],
+    matchPostId: { type: String, index: true },
     lastMessage: { type: String },
     lastMessageDate: { type: Date },
     deleteUserIds: [{ type: String }],

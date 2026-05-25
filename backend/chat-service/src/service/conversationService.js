@@ -10,6 +10,19 @@ import { sendToUser } from '../configuration/websocket.js';
 import { sendNotificationEvent } from '../configuration/kafka.js';
 
 export const createConversation = async (req) => {
+    if (req.body?.matchPostId) {
+        const user = await getUserLogin(req);
+        const conversation = await ensureMatchGroupAndAddMember({
+            matchPostId: req.body.matchPostId,
+            hostId: user.id,
+            hostName: user.fullName || "Chủ kèo",
+            approvedUserId: user.id,
+            approvedUserName: user.fullName || "Người chơi",
+            req
+        });
+        return ApiResponse.success(conversation);
+    }
+
     let response;
     if (req.body.type === "PRIVATE") {
         response = await getOrCreatePrivateConversation(req);
@@ -563,6 +576,109 @@ export const listenersliveStatus = async (status) => {
         console.error('❌ Error in listenersliveStatus:', error);
         throw error;
     }
+};
+
+export const handleMatchApprovedEvent = async (payload) => {
+    try {
+        const matchPostId = payload?.matchPostId;
+        const hostId = payload?.hostId;
+        const userId = payload?.userId;
+        if (!matchPostId || !hostId || !userId) return;
+
+        await ensureMatchGroupAndAddMember({
+            matchPostId: String(matchPostId),
+            hostId: String(hostId),
+            hostName: "Chủ kèo",
+            approvedUserId: String(userId),
+            approvedUserName: "Người chơi",
+            req: { token: null }
+        });
+    } catch (error) {
+        console.error("handleMatchApprovedEvent failed:", error);
+    }
+};
+
+const ensureMatchGroupAndAddMember = async ({
+    matchPostId,
+    hostId,
+    hostName,
+    approvedUserId,
+    approvedUserName,
+    req
+}) => {
+    let conversation = await Conversation.findOne({ type: "GROUP", matchPostId });
+    const now = new Date();
+    const timestamp = now.toISOString();
+
+    if (!conversation) {
+        const hostParticipant = {
+            id: hostId,
+            accountId: hostId,
+            fullName: hostName || "Chủ kèo",
+            isVerified: false,
+            isOnline: false,
+            lastSeen: now
+        };
+        conversation = new Conversation({
+            type: "GROUP",
+            matchPostId,
+            participants: [hostParticipant],
+            group: {
+                name: `Nhóm kèo ${matchPostId.slice(0, 8)}`,
+                avatarUrl: "",
+                admin: hostParticipant
+            },
+            lastMessage: "Nhóm kèo đã được tạo",
+            lastMessageDate: now,
+            createdDate: now,
+            modifiedDate: now
+        });
+    }
+
+    const exists = conversation.participants.some((p) => p.id === approvedUserId);
+    if (!exists) {
+        conversation.participants.push({
+            id: approvedUserId,
+            accountId: approvedUserId,
+            fullName: approvedUserName || "Người chơi",
+            isVerified: false,
+            isOnline: false,
+            lastSeen: now
+        });
+        conversation.lastMessage = `${approvedUserName || "Người chơi"} đã tham gia nhóm kèo`;
+        conversation.lastMessageDate = now;
+        conversation.modifiedDate = now;
+    }
+
+    await conversation.save();
+
+    const allParticipants = conversation.participants || [];
+    const responseByUserId = {};
+    await Promise.all(
+        allParticipants.map(async (p) => {
+            responseByUserId[p.id] = await toConversationResponse(conversation, p, req);
+        })
+    );
+
+    allParticipants.forEach((p) => {
+        sendToUser(p.id, {
+            type: "update_conversation",
+            conversation: responseByUserId[p.id],
+            timestamp
+        });
+    });
+
+    if (!exists) {
+        sendNotificationEvent(
+            notificationPayload(
+                conversation,
+                approvedUserId,
+                `Bạn đã được thêm vào nhóm kèo ${conversation.group?.name || ""}`
+            )
+        );
+    }
+
+    return responseByUserId[approvedUserId] || await toConversationResponse(conversation, { id: approvedUserId }, req);
 };
 
 export const toConversationResponse = async (conversation, user, req) => {

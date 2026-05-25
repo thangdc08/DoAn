@@ -1,433 +1,742 @@
-import { useParams, useNavigate } from 'react-router-dom';
-import { 
-  Card, 
-  Row, 
-  Col, 
-  Typography, 
-  Button, 
-  Space, 
-  Avatar, 
-  Tag, 
-  Divider, 
-  List, 
-  message, 
+﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import {
+  Alert,
+  Avatar,
+  Button,
+  Card,
+  Col,
   Empty,
-  Tooltip,
-  Breadcrumb,
-  Badge
+  Input,
+  List,
+  Modal,
+  Row,
+  Space,
+  Spin,
+  Tag,
+  Typography,
+  message,
 } from 'antd';
-import { 
-  MapPin, 
-  Calendar, 
-  Clock, 
-  Users, 
-  ChevronLeft, 
-  Trophy, 
-  Info, 
-  User, 
-  CheckCircle2, 
-  XCircle, 
-  MessageSquare,
-  Share2,
-  AlertCircle,
-  Zap,
-  DollarSign,
-  Navigation,
-  ExternalLink,
-  ShieldCheck,
-  Award
-} from 'lucide-react';
-import { mockMatchPosts } from '../../data/mockCommunity';
-import { useAuthStore } from '../../stores/authStore';
+import {
+  ArrowLeftOutlined,
+  CalendarOutlined,
+  ClockCircleOutlined,
+  EnvironmentOutlined,
+  MessageOutlined,
+  PhoneOutlined,
+  SendOutlined,
+  TeamOutlined,
+  UserOutlined,
+  EnvironmentFilled,
+  AimOutlined,
+  StarFilled,
+} from '@ant-design/icons';
 import dayjs from 'dayjs';
-import { useState, useEffect } from 'react';
-import { BRAND } from '../../theme/antdTheme';
+import { communityApi } from '../../services/communityApi';
+import type { MatchParticipant, MatchPost } from '../../types/community.types';
+import type { User } from '../../types/auth.types';
+import { useAuthStore } from '../../stores/authStore';
+import { chatApi, type ChatMessage } from '../../services/chatApi';
+import { chatSocket } from '../../services/chatSocket';
+import { authApi } from '../../services/authApi';
 
 const { Title, Text, Paragraph } = Typography;
+
+const levelLabel: Record<string, string> = {
+  BEGINNER: 'Mới chơi',
+  INTERMEDIATE: 'Trung bình',
+  ADVANCED: 'Nâng cao',
+};
+
+const genderLabel: Record<string, string> = {
+  ANY: 'Nam & Nữ',
+  MALE: 'Chỉ Nam',
+  FEMALE: 'Chỉ Nữ',
+};
+
+const paymentLabel: Record<string, string> = {
+  SHARE: 'Chia sẻ',
+  FIXED: 'Cố định',
+  FREE: 'Miễn phí',
+};
+
+const participantStatusMeta: Record<string, { text: string; color: string }> = {
+  PENDING: { text: 'Chờ duyệt', color: 'gold' },
+  APPROVED: { text: 'Đã duyệt', color: 'green' },
+  REJECTED: { text: 'Từ chối', color: 'red' },
+  CANCELLED_BY_USER: { text: 'Đã hủy', color: 'default' },
+  REMOVED_BY_HOST: { text: 'Đã loại', color: 'default' },
+};
+
+type ChatMsg = { id: string; from: 'me' | 'host'; text: string; time: string };
+
+const mapToUiMessage = (m: ChatMessage, myUserId?: string): ChatMsg => ({
+  id: m.id,
+  from: m.senderId === myUserId ? 'me' : 'host',
+  text: m.content,
+  time: dayjs(m.timestamp).format('HH:mm'),
+});
+
+const inflightMatchBundleRequests = new Map<
+  string,
+  Promise<{ matchData: MatchPost; participantData: MatchParticipant[] }>
+>();
+
+const fetchMatchBundle = (matchId: string) => {
+  const cached = inflightMatchBundleRequests.get(matchId);
+  if (cached) return cached;
+
+  const req = Promise.all([
+    communityApi.getMatchPostById(matchId),
+    communityApi.getMatchParticipants(matchId).catch(() => [] as MatchParticipant[]),
+  ]).then(([matchData, participantData]) => ({ matchData, participantData }));
+
+  inflightMatchBundleRequests.set(matchId, req);
+  req.finally(() => {
+    inflightMatchBundleRequests.delete(matchId);
+  });
+  return req;
+};
 
 export default function MatchDetailPage() {
   const { matchId } = useParams<{ matchId: string }>();
   const navigate = useNavigate();
-  const { user, isAuthenticated } = useAuthStore();
-  const [isJoined, setIsJoined] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const user = useAuthStore((s) => s.user);
 
-  // Simulation loading
+  const [loading, setLoading] = useState(true);
+  const [joining, setJoining] = useState(false);
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+  const [rejectingId, setRejectingId] = useState<string | null>(null);
+  const [match, setMatch] = useState<MatchPost | null>(null);
+  const [participants, setParticipants] = useState<MatchParticipant[]>([]);
+  const [participantProfiles, setParticipantProfiles] = useState<Record<string, Partial<User>>>({});
+
+  const [joinModalOpen, setJoinModalOpen] = useState(false);
+  const [messageModalOpen, setMessageModalOpen] = useState(false);
+  const [groupModalOpen, setGroupModalOpen] = useState(false);
+  const [quickMessage, setQuickMessage] = useState('');
+
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatConversationId, setChatConversationId] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMsg[]>([]);
+  const chatBoxRef = useRef<HTMLDivElement | null>(null);
+
+  const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [distanceKm, setDistanceKm] = useState<number | null>(null);
+  const [geoError, setGeoError] = useState<string | null>(null);
+
+  const isOwner = useMemo(() => !!(match && user && match.hostId === user.id), [match, user]);
+  const displayedCurrentParticipants = useMemo(
+    () => (match ? Math.max((match.currentParticipants || 0) - 1, 0) : 0),
+    [match],
+  );
+  const isFull = useMemo(
+    () => !!(match && displayedCurrentParticipants >= match.maxParticipants),
+    [match, displayedCurrentParticipants],
+  );
+  const myParticipant = useMemo(
+    () => participants.find((p) => p.userId === user?.id) || null,
+    [participants, user?.id],
+  );
+  const pendingRequests = useMemo(
+    () => participants.filter((p) => p.status === 'PENDING'),
+    [participants],
+  );
+  const approvedParticipants = useMemo(
+    () => participants.filter((p) => p.status === 'APPROVED'),
+    [participants],
+  );
+  const rejectedParticipants = useMemo(
+    () => participants.filter((p) => p.status === 'REJECTED'),
+    [participants],
+  );
+
+  const getParticipantName = (p: any) => p?.userFullName || p?.userName || 'Người chơi';
+  const getParticipantTime = (p: any) => p?.joinedAt || p?.requestedAt;
+  const getParticipantStatus = (p: any) => participantStatusMeta[p?.status] || { text: p?.status || 'Không rõ', color: 'default' as const };
+  const getParticipantProfile = (p: any) => participantProfiles[p?.userId || ''] || {};
+
+  const mapUrl = useMemo(() => {
+    if (!match?.latitude || !match?.longitude) return '';
+    return `https://www.openstreetmap.org/export/embed.html?bbox=${match.longitude - 0.02}%2C${match.latitude - 0.015}%2C${match.longitude + 0.02}%2C${match.latitude + 0.015}&layer=mapnik&marker=${match.latitude}%2C${match.longitude}`;
+  }, [match]);
+
+  const directionUrl = useMemo(() => {
+    if (!match?.latitude || !match?.longitude) return '';
+    return `https://www.google.com/maps/dir/?api=1&destination=${match.latitude},${match.longitude}`;
+  }, [match]);
+
   useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 500);
-    return () => clearTimeout(timer);
+    if (!navigator.geolocation) {
+      setGeoError('Thiết bị không hỗ trợ định vị');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setMyLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setGeoError(null);
+      },
+      () => {
+        setGeoError('Chưa bật quyền vị trí');
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
   }, []);
 
-  const match = mockMatchPosts.find(m => m.id === matchId);
+  useEffect(() => {
+    if (!myLocation || !match?.latitude || !match?.longitude) {
+      setDistanceKm(null);
+      return;
+    }
+    const toRad = (v: number) => (v * Math.PI) / 180;
+    const R = 6371;
+    const dLat = toRad(match.latitude - myLocation.lat);
+    const dLng = toRad(match.longitude - myLocation.lng);
+    const a = Math.sin(dLat / 2) ** 2
+      + Math.cos(toRad(myLocation.lat)) * Math.cos(toRad(match.latitude)) * Math.sin(dLng / 2) ** 2;
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    setDistanceKm(Number((R * c).toFixed(1)));
+  }, [myLocation, match]);
+
+  const loadData = async () => {
+    if (!matchId) return;
+    setLoading(true);
+    try {
+      const { matchData, participantData } = await fetchMatchBundle(matchId);
+      setMatch(matchData);
+      setParticipants(participantData || []);
+    } catch {
+      message.error('Không thể tải chi tiết kèo');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [matchId]);
+
+  useEffect(() => {
+    const userIds = Array.from(
+      new Set(
+        participants
+          .map((p: any) => p?.userId)
+          .filter((id): id is string => !!id && !participantProfiles[id]),
+      ),
+    );
+    if (userIds.length === 0) return;
+
+    let cancelled = false;
+    Promise.all(
+      userIds.map(async (id) => {
+        try {
+          const profile = await authApi.getUserById(id);
+          return [id, profile] as const;
+        } catch {
+          return [id, {}] as const;
+        }
+      }),
+    ).then((entries) => {
+      if (cancelled) return;
+      setParticipantProfiles((prev) => {
+        const next = { ...prev };
+        entries.forEach(([id, profile]) => {
+          next[id] = profile;
+        });
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [participants, participantProfiles]);
+
+  useEffect(() => {
+    if (!messageModalOpen || !chatConversationId || !user?.id) return;
+
+    chatSocket.connect();
+    chatSocket.subscribeToConversation(chatConversationId, (newMsg) => {
+      const mapped: ChatMsg = {
+        id: newMsg.id,
+        from: newMsg.senderId === user.id ? 'me' : 'host',
+        text: newMsg.content,
+        time: dayjs(newMsg.timestamp).format('HH:mm'),
+      };
+
+      setChatMessages((prev) => {
+        if (prev.some((m) => m.id === mapped.id)) return prev;
+        return [...prev, mapped];
+      });
+    });
+
+    return () => {
+      chatSocket.unsubscribeFromConversation(chatConversationId);
+    };
+  }, [messageModalOpen, chatConversationId, user?.id]);
+
+  useEffect(() => {
+    if (!messageModalOpen || !chatConversationId || !user?.id) return;
+
+    const syncMessages = async () => {
+      try {
+        const msgs = await chatApi.getMessages(chatConversationId);
+        const mapped = (msgs || []).map((m) => mapToUiMessage(m, user.id));
+        setChatMessages((prev) => {
+          const merged = new Map<string, ChatMsg>();
+          prev.forEach((m) => merged.set(m.id, m));
+          mapped.forEach((m) => merged.set(m.id, m));
+          return mapped.length > 0 ? mapped : Array.from(merged.values());
+        });
+      } catch {
+        // keep silent for background sync
+      }
+    };
+
+    syncMessages();
+    const intervalId = window.setInterval(syncMessages, 1200);
+    return () => window.clearInterval(intervalId);
+  }, [messageModalOpen, chatConversationId, user?.id]);
+
+  useEffect(() => {
+    if (!messageModalOpen) return;
+    const el = chatBoxRef.current;
+    if (el) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [chatMessages, messageModalOpen]);
+
+  const handleConfirmJoin = async () => {
+    if (!matchId) return;
+    setJoining(true);
+    try {
+      await communityApi.joinMatch(matchId);
+      message.success('Đăng ký tham gia thành công');
+      setJoinModalOpen(false);
+      setGroupModalOpen(true);
+      await loadData();
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Không thể tham gia kèo');
+    } finally {
+      setJoining(false);
+    }
+  };
+
+  const handleApproveParticipant = async (participantId: string) => {
+    if (!matchId) return;
+    setApprovingId(participantId);
+    try {
+      await communityApi.approveParticipant(matchId, participantId);
+      message.success('Đã duyệt yêu cầu tham gia');
+      await loadData();
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Không thể duyệt yêu cầu');
+    } finally {
+      setApprovingId(null);
+    }
+  };
+
+  const handleRejectParticipant = async (participantId: string) => {
+    if (!matchId) return;
+    setRejectingId(participantId);
+    try {
+      await communityApi.rejectParticipant(matchId, participantId);
+      message.success('Đã từ chối yêu cầu tham gia');
+      await loadData();
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Không thể từ chối yêu cầu');
+    } finally {
+      setRejectingId(null);
+    }
+  };
+
+  const openHostChat = async () => {
+    if (!match?.hostId || !user?.id) return;
+    if (match.hostId === user.id) {
+      message.info('Bạn là chủ kèo');
+      return;
+    }
+
+    setMessageModalOpen(true);
+    setChatLoading(true);
+    try {
+      const allConvs = await chatApi.getConversations();
+      const existingPrivate = (allConvs || []).find((c: any) =>
+        c.type === 'PRIVATE' && Array.isArray(c.participants) &&
+        c.participants.some((p: any) => p?.id === match.hostId || p?.userId === match.hostId),
+      );
+
+      const conv = existingPrivate || await chatApi.createPrivateConversation(match.hostId);
+      const convId = conv?.id || conv?._id;
+      if (!convId) throw new Error('Không thể tạo hội thoại');
+
+      setChatConversationId(convId);
+      const msgs: ChatMessage[] = await chatApi.getMessages(convId);
+      setChatMessages((msgs || []).map((m) => mapToUiMessage(m, user.id)));
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Không thể mở hội thoại với chủ kèo');
+      setMessageModalOpen(false);
+    } finally {
+      setChatLoading(false);
+    }
+  };
+
+  const handleSendQuickMessage = () => {
+    if (!quickMessage.trim()) {
+      message.warning('Nhập nội dung tin nhắn trước khi gửi');
+      return;
+    }
+    if (!chatConversationId || !user?.id) return;
+
+    const content = quickMessage.trim();
+    const optimistic: ChatMsg = {
+      id: `temp-${Date.now()}`,
+      from: 'me',
+      text: content,
+      time: dayjs().format('HH:mm'),
+    };
+    setChatMessages((prev) => [...prev, optimistic]);
+    setQuickMessage('');
+
+    const sentByWs = chatSocket.sendChatMessage(chatConversationId, content, 'TEXT');
+    if (sentByWs) return;
+
+    chatApi.sendMessage({
+      conversationId: chatConversationId,
+      content,
+      type: 'TEXT',
+    }).then((saved) => {
+      setChatMessages((prev) => prev.map((m) =>
+        m.id === optimistic.id
+          ? { ...m, id: saved.id, time: dayjs(saved.timestamp).format('HH:mm') }
+          : m,
+      ));
+    }).catch(() => {
+      message.error('Gửi tin nhắn thất bại');
+      setChatMessages((prev) => prev.filter((m) => m.id !== optimistic.id));
+    });
+  };
+
+  if (loading) {
+    return <div style={{ padding: 48, textAlign: 'center' }}><Spin size="large" /></div>;
+  }
 
   if (!match) {
     return (
-      <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 text-center animate-in fade-in duration-500">
-        <div className="w-20 h-20 bg-gray-50 rounded-full flex items-center justify-center mb-6">
-          <AlertCircle size={40} className="text-gray-300" />
+      <div style={{ maxWidth: 900, margin: '40px auto', padding: 16 }}>
+        <Empty description="Không tìm thấy kèo" />
+        <div style={{ marginTop: 16, textAlign: 'center' }}>
+          <Button onClick={() => navigate('/community')}>Quay lại cộng đồng</Button>
         </div>
-        <Title level={3} className="!mb-2 text-gray-800">Không tìm thấy kèo đấu</Title>
-        <Text type="secondary" className="text-lg block mb-8 max-w-md">
-          Có thể kèo này đã bị xóa hoặc đường dẫn không chính xác.
-        </Text>
-        <Button 
-          type="primary" 
-          size="large" 
-          icon={<ChevronLeft size={18} />} 
-          onClick={() => navigate('/community')}
-          className="h-12 px-8 rounded-xl font-bold"
-        >
-          Quay lại cộng đồng
-        </Button>
       </div>
     );
   }
 
-  const isOwner = user?.id === match.userId;
-
-  const handleJoin = () => {
-    if (!isAuthenticated) {
-      message.info('Vui lòng đăng nhập để tham gia kèo');
-      navigate('/login');
-      return;
-    }
-    setIsJoined(true);
-    message.success('Gửi yêu cầu tham gia thành công! Đang chờ chủ kèo duyệt.');
-  };
-
-  const getLevelColor = (level: string) => {
-    const map: any = {
-      'BEGINNER': 'green',
-      'INTERMEDIATE': 'blue',
-      'ADVANCED': 'orange',
-      'PROFESSIONAL': 'red',
-      'ANY': 'purple'
-    };
-    return map[level] || 'default';
-  };
-
-  const getLevelLabel = (level: string) => {
-    const map: any = {
-      'BEGINNER': 'Mới chơi',
-      'INTERMEDIATE': 'Trung bình',
-      'ADVANCED': 'Khá - Giỏi',
-      'PROFESSIONAL': 'Chuyên nghiệp',
-      'ANY': 'Mọi trình độ'
-    };
-    return map[level] || level;
-  };
-
-  const participants = [
-    { id: 'p1', name: 'Trần Hùng', level: 'INTERMEDIATE', status: 'APPROVED', avatar: 'https://i.pravatar.cc/150?img=11', joinedAt: '2 giờ trước' },
-    { id: 'p2', name: 'Lê Lan', level: 'BEGINNER', status: 'PENDING', avatar: 'https://i.pravatar.cc/150?img=12', joinedAt: '30 phút trước' },
-    { id: 'p3', name: 'Nguyễn Nam', level: 'ADVANCED', status: 'APPROVED', avatar: 'https://i.pravatar.cc/150?img=13', joinedAt: '1 ngày trước' },
-  ];
-
   return (
-    <div className="max-w-7xl mx-auto px-4 py-8 animate-in fade-in duration-700 bg-[#f8fafc]">
-      {/* Top Header & Breadcrumb */}
-      <div className="mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <Breadcrumb 
-          className="text-sm font-medium"
-          items={[
-            { title: <a onClick={() => navigate('/community')} className="text-gray-400 hover:text-brand-primary flex items-center gap-1"><Users size={14}/> Cộng đồng</a> },
-            { title: <span className="text-gray-800">Chi tiết kèo đấu</span> }
-          ]}
-        />
-        <div className="flex items-center gap-3">
-          <Button 
-            icon={<Share2 size={18} />} 
-            className="rounded-xl border-gray-200 hover:text-brand-primary hover:border-brand-primary flex items-center justify-center h-10 px-4"
-          >
-            Chia sẻ
-          </Button>
-          <Button 
-            icon={<ChevronLeft size={18} />} 
-            onClick={() => navigate(-1)}
-            className="rounded-xl bg-white border-gray-200 shadow-sm flex items-center justify-center h-10 w-10 p-0"
-          />
-        </div>
-      </div>
+    <div style={{ maxWidth: 1240, margin: '0 auto', padding: 24 }}>
+      <Space style={{ marginBottom: 16 }}>
+        <Button icon={<ArrowLeftOutlined />} onClick={() => navigate(-1)}>Quay lại</Button>
+        <Tag color={match.status === 'OPEN' ? 'green' : 'default'}>{match.status}</Tag>
+      </Space>
 
-      <Row gutter={[32, 32]}>
+      <Row gutter={[18, 18]}>
         <Col xs={24} lg={16}>
-          {/* Main Info Section */}
-          <div className="space-y-8">
-            <Card 
-              bordered={false} 
-              className="shadow-2xl rounded-[2rem] overflow-hidden border border-white"
-              bodyStyle={{ padding: 0 }}
-            >
-              {/* Hero Banner Section */}
-              <div className="relative p-8 md:p-12 overflow-hidden bg-white">
-                <div className="absolute -top-24 -right-24 w-96 h-96 bg-brand-primary/5 rounded-full blur-3xl" />
-                <div className="absolute -bottom-24 -left-24 w-64 h-64 bg-brand-green/5 rounded-full blur-3xl" />
-                
-                <div className="relative z-10">
-                  <div className="flex flex-wrap items-center gap-3 mb-6">
-                    <span className="px-4 py-1.5 bg-brand-primary/10 text-brand-primary text-[10px] font-black uppercase tracking-widest rounded-full flex items-center gap-1.5">
-                      <ShieldCheck size={12} /> {getLevelLabel(match.level)}
-                    </span>
-                    <span className="px-4 py-1.5 bg-brand-green/10 text-brand-green text-[10px] font-black uppercase tracking-widest rounded-full flex items-center gap-1.5">
-                      <Zap size={12} /> {match.status === 'OPEN' ? 'Đang tuyển' : 'Đã đóng'}
-                    </span>
-                  </div>
+          <Card style={{ borderRadius: 20 }}>
+            <Title level={2} style={{ marginTop: 0, marginBottom: 8 }}>{match.title}</Title>
+            <Space wrap style={{ marginBottom: 14 }}>
+              <Tag color="blue">{levelLabel[match.level] || match.level}</Tag>
+              <Tag color="orange">{genderLabel[match.genderPreference || 'ANY']}</Tag>
+              <Tag>{paymentLabel[match.paymentType || 'SHARE']}</Tag>
+            </Space>
+            <Paragraph style={{ color: '#475569' }}>{match.description || 'Không có mô tả.'}</Paragraph>
 
-                  <Title level={1} className="!mb-8 !text-4xl md:!text-5xl lg:!text-6xl font-black !tracking-tight text-slate-900 leading-[1.1]">
-                    {match.title}
-                  </Title>
+            <Row gutter={[10, 10]}>
+              <Col xs={24} md={12}><Text><EnvironmentOutlined /> {match.venueName || match.venueAddress || 'Chưa có địa điểm'}</Text></Col>
+              <Col xs={24} md={12}><Text><CalendarOutlined /> {dayjs(match.startTime).format('DD/MM/YYYY')}</Text></Col>
+              <Col xs={24} md={12}><Text><ClockCircleOutlined /> {dayjs(match.startTime).format('HH:mm')} - {dayjs(match.endTime).format('HH:mm')}</Text></Col>
+              <Col xs={24} md={12}><Text><TeamOutlined /> {displayedCurrentParticipants}/{match.maxParticipants} người</Text></Col>
+              <Col xs={24}><Text><PhoneOutlined /> {match.contactPhone || 'Chưa có số liên hệ'}</Text></Col>
+              <Col xs={24}>
+                <Text>
+                  <AimOutlined /> {distanceKm !== null
+                    ? ` Cách bạn khoảng ${distanceKm} km`
+                    : ` ${geoError || 'Đang lấy vị trí hiện tại...'}`}
+                </Text>
+              </Col>
+            </Row>
+          </Card>
 
-                  <div className="flex flex-wrap gap-4 md:gap-8">
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-brand-green shadow-inner">
-                        <MapPin size={22} />
-                      </div>
-                      <div>
-                        <Text type="secondary" className="text-[10px] uppercase font-black tracking-widest block mb-0.5">Địa điểm</Text>
-                        <Text strong className="text-slate-800 text-sm md:text-base">{match.venueName || 'Sân cầu lông'}</Text>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-brand-green shadow-inner">
-                        <Calendar size={22} />
-                      </div>
-                      <div>
-                        <Text type="secondary" className="text-[10px] uppercase font-black tracking-widest block mb-0.5">Ngày chơi</Text>
-                        <Text strong className="text-slate-800 text-sm md:text-base">{dayjs(match.matchDate).format('DD/MM/YYYY')}</Text>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center text-brand-green shadow-inner">
-                        <Clock size={22} />
-                      </div>
-                      <div>
-                        <Text type="secondary" className="text-[10px] uppercase font-black tracking-widest block mb-0.5">Thời gian</Text>
-                        <Text strong className="text-slate-800 text-sm md:text-base">{match.startTime} - {match.endTime}</Text>
-                      </div>
-                    </div>
-                  </div>
-                </div>
+          <Card
+            title="Bản đồ địa điểm sân"
+            style={{ marginTop: 16, borderRadius: 20 }}
+            extra={(
+              <Button
+                type="link"
+                icon={<EnvironmentFilled />}
+                disabled={!directionUrl}
+                onClick={() => {
+                  if (directionUrl) window.open(directionUrl, '_blank', 'noopener,noreferrer');
+                }}
+              >
+                Chỉ đường
+              </Button>
+            )}
+          >
+            {mapUrl ? (
+              <div style={{ height: 320, borderRadius: 16, overflow: 'hidden', border: '1px solid #e2e8f0' }}>
+                <iframe title="match-map" src={mapUrl} style={{ width: '100%', height: '100%', border: 0 }} />
               </div>
+            ) : (
+              <Empty description="Kèo chưa có tọa độ sân" />
+            )}
+          </Card>
 
-              {/* Description Content */}
-              <div className="p-8 md:p-12 bg-[#fafbfc] border-t border-slate-100">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-white rounded-lg shadow-sm border border-slate-100">
-                    <Info size={20} className="text-brand-primary" />
-                  </div>
-                  <Title level={4} className="!mb-0 font-black tracking-tight">Chi tiết kèo</Title>
-                </div>
-                <Paragraph className="text-lg leading-[1.8] text-slate-600 font-medium mb-0 max-w-3xl">
-                  {match.description || 'Chủ kèo rất nhiệt tình nhưng chưa kịp viết mô tả. Bạn có thể nhắn tin trực tiếp để trao đổi thêm nhé!'}
-                </Paragraph>
-              </div>
-            </Card>
-
-            {/* Map Integration Card */}
-            <Card 
-              bordered={false} 
-              className="shadow-xl rounded-[2rem] overflow-hidden border border-white"
-              bodyStyle={{ padding: 0 }}
-            >
-              <div className="p-8 border-b border-slate-100 flex items-center justify-between bg-white">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-brand-green/10 rounded-lg">
-                    <Navigation size={20} className="text-brand-green" />
-                  </div>
-                  <Title level={4} className="!mb-0 font-black tracking-tight">Vị trí sân</Title>
-                </div>
-                <Button 
-                  type="link" 
-                  icon={<ExternalLink size={16} />} 
-                  className="font-bold text-brand-primary flex items-center gap-1"
-                >
-                  Mở Google Maps
-                </Button>
-              </div>
-              <div className="relative h-80 w-full bg-slate-100">
-                <iframe 
-                  src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3919.460232427344!2d106.6641!3d10.7766!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x31752edc00000001%3A0x6e288d6c8b9c8b9c!2zU8OibiBD4bqndSBMw7RuZyBL4buzIEjDsmE!5e0!3m2!1svi!2s!4v1715000000000!5m2!1svi!2s" 
-                  width="100%" 
-                  height="100%" 
-                  style={{ border: 0 }} 
-                  allowFullScreen={true} 
-                  loading="lazy" 
-                  referrerPolicy="no-referrer-when-downgrade"
-                  className="grayscale hover:grayscale-0 transition-all duration-700"
-                ></iframe>
-                <div className="absolute bottom-6 left-6 right-6">
-                  <div className="bg-white/90 backdrop-blur-md p-4 rounded-2xl shadow-xl border border-white/50 flex items-center justify-between">
-                    <div>
-                      <Text strong className="block text-slate-900">{match.venueName || 'Sân Kỳ Hòa'}</Text>
-                      <Text className="text-xs text-slate-500">{match.location || 'Q.10, TP. Hồ Chí Minh'}</Text>
-                    </div>
-                    <div className="w-10 h-10 bg-brand-primary text-white rounded-xl flex items-center justify-center shadow-lg shadow-brand-primary/30">
-                      <Navigation size={18} fill="currentColor" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </Card>
-
-            {/* Participants Section */}
-            <Card 
-              bordered={false} 
-              className="shadow-xl rounded-[2rem] border border-white overflow-hidden"
-            >
-              <div className="flex items-center justify-between mb-8">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-50 rounded-lg">
-                    <Users size={20} className="text-blue-500" />
-                  </div>
-                  <Title level={4} className="!mb-0 font-black tracking-tight">Thành viên tham gia</Title>
-                  <span className="px-3 py-1 bg-blue-50 text-blue-600 text-xs font-black rounded-full border border-blue-100">
-                    {match.currentParticipants}/{match.maxParticipants}
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {participants.map((p) => (
-                  <div key={p.id} className="group p-5 bg-white border border-slate-100 rounded-3xl hover:border-brand-primary/30 hover:shadow-lg transition-all duration-300">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-4">
-                        <div className="relative">
-                          <Avatar size={56} src={p.avatar} className="border-2 border-white shadow-md" />
-                          <div className="absolute -bottom-1 -right-1 bg-brand-green p-1 rounded-full border-2 border-white shadow-sm">
-                            <CheckCircle2 size={10} className="text-white" />
-                          </div>
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2 mb-1">
-                            <Text strong className="text-slate-900 text-base">{p.name}</Text>
-                            <Badge status="success" />
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[10px] font-black uppercase text-slate-400 bg-slate-50 px-2 py-0.5 rounded-md border border-slate-100">{getLevelLabel(p.level)}</span>
-                            <span className="text-[10px] text-slate-400">Tham gia {p.joinedAt}</span>
-                          </div>
+          <Card
+            title={<span style={{ fontSize: 28, fontWeight: 800, letterSpacing: '-0.01em' }}>{`Người tham gia (${approvedParticipants.length})`}</span>}
+            style={{ marginTop: 16, borderRadius: 20, border: '1px solid #e5e7eb', boxShadow: '0 8px 24px rgba(15, 23, 42, 0.05)' }}
+          >
+            {approvedParticipants.length === 0 ? (
+              <Empty description="Chưa có người tham gia" />
+            ) : (
+              <List
+                dataSource={approvedParticipants}
+                renderItem={(p) => (
+                  <List.Item style={{ borderRadius: 14, padding: 14, background: '#fafafa', marginBottom: 10, border: '1px solid #f1f5f9' }}>
+                    <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', gap: 12, minWidth: 260 }}>
+                        <Avatar style={{ background: '#16a34a', flexShrink: 0 }} icon={<UserOutlined />} />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <Space size={8} wrap>
+                            <Text strong style={{ fontSize: 16 }}>{getParticipantName(p as any)}</Text>
+                            <Tag color={getParticipantStatus(p as any).color} style={{ borderRadius: 999 }}>
+                              {getParticipantStatus(p as any).text}
+                            </Tag>
+                            {getParticipantProfile(p as any).rating ? (
+                              <Tag color="gold" style={{ borderRadius: 999 }}>
+                                <StarFilled /> {Number(getParticipantProfile(p as any).rating).toFixed(1)}
+                              </Tag>
+                            ) : null}
+                          </Space>
+                          <Space size={[8, 8]} wrap>
+                            <Text type="secondary">ID: {(p as any).userId?.slice?.(0, 8) || '---'}</Text>
+                            <Text type="secondary">Tham gia: {dayjs(getParticipantTime(p as any)).format('DD/MM HH:mm')}</Text>
+                            <Text type="secondary">Trình độ: {getParticipantProfile(p as any).level || 'Chưa cập nhật'}</Text>
+                            <Text type="secondary">
+                              Giới tính: {getParticipantProfile(p as any).gender === 'MALE'
+                                ? 'Nam'
+                                : getParticipantProfile(p as any).gender === 'FEMALE'
+                                ? 'Nữ'
+                                : getParticipantProfile(p as any).gender === 'OTHER'
+                                ? 'Khác'
+                                : 'Chưa cập nhật'}
+                            </Text>
+                          </Space>
                         </div>
                       </div>
-                      {isOwner && p.status === 'PENDING' ? (
-                        <Space>
-                          <Button shape="circle" icon={<CheckCircle2 size={18} className="text-brand-green" />} className="border-brand-green/20 hover:bg-brand-green/5" />
-                          <Button shape="circle" icon={<XCircle size={18} className="text-red-400" />} className="border-red-100 hover:bg-red-50" />
-                        </Space>
-                      ) : (
-                        <div className="flex flex-col items-end gap-1">
-                          <Award size={18} className={p.level === 'ADVANCED' ? 'text-amber-500' : 'text-slate-200'} />
-                        </div>
-                      )}
                     </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </div>
+                  </List.Item>
+                )}
+              />
+            )}
+          </Card>
         </Col>
 
         <Col xs={24} lg={8}>
-          <div className="sticky top-8 space-y-6">
-            {/* Booking Action Card */}
-            <Card 
-              bordered={false} 
-              className="shadow-2xl rounded-[2.5rem] border border-white overflow-hidden bg-white group"
-              bodyStyle={{ padding: 0 }}
+          <Card title="Tham gia & Nhắn tin" style={{ borderRadius: 20 }}>
+            {isOwner ? (
+              <Alert type="info" showIcon message="Bạn là chủ kèo" style={{ marginBottom: 12 }} />
+            ) : null}
+
+            <Space direction="vertical" style={{ width: '100%' }} size={10}>
+              <Button icon={<MessageOutlined />} block size="large" onClick={openHostChat}>
+                Nhắn tin với chủ kèo
+              </Button>
+
+              <Button
+                type="primary"
+                icon={<TeamOutlined />}
+                block
+                size="large"
+                disabled={
+                  isOwner ||
+                  isFull ||
+                  match.status !== 'OPEN' ||
+                  myParticipant?.status === 'PENDING' ||
+                  myParticipant?.status === 'APPROVED'
+                }
+                onClick={() => setJoinModalOpen(true)}
+              >
+                {myParticipant?.status === 'PENDING'
+                  ? 'Đã yêu cầu tham gia'
+                  : myParticipant?.status === 'APPROVED'
+                  ? 'Đã tham gia kèo'
+                  : isFull
+                  ? 'Kèo đã đủ người'
+                  : 'Tham gia kèo'}
+              </Button>
+            </Space>
+          </Card>
+
+          {isOwner ? (
+            <Card
+              title={<span style={{ fontSize: 20, fontWeight: 800 }}>{`Quản lý yêu cầu (${pendingRequests.length} chờ duyệt)`}</span>}
+              style={{ borderRadius: 20, marginTop: 16, border: '1px solid #e5e7eb', boxShadow: '0 8px 24px rgba(15, 23, 42, 0.05)' }}
             >
-              <div className="bg-brand-primary p-8 text-white relative overflow-hidden text-center">
-                <div className="absolute top-0 left-0 w-full h-full bg-[radial-gradient(circle_at_30%_20%,rgba(255,255,255,0.2)_0%,transparent_80%)]" />
-                <Zap className="mx-auto mb-4 text-white/40 animate-pulse" size={40} />
-                <Title level={3} className="!text-white !mb-1 font-black !tracking-widest uppercase">Tham gia</Title>
-                <Text className="text-white/80 text-sm font-bold block">Còn {match.maxParticipants - match.currentParticipants} chỗ trống</Text>
-              </div>
-              
-              <div className="p-8 md:p-10">
-                <div className="flex items-center justify-between mb-8 p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 bg-brand-green/10 text-brand-green rounded-xl flex items-center justify-center">
-                      <DollarSign size={22} />
-                    </div>
-                    <Text type="secondary" className="font-bold">Chi phí</Text>
-                  </div>
-                  <Text className="text-2xl font-black text-slate-900">50K <span className="text-xs font-normal text-slate-400">/ người</span></Text>
-                </div>
-
-                <Space direction="vertical" size={16} className="w-full">
-                  {isOwner ? (
-                    <Button type="primary" size="large" block disabled className="h-16 rounded-2xl font-black text-lg grayscale opacity-50 border-none">
-                      BẠN LÀ CHỦ KÈO
-                    </Button>
-                  ) : isJoined ? (
-                    <Button type="primary" size="large" block disabled className="h-16 rounded-2xl font-black text-lg bg-slate-100 border-none text-slate-400">
-                      ĐÃ GỬI YÊU CẦU
-                    </Button>
-                  ) : (
-                    <Button
-                      type="primary"
-                      size="large"
-                      block
-                      className="h-16 rounded-2xl font-black text-lg shadow-2xl shadow-brand-primary/30 hover:shadow-brand-primary/50 hover:translate-y-[-2px] transition-all duration-300"
-                      onClick={handleJoin}
-                      disabled={match.status !== 'OPEN' || match.currentParticipants >= match.maxParticipants}
-                    >
-                      ĐĂNG KÝ NGAY
-                    </Button>
+              {pendingRequests.length === 0 ? (
+                <Empty description="Hiện chưa có yêu cầu tham gia mới" />
+              ) : (
+                <List
+                  dataSource={pendingRequests}
+                  renderItem={(p) => (
+                    <List.Item style={{ borderRadius: 14, padding: 14, background: '#fafafa', marginBottom: 10, border: '1px solid #f1f5f9' }}>
+                      <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 240 }}>
+                          <Avatar style={{ background: '#f59e0b', flexShrink: 0 }} icon={<UserOutlined />} />
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                            <Space size={8} wrap>
+                              <Text strong style={{ fontSize: 16 }}>{getParticipantName(p as any)}</Text>
+                              <Tag color="gold" style={{ borderRadius: 999 }}>Chờ duyệt</Tag>
+                            </Space>
+                            <Text type="secondary">ID: {(p as any).userId?.slice?.(0, 8) || '---'}</Text>
+                            <Text type="secondary">Yêu cầu lúc: {dayjs(getParticipantTime(p as any)).format('DD/MM HH:mm')}</Text>
+                          </div>
+                        </div>
+                        <Space>
+                          <Button
+                            key="approve"
+                            type="primary"
+                            onClick={() => handleApproveParticipant(p.id)}
+                            loading={approvingId === p.id}
+                            style={{ borderRadius: 10, fontWeight: 700 }}
+                          >
+                            Duyệt
+                          </Button>
+                          <Button
+                            key="reject"
+                            danger
+                            onClick={() => handleRejectParticipant(p.id)}
+                            loading={rejectingId === p.id}
+                            style={{ borderRadius: 10, fontWeight: 700 }}
+                          >
+                            Từ chối
+                          </Button>
+                        </Space>
+                      </div>
+                    </List.Item>
                   )}
-                  
-                  <div className="flex gap-3">
-                    <Button icon={<MessageSquare size={18} />} className="flex-1 h-14 rounded-2xl font-black text-slate-600 border-slate-200 hover:border-brand-primary hover:text-brand-primary flex items-center justify-center">
-                      CHAT
-                    </Button>
-                    <Button icon={<Navigation size={18} />} className="flex-1 h-14 rounded-2xl font-black text-slate-600 border-slate-200 hover:border-brand-primary hover:text-brand-primary flex items-center justify-center">
-                      CHỈ ĐƯỜNG
-                    </Button>
-                  </div>
-                </Space>
+                />
+              )}
 
-                <div className="mt-8 pt-8 border-t border-slate-100">
-                  <div className="flex items-center gap-3 text-slate-400 text-xs italic leading-relaxed">
-                    <AlertCircle size={16} className="shrink-0 text-amber-500" />
-                    <span>Lưu ý: Bạn nên hủy đăng ký trước ít nhất 2 giờ nếu không thể tham gia.</span>
-                  </div>
+              {rejectedParticipants.length > 0 ? (
+                <div style={{ marginTop: 12 }}>
+                  <Text type="secondary">Đã từ chối gần đây: {rejectedParticipants.length}</Text>
                 </div>
-              </div>
+              ) : null}
             </Card>
-
-            {/* Host Card */}
-            <Card bordered={false} className="shadow-xl rounded-[2rem] border border-white p-8 group">
-              <Text type="secondary" className="text-[10px] uppercase font-black tracking-widest block mb-6 text-center">Người tổ chức</Text>
-              <div className="flex flex-col items-center">
-                <div className="relative mb-4">
-                  <Avatar size={96} src={match.userAvatar} className="border-4 border-white shadow-xl group-hover:scale-105 transition-all" />
-                  <div className="absolute -bottom-1 -right-1 bg-white p-2 rounded-2xl shadow-lg border border-slate-50">
-                    <Trophy size={20} className="text-amber-500" />
-                  </div>
-                </div>
-                <Title level={4} className="!mb-1 font-black">{match.userName}</Title>
-                <Text type="secondary" className="text-xs mb-6">Thành viên tâm huyết từ 2024</Text>
-                
-                <div className="w-full grid grid-cols-2 gap-4 mb-6">
-                  <div className="bg-slate-50 p-4 rounded-2xl text-center border border-slate-100">
-                    <Text className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Tin cậy</Text>
-                    <Text strong className="text-brand-green">98%</Text>
-                  </div>
-                  <div className="bg-slate-50 p-4 rounded-2xl text-center border border-slate-100">
-                    <Text className="text-[10px] uppercase font-bold text-slate-400 block mb-1">Trình độ</Text>
-                    <Text strong className="text-brand-primary">{getLevelLabel(match.userLevel || 'ANY')}</Text>
-                  </div>
-                </div>
-
-                <Button block className="h-12 rounded-xl border-slate-200 font-bold hover:border-brand-primary hover:text-brand-primary">
-                  XEM CHI TIẾT HỒ SƠ
-                </Button>
-              </div>
-            </Card>
-          </div>
+          ) : null}
         </Col>
       </Row>
+
+      <Modal
+        title="Xác nhận tham gia kèo"
+        open={joinModalOpen}
+        onCancel={() => setJoinModalOpen(false)}
+        onOk={handleConfirmJoin}
+        confirmLoading={joining}
+        okText="Tham gia ngay"
+        cancelText="Để sau"
+      >
+        <Paragraph style={{ marginBottom: 0 }}>
+          Bạn sắp tham gia kèo <Text strong>{match.title}</Text>. Sau khi tham gia thành công, bạn sẽ được đưa vào nhóm tin nhắn của kèo.
+        </Paragraph>
+      </Modal>
+
+      <Modal
+        title="Nhắn tin với chủ kèo"
+        open={messageModalOpen}
+        onCancel={() => setMessageModalOpen(false)}
+        footer={null}
+        width={620}
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <Text type="secondary">Chủ kèo: {match.hostName || 'Người tạo kèo'}</Text>
+
+          <div
+            ref={chatBoxRef}
+            style={{ maxHeight: 340, overflowY: 'auto', padding: 10, background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0' }}
+          >
+            {chatLoading ? (
+              <div style={{ padding: 24, textAlign: 'center' }}><Spin /></div>
+            ) : chatMessages.length === 0 ? (
+              <div style={{ padding: 24, textAlign: 'center', color: '#64748b' }}>Chưa có tin nhắn. Hãy bắt đầu cuộc trò chuyện.</div>
+            ) : null}
+
+            <Space direction="vertical" style={{ width: '100%' }} size={10}>
+              {chatMessages.map((m) => (
+                <div key={m.id} style={{ display: 'flex', justifyContent: m.from === 'me' ? 'flex-end' : 'flex-start' }}>
+                  <div
+                    style={{
+                      maxWidth: '78%',
+                      background: m.from === 'me' ? '#16a34a' : '#ffffff',
+                      color: m.from === 'me' ? '#fff' : '#0f172a',
+                      border: m.from === 'me' ? 'none' : '1px solid #e2e8f0',
+                      borderRadius: 14,
+                      padding: '8px 10px',
+                    }}
+                  >
+                    <div>{m.text}</div>
+                    <div style={{ marginTop: 4, fontSize: 11, opacity: 0.75, textAlign: 'right' }}>{m.time}</div>
+                  </div>
+                </div>
+              ))}
+            </Space>
+          </div>
+
+          <Space.Compact style={{ width: '100%' }}>
+            <Input
+              value={quickMessage}
+              onChange={(e) => setQuickMessage(e.target.value)}
+              placeholder="Nhập tin nhắn..."
+              onPressEnter={handleSendQuickMessage}
+              disabled={chatLoading || !chatConversationId}
+            />
+            <Button type="primary" icon={<SendOutlined />} onClick={handleSendQuickMessage} disabled={chatLoading || !chatConversationId}>
+              Gửi
+            </Button>
+          </Space.Compact>
+        </div>
+      </Modal>
+
+      <Modal
+        title="Tham gia thành công"
+        open={groupModalOpen}
+        onCancel={() => setGroupModalOpen(false)}
+        footer={[
+          <Button key="close" onClick={() => setGroupModalOpen(false)}>Đóng</Button>,
+          <Button
+            key="chat"
+            type="primary"
+            icon={<SendOutlined />}
+            onClick={async () => {
+              if (matchId) {
+                try {
+                  await chatApi.createGroupForMatch(matchId);
+                } catch {
+                  // ignore if exists
+                }
+              }
+              setGroupModalOpen(false);
+              navigate('/user/chat');
+            }}
+          >
+            Vào nhóm tin nhắn kèo
+          </Button>,
+        ]}
+      >
+        <Paragraph style={{ marginBottom: 0 }}>
+          Bạn đã tham gia kèo thành công. Hãy vào nhóm tin nhắn của kèo để trao đổi lịch chơi với mọi người.
+        </Paragraph>
+      </Modal>
     </div>
   );
 }
-
-
-
