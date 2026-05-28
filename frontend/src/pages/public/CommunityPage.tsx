@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Row,
   Col,
@@ -17,6 +17,7 @@ import {
   Checkbox,
   Tooltip,
   Badge,
+  message,
 } from 'antd';
 import {
   EnvironmentOutlined,
@@ -27,6 +28,7 @@ import {
   FilterOutlined,
   ShareAltOutlined,
   HeartOutlined,
+  HeartFilled,
   ClockCircleOutlined,
   CustomerServiceOutlined,
   TeamOutlined,
@@ -40,6 +42,8 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { communityApi } from '../../services/communityApi';
 import type { MatchPost } from '../../types/community.types';
+import { useCommunityStore } from '../../stores/communityStore';
+import { useAuthStore } from '../../stores/authStore';
 
 dayjs.extend(relativeTime);
 
@@ -75,6 +79,8 @@ interface UiMatch {
 
 export default function CommunityPage() {
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuthStore();
+  const { toggleFavorite, isFavorite, joinMatch, selectedMatches } = useCommunityStore();
 
   const [activeCategory, setActiveCategory] = useState('matches');
   const [level, setLevel] = useState<string>('');
@@ -346,103 +352,175 @@ export default function CommunityPage() {
     </div>
   );
 
-  const renderMatchCard = (match: UiMatch) => (
-    <Card
-      key={match.id}
-      hoverable
-      bodyStyle={{ padding: 0 }}
-      style={{
-        borderRadius: 24,
-        marginBottom: 20,
-        border: '1px solid #f1f5f9',
-        overflow: 'hidden',
-        boxShadow: '0 4px 20px -5px rgba(0,0,0,0.03)',
-      }}
-      onClick={() => navigate(`/community/matches/${match.id}`)}
-    >
-      <div style={{ display: 'flex' }}>
-        <div
-          style={{
-            width: 140,
-            background: '#f8fafc',
-            borderRight: '1px solid #f1f5f9',
-            padding: '24px 16px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            textAlign: 'center',
-          }}
-        >
-          <div style={{ color: BRAND.sky, marginBottom: 8 }}>
-            <ClockCircleOutlined style={{ fontSize: 24 }} />
-          </div>
-          <Text strong style={{ fontSize: 16, display: 'block' }}>
-            {match.startTime}
-          </Text>
-          <Text type="secondary" style={{ fontSize: 13 }}>
-            {match.endTime}
-          </Text>
-          <div style={{ marginTop: 16 }}>
-            <Badge count={match.levelCode} style={{ background: BRAND.warning, color: '#fff', fontWeight: 800, border: 'none' }} />
-          </div>
-        </div>
+  const renderMatchCard = (match: UiMatch) => {
+    const originalMatch = matchData.content.find((m) => m.id === match.id) || ({
+      id: match.id,
+      title: match.title,
+      description: match.description,
+      startTime: match.startTime,
+      endTime: match.endTime,
+      venueName: match.location,
+      maxParticipants: match.maxParticipants,
+      currentParticipants: match.currentParticipants,
+      hostName: match.userName,
+      level: match.levelCode,
+      status: 'OPEN',
+      createdAt: match.createdAt,
+      updatedAt: match.createdAt,
+    } as MatchPost);
 
-        <div style={{ flex: 1, padding: '24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
-            <Space direction="vertical" size={0}>
-              <Space style={{ marginBottom: 4 }}>
-                <EnvironmentOutlined style={{ color: BRAND.danger }} />
-                <Text strong style={{ color: BRAND.danger, fontSize: 14 }}>
-                  {match.location}
-                </Text>
-              </Space>
-              <div style={{ display: 'flex', gap: 8 }}>
-                <Tag color="blue" style={{ border: 'none', borderRadius: 6 }}>
-                  {match.genderInfo}
-                </Tag>
-                <Tag color="cyan" style={{ border: 'none', borderRadius: 6 }}>
-                  <CalendarOutlined /> {match.playDate}
-                </Tag>
-              </div>
-            </Space>
-            <Space>
-              <Button shape="circle" icon={<FacebookFilled />} style={{ color: '#1877f2', border: 'none', background: '#eff6ff' }} />
-              <Button shape="circle" icon={<ShareAltOutlined />} style={{ border: 'none', background: '#f8fafc' }} />
-              <Button shape="circle" icon={<HeartOutlined />} style={{ border: 'none', background: '#f8fafc' }} />
-            </Space>
-          </div>
-          <Title level={4} style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 800 }}>
-            {match.title}
-          </Title>
-          <Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ marginBottom: 20, fontSize: 14, lineHeight: 1.6 }}>
-            {match.description}
-          </Paragraph>
-          <div style={{ display: 'flex', gap: 16, marginBottom: 16, color: '#475569', fontSize: 13, fontWeight: 600 }}>
-            <span><CalendarOutlined /> {match.playDate}</span>
-            <span><ClockCircleOutlined /> {match.startTime} - {match.endTime}</span>
-            <span><TeamOutlined /> {match.currentParticipants}/{match.maxParticipants} người</span>
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Avatar size={40} src={match.userAvatar} icon={<UserOutlined />} style={{ border: `2px solid ${BRAND.primaryLight}` }} />
-              <div>
-                <Text strong style={{ display: 'block', fontSize: 15 }}>
-                  {match.userName}
-                </Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {dayjs(match.createdAt).fromNow()}
-                </Text>
-              </div>
+    const favorited = isFavorite(match.id);
+    const joined = selectedMatches.some(sm => sm.match.id === match.id && sm.selectedStatus !== 'deselected');
+
+    const handleHeartClick = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!isAuthenticated) {
+        message.warning('Vui lòng đăng nhập để lưu bài viết quan tâm!');
+        navigate('/login');
+        return;
+      }
+      toggleFavorite(originalMatch);
+      if (!favorited) {
+        message.success('Đã lưu bài viết quan tâm ❤️');
+      } else {
+        message.success('Đã bỏ quan tâm bài viết.');
+      }
+    };
+
+    const handleJoinClick = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      if (!isAuthenticated) {
+        message.warning('Vui lòng đăng nhập để đăng ký tham gia kèo!');
+        navigate('/login');
+        return;
+      }
+      joinMatch(originalMatch);
+      message.success('Đăng ký tham gia kèo thành công! Hãy theo dõi tại mục "Kèo đã chọn".');
+    };
+
+    return (
+      <Card
+        key={match.id}
+        hoverable
+        bodyStyle={{ padding: 0 }}
+        style={{
+          borderRadius: 24,
+          marginBottom: 20,
+          border: '1px solid #f1f5f9',
+          overflow: 'hidden',
+          boxShadow: '0 4px 20px -5px rgba(0,0,0,0.03)',
+        }}
+        onClick={() => navigate(`/community/matches/${match.id}`)}
+      >
+        <div style={{ display: 'flex' }}>
+          <div
+            style={{
+              width: 140,
+              background: '#f8fafc',
+              borderRight: '1px solid #f1f5f9',
+              padding: '24px 16px',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              textAlign: 'center',
+            }}
+          >
+            <div style={{ color: BRAND.sky, marginBottom: 8 }}>
+              <ClockCircleOutlined style={{ fontSize: 24 }} />
             </div>
-            <Button type="primary" size="large" style={{ height: 44, padding: '0 32px', borderRadius: 12, fontWeight: 800 }}>
-              Tham gia ngay
-            </Button>
+            <Text strong style={{ fontSize: 16, display: 'block' }}>
+              {match.startTime}
+            </Text>
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              {match.endTime}
+            </Text>
+            <div style={{ marginTop: 16 }}>
+              <Badge count={match.levelCode} style={{ background: BRAND.warning, color: '#fff', fontWeight: 800, border: 'none' }} />
+            </div>
+          </div>
+
+          <div style={{ flex: 1, padding: '24px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+              <Space direction="vertical" size={0}>
+                <Space style={{ marginBottom: 4 }}>
+                  <EnvironmentOutlined style={{ color: BRAND.danger }} />
+                  <Text strong style={{ color: BRAND.danger, fontSize: 14 }}>
+                    {match.location}
+                  </Text>
+                </Space>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <Tag color="blue" style={{ border: 'none', borderRadius: 6 }}>
+                    {match.genderInfo}
+                  </Tag>
+                  <Tag color="cyan" style={{ border: 'none', borderRadius: 6 }}>
+                    <CalendarOutlined /> {match.playDate}
+                  </Tag>
+                </div>
+              </Space>
+              <Space>
+                <Button shape="circle" icon={<FacebookFilled />} style={{ color: '#1877f2', border: 'none', background: '#eff6ff' }} />
+                <Button 
+                  shape="circle" 
+                  icon={<ShareAltOutlined />} 
+                  style={{ border: 'none', background: '#f8fafc' }} 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(`${window.location.origin}/community/matches/${match.id}`);
+                    message.success('Đã sao chép link kèo đấu!');
+                  }}
+                />
+                <Button 
+                  shape="circle" 
+                  icon={favorited ? <HeartFilled style={{ color: '#ef4444' }} /> : <HeartOutlined />} 
+                  style={{ border: 'none', background: favorited ? '#fef2f2' : '#f8fafc' }} 
+                  onClick={handleHeartClick}
+                />
+              </Space>
+            </div>
+            <Title level={4} style={{ margin: '0 0 8px', fontSize: 20, fontWeight: 800 }}>
+              {match.title}
+            </Title>
+            <Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ marginBottom: 20, fontSize: 14, lineHeight: 1.6 }}>
+              {match.description}
+            </Paragraph>
+            <div style={{ display: 'flex', gap: 16, marginBottom: 16, color: '#475569', fontSize: 13, fontWeight: 600 }}>
+              <span><CalendarOutlined /> {match.playDate}</span>
+              <span><ClockCircleOutlined /> {match.startTime} - {match.endTime}</span>
+              <span><TeamOutlined /> {match.currentParticipants}/{match.maxParticipants} người</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <Avatar size={40} src={match.userAvatar} icon={<UserOutlined />} style={{ border: `2px solid ${BRAND.primaryLight}` }} />
+                <div>
+                  <Text strong style={{ display: 'block', fontSize: 15 }}>
+                    {match.userName}
+                  </Text>
+                  <Text type="secondary" style={{ fontSize: 12 }}>
+                    {dayjs(match.createdAt).fromNow()}
+                  </Text>
+                </div>
+              </div>
+              {joined ? (
+                <Button disabled style={{ height: 44, padding: '0 32px', borderRadius: 12, fontWeight: 800 }}>
+                  Đã đăng ký
+                </Button>
+              ) : (
+                <Button 
+                  type="primary" 
+                  size="large" 
+                  style={{ height: 44, padding: '0 32px', borderRadius: 12, fontWeight: 800 }}
+                  onClick={handleJoinClick}
+                >
+                  Tham gia ngay
+                </Button>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </Card>
-  );
+      </Card>
+    );
+  };
 
   return (
     <div style={{ background: '#f8fafc', minHeight: '100vh', padding: '40px 0 100px' }}>

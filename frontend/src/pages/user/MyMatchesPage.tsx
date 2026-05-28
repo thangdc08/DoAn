@@ -195,7 +195,7 @@ export default function MyMatchesPage() {
     try {
       setLoading(true);
       const status = activeTab === 'upcoming' ? 'OPEN' : undefined;
-      const response = await communityApi.getMyMatches({
+      const response = await communityApi.getJoinedMatches({
         status,
         page: 0,
         size: 50,
@@ -236,7 +236,7 @@ export default function MyMatchesPage() {
       <div className="mb-6 flex justify-between items-center">
         <div>
           <Title level={2} className="!mb-1">Kèo của tôi</Title>
-          <Text type="secondary">Quản lý các trận đấu bạn đã tạo</Text>
+          <Text type="secondary">Quản lý các trận đấu bạn tham gia hoặc tạo</Text>
         </div>
         <Button
           type="primary"

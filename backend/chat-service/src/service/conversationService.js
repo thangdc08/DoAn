@@ -583,6 +583,8 @@ export const handleMatchApprovedEvent = async (payload) => {
         const matchPostId = payload?.matchPostId;
         const hostId = payload?.hostId;
         const userId = payload?.userId;
+        const title = payload?.title;
+        const startTime = payload?.startTime;
         if (!matchPostId || !hostId || !userId) return;
 
         await ensureMatchGroupAndAddMember({
@@ -591,6 +593,8 @@ export const handleMatchApprovedEvent = async (payload) => {
             hostName: "Chủ kèo",
             approvedUserId: String(userId),
             approvedUserName: "Người chơi",
+            title: title,
+            startTime: startTime,
             req: { token: null }
         });
     } catch (error) {
@@ -604,6 +608,8 @@ const ensureMatchGroupAndAddMember = async ({
     hostName,
     approvedUserId,
     approvedUserName,
+    title,
+    startTime,
     req
 }) => {
     let conversation = await Conversation.findOne({ type: "GROUP", matchPostId });
@@ -619,12 +625,31 @@ const ensureMatchGroupAndAddMember = async ({
             isOnline: false,
             lastSeen: now
         };
+
+        // Format date: "2026-05-30T18:00:00" -> "30/05/2026"
+        let formattedDate = "Ngày chưa xác định";
+        if (startTime) {
+            try {
+                const date = new Date(startTime);
+                if (!isNaN(date.getTime())) {
+                    const day = String(date.getDate()).padStart(2, '0');
+                    const month = String(date.getMonth() + 1).padStart(2, '0');
+                    const year = date.getFullYear();
+                    formattedDate = `${day}/${month}/${year}`;
+                }
+            } catch (e) {
+                console.error("Error formatting date:", e);
+            }
+        }
+
+        const groupName = `${title || "Kèo giao lưu"} - ${formattedDate}`;
+
         conversation = new Conversation({
             type: "GROUP",
             matchPostId,
             participants: [hostParticipant],
             group: {
-                name: `Nhóm kèo ${matchPostId.slice(0, 8)}`,
+                name: groupName,
                 avatarUrl: "",
                 admin: hostParticipant
             },

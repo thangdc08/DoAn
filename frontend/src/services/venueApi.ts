@@ -162,4 +162,9 @@ export const venueApi = {
       params: { reason },
     });
   },
+
+  rateVenue: async (venueId: string, data: { stars: number; comment?: string }): Promise<any> => {
+    const response = await apiClient.post(`/venues/api/venues/${venueId}/ratings`, data);
+    return response.data;
+  },
 };

@@ -7,8 +7,6 @@ import { useNavigate } from 'react-router-dom';
 
 const { Title, Text } = Typography;
 
-const { Title, Text } = Typography;
-
 export default function OwnerBookingPage() {
   const navigate = useNavigate();
   const getStatusColor = (status: string) => {
@@ -83,7 +81,7 @@ export default function OwnerBookingPage() {
             ghost
             icon={<MessageOutlined />}
             size="small"
-            onClick={() => navigate('/owner/chat')}
+            onClick={() => navigate('/chat')}
           >
             Chat
           </Button>

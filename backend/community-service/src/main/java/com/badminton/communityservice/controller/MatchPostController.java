@@ -15,9 +15,11 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.*;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.web.bind.annotation.*;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -90,15 +92,24 @@ public class MatchPostController {
             @RequestHeader("X-Auth-User-Id") UUID userId,
             @RequestParam(required = false) String status,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
-
         log.info("API Request: Get my matches for user {}", userId);
-
         Specification<com.badminton.communityservice.entity.MatchPost> spec = Specification
                 .where(MatchPostSpecification.hasHostId(userId))
                 .and(MatchPostSpecification.hasStatus(status));
-
         return ApiResponse.<Page<MatchPostResponse>>builder()
                 .result(matchPostService.searchMatchPosts(spec, pageable))
+                .build();
+    }
+
+    @GetMapping("/joined")
+    @Operation(summary = "Get joined matches", description = "Get matches where user is host or approved participant")
+    public ApiResponse<Page<MatchPostResponse>> getJoinedMatches(
+            @RequestHeader("X-Auth-User-Id") UUID userId,
+            @RequestParam(required = false) String status,
+            @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {
+        log.info("API Request: Get joined matches for user {}", userId);
+        return ApiResponse.<Page<MatchPostResponse>>builder()
+                .result(matchPostService.getJoinedMatches(userId, status, pageable))
                 .build();
     }
 
@@ -109,8 +120,7 @@ public class MatchPostController {
             @RequestParam double lng,
             @RequestParam(defaultValue = "10") double radiusKm,
             @RequestParam(defaultValue = "20") int limit) {
-        
-        log.info("API Request: Find nearby matches at ({}, {}) within {} km", lat, lng, radiusKm);
+        log.info("API Request: Find nearby matches at ({}, {}) within {} km", lat, lng);
         return ApiResponse.<List<MatchPostResponse>>builder()
                 .result(matchPostService.findNearbyMatches(lat, lng, radiusKm, limit))
                 .build();
@@ -132,7 +142,6 @@ public class MatchPostController {
             @RequestHeader("X-Auth-User-Id") UUID userId,
             @RequestHeader(value = "X-Auth-User-Name", defaultValue = "User") String userName,
             @RequestBody(required = false) JoinMatchRequest request) {
-        
         log.info("API Request: User {} joining match {}", userId, id);
         if (request == null) {
             request = new JoinMatchRequest();
@@ -147,7 +156,6 @@ public class MatchPostController {
     public ApiResponse<Void> leaveMatch(
             @PathVariable UUID id,
             @RequestHeader("X-Auth-User-Id") UUID userId) {
-        
         log.info("API Request: User {} leaving match {}", userId, id);
         participantService.leaveMatch(id, userId);
         return ApiResponse.<Void>builder().build();
@@ -168,7 +176,6 @@ public class MatchPostController {
             @PathVariable UUID id,
             @PathVariable UUID participantId,
             @RequestHeader("X-Auth-User-Id") UUID hostId) {
-        
         log.info("API Request: Host {} approving participant {} for match {}", hostId, participantId, id);
         return ApiResponse.<ParticipantResponse>builder()
                 .result(participantService.approveParticipant(id, participantId, hostId))
@@ -181,7 +188,6 @@ public class MatchPostController {
             @PathVariable UUID id,
             @PathVariable UUID participantId,
             @RequestHeader("X-Auth-User-Id") UUID hostId) {
-        
         log.info("API Request: Host {} rejecting participant {} for match {}", hostId, participantId, id);
         return ApiResponse.<ParticipantResponse>builder()
                 .result(participantService.rejectParticipant(id, participantId, hostId))
@@ -189,11 +195,10 @@ public class MatchPostController {
     }
 
     @PostMapping("/{id}/close")
-    @Operation(summary = "Close match", description = "Host closes the match (UC-F7)")
+    @Operation(summary = "Close match", description = "Host closes match (UC-F7)")
     public ApiResponse<Void> closeMatch(
             @PathVariable UUID id,
             @RequestHeader("X-Auth-User-Id") UUID userId) {
-        
         log.info("API Request: User {} closing match {}", userId, id);
         matchPostService.closeMatchPost(id, userId);
         return ApiResponse.<Void>builder().build();
@@ -204,7 +209,6 @@ public class MatchPostController {
     public ApiResponse<Void> reopenMatch(
             @PathVariable UUID id,
             @RequestHeader("X-Auth-User-Id") UUID userId) {
-        
         log.info("API Request: User {} reopening match {}", userId, id);
         matchPostService.reopenMatchPost(id, userId);
         return ApiResponse.<Void>builder().build();
@@ -215,19 +219,17 @@ public class MatchPostController {
     public ApiResponse<Void> finishMatch(
             @PathVariable UUID id,
             @RequestHeader("X-Auth-User-Id") UUID userId) {
-        
         log.info("API Request: User {} finishing match {}", userId, id);
         matchPostService.finishMatchPost(id, userId);
         return ApiResponse.<Void>builder().build();
     }
 
     @PostMapping("/{id}/ratings")
-    @Operation(summary = "Rate player", description = "Host rates a player after match (UC-G2.1)")
+    @Operation(summary = "Rate player", description = "Rate player (UC-G2.1)")
     public ApiResponse<PlayerRatingResponse> ratePlayer(
             @PathVariable UUID id,
             @RequestHeader("X-Auth-User-Id") UUID userId,
             @Valid @RequestBody CreatePlayerRatingRequest request) {
-        
         log.info("API Request: User {} rating player {} for match {}", userId, request.getRateeUserId(), id);
         return ApiResponse.<PlayerRatingResponse>builder()
                 .result(playerRatingService.ratePlayer(id, userId, request))
@@ -239,8 +241,7 @@ public class MatchPostController {
     public ApiResponse<PlayerRatingResponse> getRatingForMatch(
             @PathVariable UUID id,
             @PathVariable UUID rateeId) {
-        
-        log.info("API Request: Get rating for player {} in match {}", rateeId, id);
+        log.info("API Request: Get rating for match {}", id, rateeId);
         return ApiResponse.<PlayerRatingResponse>builder()
                 .result(playerRatingService.getRatingForMatch(id, rateeId))
                 .build();

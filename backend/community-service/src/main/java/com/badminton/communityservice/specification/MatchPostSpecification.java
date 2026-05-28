@@ -7,6 +7,8 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import jakarta.persistence.criteria.JoinType;
+
 public class MatchPostSpecification {
 
     public static Specification<MatchPost> hasStatus(String status) {
@@ -47,5 +49,18 @@ public class MatchPostSpecification {
 
     public static Specification<MatchPost> hasHostId(UUID hostId) {
         return (root, query, cb) -> hostId == null ? null : cb.equal(root.get("hostId"), hostId);
+    }
+
+    public static Specification<MatchPost> isHostOrParticipant(UUID userId) {
+        return (root, query, cb) -> {
+            if (userId == null) return null;
+
+            var participants = root.join("participants", JoinType.LEFT);
+
+            return cb.or(
+                cb.equal(root.get("hostId"), userId),
+                cb.equal(participants.get("userId"), userId)
+            );
+        };
     }
 }

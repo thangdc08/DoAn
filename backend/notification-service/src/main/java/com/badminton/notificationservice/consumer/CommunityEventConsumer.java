@@ -80,27 +80,28 @@ public class CommunityEventConsumer {
         UUID matchPostId = UUID.fromString(event.get("matchPostId").toString());
         UUID userId = UUID.fromString(event.get("userId").toString());
         UUID hostId = UUID.fromString(event.get("hostId").toString());
-        
+        String title = event.get("title") != null ? event.get("title").toString() : "Kèo giao lưu";
+
         // Notify the approved user
         notificationRepository.save(Notification.builder()
                 .receiverId(userId)
                 .type("MATCH_APPROVED")
                 .title("Bạn đã được duyệt tham gia kèo")
-                .content("Chúc mừng! Bạn đã được duyệt tham gia kèo")
+                .content("Chúc mừng! Chủ kèo đã xác nhận bạn tham gia kèo '" + title + "' thành công!")
                 .data(Map.of("matchPostId", matchPostId, "hostId", hostId))
                 .createdAt(LocalDateTime.now())
                 .build());
-        
+
         // Notify the host
         notificationRepository.save(Notification.builder()
                 .receiverId(hostId)
                 .type("MATCH_PARTICIPANT_JOINED")
                 .title("Có người mới tham gia kèo")
-                .content("Có người mới đã tham gia kèo của bạn")
+                .content("Một người chơi đã được xác nhận tham gia kèo '" + title + "' của bạn")
                 .data(Map.of("matchPostId", matchPostId, "userId", userId))
                 .createdAt(LocalDateTime.now())
                 .build());
-        
+
         log.info("Created notifications for match approval: match={}, user={}", matchPostId, userId);
     }
 

@@ -30,13 +30,14 @@ const PaymentPage = lazy(() => import('../pages/user/PaymentPage'));
 const MockPaymentPage = lazy(() => import('../pages/user/MockPaymentPage'));
 const PaymentResultPage = lazy(() => import('../pages/user/PaymentResultPage'));
 const BookingHistoryPage = lazy(() => import('../pages/user/BookingHistoryPage'));
-const NotificationsPage = lazy(() => import('../pages/user/NotificationsPage'));
 const UserDashboardPage = lazy(() => import('../pages/user/UserDashboardPage'));
 const UserChallengesPage = lazy(() => import('../pages/user/UserChallengesPage'));
 const UserSettingsPage = lazy(() => import('../pages/user/UserSettingsPage'));
 const CreateMatchPage = lazy(() => import('../pages/user/CreateMatchPage'));
 const MyMatchesPage = lazy(() => import('../pages/user/MyMatchesPage'));
 const ChatPage = lazy(() => import('../pages/user/ChatPage'));
+const SelectedMatchesPage = lazy(() => import('../pages/user/SelectedMatchesPage'));
+const FavoriteMatchesPage = lazy(() => import('../pages/user/FavoriteMatchesPage'));
 
 // Owner Pages
 const OwnerDashboardPage = lazy(() => import('../pages/owner/OwnerDashboardPage'));
@@ -82,6 +83,9 @@ export const router = createBrowserRouter([
       { path: 'checkout', element: <Suspense fallback={<PageLoader />}><CheckoutPage /></Suspense> },
       { path: 'payment', element: <Suspense fallback={<PageLoader />}><PaymentPage /></Suspense> },
       { path: 'payment-result', element: <Suspense fallback={<PageLoader />}><PaymentResultPage /></Suspense> },
+      { path: 'selected-matches', element: <Suspense fallback={<PageLoader />}><SelectedMatchesPage /></Suspense> },
+      { path: 'favorites', element: <Suspense fallback={<PageLoader />}><FavoriteMatchesPage /></Suspense> },
+      { path: 'chat', element: <Suspense fallback={<PageLoader />}><ChatPage /></Suspense> },
     ],
   },
 
@@ -104,11 +108,9 @@ export const router = createBrowserRouter([
       { path: 'profile', element: <Suspense fallback={<PageLoader />}><ProfilePage /></Suspense> },
       { path: 'bookings', element: <Suspense fallback={<PageLoader />}><BookingHistoryPage /></Suspense> },
       { path: 'matches', element: <Suspense fallback={<PageLoader />}><MyMatchesPage /></Suspense> },
-      { path: 'chat', element: <Suspense fallback={<PageLoader />}><ChatPage /></Suspense> },
       { path: 'create-match', element: <Suspense fallback={<PageLoader />}><CreateMatchPage /></Suspense> },
       { path: 'challenges', element: <Suspense fallback={<PageLoader />}><UserChallengesPage /></Suspense> },
       { path: 'challenges/create', element: <Suspense fallback={<PageLoader />}><CreateMatchPage /></Suspense> },
-      { path: 'notifications', element: <Suspense fallback={<PageLoader />}><NotificationsPage /></Suspense> },
       { path: 'settings', element: <Suspense fallback={<PageLoader />}><UserSettingsPage /></Suspense> },
     ],
   },

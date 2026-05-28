@@ -53,7 +53,7 @@ public class CommunityEventPublisher {
         log.info("Published MatchJoinRequested event for match {} by user {}", matchPostId, userId);
     }
 
-    public void publishMatchApproved(UUID matchPostId, UUID userId, UUID hostId) {
+    public void publishMatchApproved(UUID matchPostId, UUID userId, UUID hostId, String title, LocalDateTime startTime) {
         MatchApprovedEvent event = MatchApprovedEvent.builder()
                 .eventId(UUID.randomUUID())
                 .eventType("MatchApproved")
@@ -63,8 +63,10 @@ public class CommunityEventPublisher {
                 .matchPostId(matchPostId)
                 .userId(userId)
                 .hostId(hostId)
+                .title(title)
+                .startTime(startTime)
                 .build();
-        
+
         kafkaTemplate.send(TOPIC, matchPostId.toString(), event);
         log.info("Published MatchApproved event for match {} user {}", matchPostId, userId);
     }
@@ -127,6 +129,8 @@ public class CommunityEventPublisher {
         private UUID matchPostId;
         private UUID userId;
         private UUID hostId;
+        private String title;
+        private LocalDateTime startTime;
     }
 
     @Data

@@ -2,6 +2,7 @@ export interface MatchPost {
   id: string;
   hostId: string;
   hostName?: string;
+  hostAvatar?: string;
   title: string;
   description?: string;
   venueId?: string;

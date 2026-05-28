@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Link, NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, useNavigate, useLocation } from 'react-router-dom';
 import { clsx } from 'clsx';
 import { AppButton } from '../components/ui/AppButton';
 import {
-  Menu, X, Search, User, Mail, Phone, MapPin, ExternalLink, Smartphone
+  Menu, X, User, Mail, Phone, MapPin, ExternalLink, Smartphone, Heart, CalendarCheck, Bell, MessageSquare
 } from 'lucide-react';
 import { 
   FacebookFilled, 
@@ -12,8 +12,11 @@ import {
   YoutubeFilled 
 } from '@ant-design/icons';
 import { useAuthStore } from '../stores/authStore';
+import { useCommunityStore } from '../stores/communityStore';
+import { useChatStore } from '../stores/chatStore';
+import { chatSocket } from '../services/chatSocket';
 import { authApi } from '../services/authApi';
-import { Avatar, Divider, Button, Typography, Dropdown, type MenuProps } from 'antd';
+import { Avatar, Divider, Button, Typography, Dropdown, Badge, type MenuProps, notification } from 'antd';
 import { LogoutOutlined, UserOutlined, SettingOutlined, CalendarOutlined, ShopOutlined, DashboardOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
@@ -48,9 +51,147 @@ const FOOTER_LINKS = {
 
 export const PublicLayout: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const { isAuthenticated, user, logout } = useAuthStore();
+  const { favorites, selectedMatches, notifications, markNotificationAsRead, markAllNotificationsAsRead } = useCommunityStore();
+  const { conversations } = useChatStore();
+
+  const favoriteCount = favorites.length;
+  const selectedCount = selectedMatches.filter(sm => sm.selectedStatus !== 'deselected').length;
+  const unreadNotifCount = notifications.filter(n => !n.readAt).length;
+  const unreadChatCount = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+
+  // Connect STOMP socket when logged in
+  useEffect(() => {
+    if (isAuthenticated) {
+      chatSocket.connect();
+    } else {
+      chatSocket.disconnect();
+    }
+  }, [isAuthenticated]);
+
+  // Toast listener for new chat messages
+  useEffect(() => {
+    const handleNewMessage = (e: Event) => {
+      const msg = (e as CustomEvent).detail;
+      // Do not notify if user is currently on the chat page
+      if (window.location.pathname !== '/chat') {
+        notification.info({
+          message: `Tin nhắn mới từ ${msg.senderName}`,
+          description: msg.content,
+          placement: 'bottomRight',
+          duration: 4,
+          onClick: () => {
+            navigate('/chat');
+          },
+          className: 'cursor-pointer hover:bg-slate-50 transition-colors',
+        });
+      }
+    };
+
+    window.addEventListener('new_chat_message', handleNewMessage);
+    return () => window.removeEventListener('new_chat_message', handleNewMessage);
+  }, [navigate]);
+
+  const handleNotificationClick = (notif: any) => {
+    markNotificationAsRead(notif.id);
+    switch (notif.type) {
+      case 'BOOKING_PAID':
+      case 'BOOKING_EXPIRED':
+        navigate('/user/bookings');
+        break;
+      case 'MATCH_JOIN_REQUESTED':
+        if (notif.data?.matchId) {
+          navigate(`/community/matches/${notif.data.matchId}`);
+        } else {
+          navigate('/user/challenges');
+        }
+        break;
+      case 'MATCH_APPROVED':
+      case 'MATCH_REJECTED':
+        if (notif.data?.matchId) {
+          navigate(`/community/matches/${notif.data.matchId}`);
+        } else {
+          navigate('/selected-matches');
+        }
+        break;
+      case 'RATING_CREATED':
+        navigate('/user/profile');
+        break;
+      case 'VENUE_APPROVED':
+      case 'VENUE_REJECTED':
+        navigate('/owner/venues');
+        break;
+      default:
+        break;
+    }
+  };
+
+  const notificationDropdown = (
+    <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-80 overflow-hidden mt-2 z-[1002]">
+      <div className="px-4 py-3 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+        <span className="font-extrabold text-slate-800 text-sm">Thông báo</span>
+        {unreadNotifCount > 0 && (
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              markAllNotificationsAsRead();
+            }}
+            className="text-xs text-brand-green hover:text-emerald-700 font-bold border-none bg-transparent cursor-pointer"
+          >
+            Đánh dấu đã đọc
+          </button>
+        )}
+      </div>
+      <div className="max-h-[350px] overflow-y-auto">
+        {notifications.length === 0 ? (
+          <div className="py-8 text-center text-slate-400 text-xs font-semibold">Chưa có thông báo nào</div>
+        ) : (
+          notifications.map(n => {
+            const getIcon = (type: string) => {
+              const icons: Record<string, string> = {
+                BOOKING_PAID: '✅',
+                BOOKING_EXPIRED: '⏰',
+                MATCH_JOIN_REQUESTED: '👥',
+                MATCH_APPROVED: '✔️',
+                MATCH_REJECTED: '❌',
+                RATING_CREATED: '⭐',
+                VENUE_APPROVED: '🏸',
+                VENUE_REJECTED: '🚫',
+              };
+              return icons[type] || '📢';
+            };
+            return (
+              <div 
+                key={n.id} 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleNotificationClick(n);
+                }}
+                className={clsx(
+                  "px-4 py-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-colors flex gap-3 items-start", 
+                  !n.readAt && "bg-emerald-500/[0.03]"
+                )}
+              >
+                <span className="text-xl leading-none flex-shrink-0 mt-0.5">{getIcon(n.type)}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start mb-0.5 gap-1">
+                    <span className={clsx("text-xs truncate text-slate-800", !n.readAt ? "font-bold" : "font-medium")}>
+                      {n.title}
+                    </span>
+                    {!n.readAt && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0 mt-1" />}
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-normal line-clamp-2">{n.content}</p>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
 
   const handleLogout = () => {
     const { refreshToken } = useAuthStore.getState();
@@ -148,30 +289,82 @@ export const PublicLayout: React.FC = () => {
 
             {/* Right Actions */}
             <div className="flex items-center gap-3">
-              <div className="hidden xl:flex items-center bg-slate-50 rounded-xl px-3 py-2 border border-slate-100 focus-within:border-brand-green/30 focus-within:bg-white transition-all">
-                <Search size={16} className="text-slate-400" />
-                <input 
-                  type="text" 
-                  placeholder="Tìm kiếm..." 
-                  className="bg-transparent border-none focus:ring-0 text-sm px-2 w-28 placeholder:text-slate-400 font-medium"
-                />
-              </div>
 
               {isAuthenticated ? (
-                <Dropdown menu={{ items: userMenuItems, onClick: handleMenuClick }} trigger={['click']} placement="bottomRight">
-                  <div className="flex items-center gap-3 cursor-pointer p-1.5 hover:bg-slate-50 rounded-2xl transition-all">
-                    <Avatar 
-                      size={40} 
-                      src={user?.avatarUrl} 
-                      className="border-2 border-white shadow-md shadow-slate-200" 
-                      icon={<UserOutlined />} 
-                    />
-                    <div className="hidden md:flex flex-col items-start leading-none">
-                      <span className="text-[13px] font-bold text-slate-900">{user?.fullName || 'Thành viên'}</span>
-                      <span className="text-[10px] font-bold text-brand-green uppercase mt-1">Hội viên VIP</span>
+                <div className="flex items-center gap-3">
+                  {/* Heart Icon (Favorites) */}
+                  <Badge count={favoriteCount} size="small" color="#ef4444" offset={[-2, 2]}>
+                    <button
+                      onClick={() => navigate('/favorites')}
+                      className="w-10 h-10 flex items-center justify-center rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-500 hover:scale-105 transition-all duration-200 cursor-pointer"
+                      title="Bài viết quan tâm"
+                    >
+                      <Heart size={18} fill={favoriteCount > 0 ? "#ef4444" : "none"} />
+                    </button>
+                  </Badge>
+
+                  {/* Calendar Check Icon (Selected Matches) */}
+                  <Badge count={selectedCount} size="small" color="#10b981" offset={[-2, 2]}>
+                    <button
+                      onClick={() => navigate('/selected-matches')}
+                      className="w-10 h-10 flex items-center justify-center rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-600 hover:scale-105 transition-all duration-200 cursor-pointer"
+                      title="Kèo đã chọn"
+                    >
+                      <CalendarCheck size={18} />
+                    </button>
+                  </Badge>
+
+                  {/* Bell Icon (Notifications) */}
+                  <Dropdown dropdownRender={() => notificationDropdown} trigger={['click']} placement="bottomRight">
+                    <div>
+                      <Badge count={unreadNotifCount} size="small" color="#3b82f6" offset={[-2, 2]}>
+                        <button
+                          className="w-10 h-10 flex items-center justify-center rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-500 hover:scale-105 transition-all duration-200 cursor-pointer"
+                          title="Thông báo"
+                        >
+                          <Bell size={18} />
+                        </button>
+                      </Badge>
                     </div>
-                  </div>
-                </Dropdown>
+                  </Dropdown>
+
+                  {/* Message/Chat Icon */}
+                  <Badge count={unreadChatCount} size="small" color="#0ea5e9" offset={[-2, 2]}>
+                    <button
+                      onClick={() => navigate('/chat')}
+                      className="w-10 h-10 flex items-center justify-center rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-600 hover:scale-105 transition-all duration-200 cursor-pointer"
+                      title="Tin nhắn"
+                    >
+                      <MessageSquare size={18} />
+                    </button>
+                  </Badge>
+
+                  <div className="w-[1px] h-6 bg-slate-200 mx-1" />
+
+                  {/* Avatar Dropdown */}
+                  <Dropdown menu={{ items: userMenuItems, onClick: handleMenuClick }} trigger={['click']} placement="bottomRight">
+                    <div className="flex items-center gap-3 cursor-pointer p-1 hover:bg-slate-50 rounded-2xl transition-all">
+                      {user?.avatarUrl ? (
+                        <Avatar 
+                          size={40} 
+                          src={user?.avatarUrl} 
+                          className="border-2 border-white shadow-md shadow-slate-200" 
+                        />
+                      ) : (
+                        <Avatar
+                          size={40}
+                          className="bg-emerald-600 border-2 border-white shadow-md shadow-slate-200 text-white font-extrabold flex items-center justify-center text-sm"
+                        >
+                          {user?.fullName?.charAt(0).toUpperCase() || 'Đ'}
+                        </Avatar>
+                      )}
+                      <div className="hidden md:flex flex-col items-start leading-none">
+                        <span className="text-[13px] font-bold text-slate-900">{user?.fullName || 'Thành viên'}</span>
+                        <span className="text-[10px] font-bold text-brand-green uppercase mt-1">Hội viên VIP</span>
+                      </div>
+                    </div>
+                  </Dropdown>
+                </div>
               ) : (
                 <div className="flex items-center gap-1">
                   <button
@@ -242,92 +435,94 @@ export const PublicLayout: React.FC = () => {
       </main>
 
       {/* ══ Footer Professional ═════════════════════════════════ */}
-      <footer className="bg-slate-900 text-slate-300 pt-20 pb-10">
-        <div className="mx-auto max-w-screen-xl px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-12 lg:gap-8">
-            
-            {/* Brand Section */}
-            <div className="lg:col-span-4 space-y-6">
-              <Link to="/" className="flex items-center gap-3 group">
-                <div className="w-12 h-12 rounded-2xl bg-brand-green flex items-center justify-center text-white text-2xl shadow-lg shadow-emerald-900/20 group-hover:scale-105 transition-transform">
-                  🏸
-                </div>
-                <span className="text-2xl font-black text-white tracking-tight">
-                  Badminton<span className="text-brand-green">Hub</span>
-                </span>
-              </Link>
-              <p className="text-slate-400 text-sm leading-relaxed max-w-xs">
-                Nền tảng đặt sân và kết nối cộng đồng cầu lông hàng đầu Việt Nam. Chúng tôi mang đến trải nghiệm chơi thể thao chuyên nghiệp và hiện đại nhất.
-              </p>
-              <div className="flex gap-4">
-                <a href="#" className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-brand-green hover:text-white transition-all"><FacebookFilled style={{ fontSize: 20 }} /></a>
-                <a href="#" className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-brand-green hover:text-white transition-all"><InstagramFilled style={{ fontSize: 20 }} /></a>
-                <a href="#" className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-brand-green hover:text-white transition-all"><YoutubeFilled style={{ fontSize: 20 }} /></a>
-                <a href="#" className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-brand-green hover:text-white transition-all"><TwitterCircleFilled style={{ fontSize: 20 }} /></a>
-              </div>
-            </div>
-
-            {/* Links Sections */}
-            <div className="lg:col-span-2 space-y-6">
-              <h4 className="text-white font-bold uppercase tracking-widest text-xs">Nền tảng</h4>
-              <ul className="space-y-4 text-sm">
-                {FOOTER_LINKS.platform.map(link => (
-                  <li key={link.label}><Link to={link.to} className="hover:text-brand-green transition-colors">{link.label}</Link></li>
-                ))}
-              </ul>
-            </div>
-
-            <div className="lg:col-span-2 space-y-6">
-              <h4 className="text-white font-bold uppercase tracking-widest text-xs">Hỗ trợ</h4>
-              <ul className="space-y-4 text-sm">
-                {FOOTER_LINKS.support.map(link => (
-                  <li key={link.label}><Link to={link.to} className="hover:text-brand-green transition-colors">{link.label}</Link></li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Newsletter / Contact */}
-            <div className="lg:col-span-4 space-y-6">
-              <h4 className="text-white font-bold uppercase tracking-widest text-xs">Kết nối với chúng tôi</h4>
-              <ul className="space-y-4 text-sm">
-                {FOOTER_LINKS.contact.map((item, idx) => (
-                  <li key={idx} className="flex items-start gap-3">
-                    <span className="text-brand-green mt-1">{item.icon}</span>
-                    <span className="text-slate-400">{item.text}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="pt-4">
-                <div className="p-4 rounded-2xl bg-slate-800/50 border border-slate-700/50 flex items-center gap-4">
-                  <div className="w-10 h-10 rounded-xl bg-slate-700 flex items-center justify-center text-brand-green">
-                    <Smartphone size={24} />
+      {!['/chat', '/map'].includes(location.pathname) && (
+        <footer className="bg-slate-900 text-slate-300 pt-20 pb-10">
+          <div className="mx-auto max-w-screen-xl px-6 lg:px-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-12 lg:gap-8">
+              
+              {/* Brand Section */}
+              <div className="lg:col-span-4 space-y-6">
+                <Link to="/" className="flex items-center gap-3 group">
+                  <div className="w-12 h-12 rounded-2xl bg-brand-green flex items-center justify-center text-white text-2xl shadow-lg shadow-emerald-900/20 group-hover:scale-105 transition-transform">
+                    🏸
                   </div>
-                  <div>
-                    <p className="text-[11px] font-bold text-slate-500 uppercase leading-none mb-1">Coming soon</p>
-                    <p className="text-sm font-bold text-white">Tải Mobile App</p>
-                  </div>
-                  <Button size="small" type="primary" className="ml-auto rounded-lg text-xs font-bold" ghost>Khám phá</Button>
+                  <span className="text-2xl font-black text-white tracking-tight">
+                    Badminton<span className="text-brand-green">Hub</span>
+                  </span>
+                </Link>
+                <p className="text-slate-400 text-sm leading-relaxed max-w-xs">
+                  Nền tảng đặt sân và kết nối cộng đồng cầu lông hàng đầu Việt Nam. Chúng tôi mang đến trải nghiệm chơi thể thao chuyên nghiệp và hiện đại nhất.
+                </p>
+                <div className="flex gap-4">
+                  <a href="#" className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-brand-green hover:text-white transition-all"><FacebookFilled style={{ fontSize: 20 }} /></a>
+                  <a href="#" className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-brand-green hover:text-white transition-all"><InstagramFilled style={{ fontSize: 20 }} /></a>
+                  <a href="#" className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-brand-green hover:text-white transition-all"><YoutubeFilled style={{ fontSize: 20 }} /></a>
+                  <a href="#" className="w-10 h-10 rounded-xl bg-slate-800 flex items-center justify-center hover:bg-brand-green hover:text-white transition-all"><TwitterCircleFilled style={{ fontSize: 20 }} /></a>
                 </div>
               </div>
+
+              {/* Links Sections */}
+              <div className="lg:col-span-2 space-y-6">
+                <h4 className="text-white font-bold uppercase tracking-widest text-xs">Nền tảng</h4>
+                <ul className="space-y-4 text-sm">
+                  {FOOTER_LINKS.platform.map(link => (
+                    <li key={link.label}><Link to={link.to} className="hover:text-brand-green transition-colors">{link.label}</Link></li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="lg:col-span-2 space-y-6">
+                <h4 className="text-white font-bold uppercase tracking-widest text-xs">Hỗ trợ</h4>
+                <ul className="space-y-4 text-sm">
+                  {FOOTER_LINKS.support.map(link => (
+                    <li key={link.label}><Link to={link.to} className="hover:text-brand-green transition-colors">{link.label}</Link></li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Newsletter / Contact */}
+              <div className="lg:col-span-4 space-y-6">
+                <h4 className="text-white font-bold uppercase tracking-widest text-xs">Kết nối với chúng tôi</h4>
+                <ul className="space-y-4 text-sm">
+                  {FOOTER_LINKS.contact.map((item, idx) => (
+                    <li key={idx} className="flex items-start gap-3">
+                      <span className="text-brand-green mt-1">{item.icon}</span>
+                      <span className="text-slate-400">{item.text}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="pt-4">
+                  <div className="p-4 rounded-2xl bg-slate-800/50 border border-slate-700/50 flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-slate-700 flex items-center justify-center text-brand-green">
+                      <Smartphone size={24} />
+                    </div>
+                    <div>
+                      <p className="text-[11px] font-bold text-slate-500 uppercase leading-none mb-1">Coming soon</p>
+                      <p className="text-sm font-bold text-white">Tải Mobile App</p>
+                    </div>
+                    <Button size="small" type="primary" className="ml-auto rounded-lg text-xs font-bold" ghost>Khám phá</Button>
+                  </div>
+                </div>
+              </div>
+
             </div>
 
-          </div>
+            <Divider className="border-slate-800 my-12" />
 
-          <Divider className="border-slate-800 my-12" />
-
-          <div className="flex flex-col md:flex-row items-center justify-between gap-6 text-sm text-slate-500">
-            <p>© 2026 BadmintonHub. All rights reserved.</p>
-            <div className="flex items-center gap-8 font-medium">
-              <Link to="/terms" className="hover:text-brand-green transition-colors">Điều khoản</Link>
-              <Link to="/privacy" className="hover:text-brand-green transition-colors">Bảo mật</Link>
-              <Link to="/cookies" className="hover:text-brand-green transition-colors">Cookies</Link>
-              <button className="flex items-center gap-2 hover:text-white transition-colors">
-                <ExternalLink size={14} /> Tiếng Việt
-              </button>
+            <div className="flex flex-col md:flex-row items-center justify-between gap-6 text-sm text-slate-500">
+              <p>© 2026 BadmintonHub. All rights reserved.</p>
+              <div className="flex items-center gap-8 font-medium">
+                <Link to="/terms" className="hover:text-brand-green transition-colors">Điều khoản</Link>
+                <Link to="/privacy" className="hover:text-brand-green transition-colors">Bảo mật</Link>
+                <Link to="/cookies" className="hover:text-brand-green transition-colors">Cookies</Link>
+                <button className="flex items-center gap-2 hover:text-white transition-colors">
+                  <ExternalLink size={14} /> Tiếng Việt
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 };

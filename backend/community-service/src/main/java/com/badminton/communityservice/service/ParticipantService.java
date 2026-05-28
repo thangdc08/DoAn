@@ -46,13 +46,38 @@ public class ParticipantService {
     if (participantRepository.existsByMatchPostIdAndUserId(matchPostId, userId)) {
       Participant existing = participantRepository.findByMatchPostIdAndUserId(matchPostId, userId)
           .orElseThrow();
-      log.info("User {} already joined match {}, returning existing participant", userId, matchPostId);
+
+      if ("APPROVED".equals(existing.getStatus())) {
+        log.info("User {} already approved for match {}, returning existing participant", userId, matchPostId);
+        return toResponse(existing);
+      }
+
+      if ("PENDING".equals(existing.getStatus())) {
+        log.info("User {} already has a pending request for match {}", userId, matchPostId);
+        return toResponse(existing);
+      }
+
+      // Determine initial status based on join mode
+      String initialStatus = "OPEN".equals(matchPost.getJoinMode()) ? "APPROVED" : "PENDING";
+
+      // If REJECTED or CANCELLED, allow them to request to join again
+      log.info("User {} was previously rejected/cancelled, updating status to {}", userId, initialStatus);
+      existing.setStatus(initialStatus);
+      existing = participantRepository.save(existing);
+
+      if ("APPROVED".equals(initialStatus)) {
+        matchPost.setCurrentParticipants(matchPost.getCurrentParticipants() + 1);
+        matchPostRepository.save(matchPost);
+        eventPublisher.publishMatchApproved(matchPostId, userId, matchPost.getHostId(), matchPost.getTitle(), matchPost.getStartTime());
+      } else {
+        eventPublisher.publishMatchJoinRequested(matchPostId, userId, matchPost.getHostId());
+      }
       return toResponse(existing);
     }
 
     // Check capacity
     int approvedCount = participantRepository.countByMatchPostIdAndStatus(matchPostId, "APPROVED");
-    if (approvedCount >= matchPost.getMaxParticipants() - 1) { // -1 for host
+    if (approvedCount >= matchPost.getMaxParticipants()) {
       throw new AppException(HttpStatus.CONFLICT, "Match has reached maximum participants");
     }
 
@@ -74,7 +99,7 @@ public class ParticipantService {
       matchPostRepository.save(matchPost);
 
       // Publish MatchApproved event
-      eventPublisher.publishMatchApproved(matchPostId, userId, matchPost.getHostId());
+      eventPublisher.publishMatchApproved(matchPostId, userId, matchPost.getHostId(), matchPost.getTitle(), matchPost.getStartTime());
     } else {
       // Publish MatchJoinRequested event
       eventPublisher.publishMatchJoinRequested(matchPostId, userId, matchPost.getHostId());
@@ -131,7 +156,7 @@ public class ParticipantService {
     matchPostRepository.save(matchPost);
 
     // Publish event
-    eventPublisher.publishMatchApproved(matchPostId, participant.getUserId(), hostId);
+    eventPublisher.publishMatchApproved(matchPostId, participant.getUserId(), hostId, matchPost.getTitle(), matchPost.getStartTime());
 
     log.info("Participant {} approved for match {}", participantId, matchPostId);
     return toResponse(participant);

@@ -5,6 +5,7 @@ import com.badminton.communityservice.entity.MatchPost;
 import com.badminton.communityservice.entity.Participant;
 import com.badminton.communityservice.repository.MatchPostRepository;
 import com.badminton.communityservice.repository.ParticipantRepository;
+import com.badminton.communityservice.specification.MatchPostSpecification;
 import com.badminton.common.exception.AppException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -81,7 +82,7 @@ public class MatchPostService {
         .startTime(request.getStartTime())
         .endTime(request.getEndTime())
         .maxParticipants(request.getMaxParticipants())
-        .currentParticipants(1) // Host counts as first participant
+        .currentParticipants(0) // Host is organizer, not counted as a slot participant
         .joinMode(request.getJoinMode())
         .status("OPEN")
         .likeCount(0)
@@ -113,16 +114,31 @@ public class MatchPostService {
     return matchPostRepository.findAll(spec, pageable).map(this::toResponse);
   }
 
+  public MatchPostResponse getMatchPostById(UUID id) {
+    MatchPost matchPost = matchPostRepository.findById(id)
+        .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Match post not found"));
+    return toResponse(matchPost);
+  }
+
   public List<MatchPostResponse> findNearbyMatches(double lat, double lng, double radiusKm, int limit) {
     double radiusMeters = radiusKm * 1000;
     List<MatchPost> matches = matchPostRepository.findNearbyMatches(lat, lng, radiusMeters, "OPEN", limit);
     return matches.stream().map(this::toResponse).collect(Collectors.toList());
   }
 
-  public MatchPostResponse getMatchPostById(UUID id) {
-    MatchPost matchPost = matchPostRepository.findById(id)
-        .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Match post not found"));
-    return toResponse(matchPost);
+
+  public Page<MatchPostResponse> getJoinedMatches(UUID userId, String status, Pageable pageable) {
+    log.info("Fetching joined matches for user: {}", userId);
+
+    // Logic: Tìm tất cả các kèo mà user là host HOẶC user là một participant
+    // Điều này yêu cầu một query phức tạp hơn hoặc kết hợp 2 kết quả.
+    // Tối ưu nhất là dùng Specification với join tới Participant.
+
+    Specification<MatchPost> spec = Specification
+            .where(MatchPostSpecification.isHostOrParticipant(userId))
+            .and(MatchPostSpecification.hasStatus(status));
+
+    return matchPostRepository.findAll(spec, pageable).map(this::toResponse);
   }
 
   @Transactional

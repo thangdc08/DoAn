@@ -44,6 +44,15 @@ export const communityApi = {
     return communityApi.unwrapResult(response);
   },
 
+  getJoinedMatches: async (params?: {
+    status?: string;
+    page?: number;
+    size?: number;
+  }): Promise<{ content: MatchPost[]; totalElements: number; totalPages: number }> => {
+    const response = await apiClient.get('/communities/api/community/match-posts/joined', { params });
+    return communityApi.unwrapResult(response);
+  },
+
   getMatchPostById: async (matchId: string): Promise<MatchPost> => {
     const response = await apiClient.get(`/communities/api/community/match-posts/${matchId}`);
     return communityApi.unwrapResult(response);
@@ -111,19 +120,21 @@ export const communityApi = {
   },
 
   // Ratings
-  rateUser: async (data: {
-    ratedUserId: string;
-    matchPostId?: string;
-    score: number;
-    comment?: string;
-  }): Promise<Rating> => {
-    const response = await apiClient.post('/community/ratings', data);
-    return response.data;
+  ratePlayer: async (
+    matchId: string,
+    data: {
+      rateeUserId: string;
+      stars: number;
+      comment?: string;
+    }
+  ): Promise<any> => {
+    const response = await apiClient.post(`/communities/api/community/match-posts/${matchId}/ratings`, data);
+    return communityApi.unwrapResult(response);
   },
 
-  getUserRatings: async (userId: string): Promise<Rating[]> => {
-    const response = await apiClient.get(`/community/ratings/user/${userId}`);
-    return response.data;
+  getPlayerRating: async (matchId: string, rateeId: string): Promise<any> => {
+    const response = await apiClient.get(`/communities/api/community/match-posts/${matchId}/ratings/${rateeId}`);
+    return communityApi.unwrapResult(response);
   },
 
   // Reports

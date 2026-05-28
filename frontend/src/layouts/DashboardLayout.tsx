@@ -1,14 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { clsx } from 'clsx';
-import { Dropdown, Badge, Avatar, message, Typography, Space } from 'antd';
+import { Dropdown, Badge, Avatar, message, Typography, Space, notification } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   LayoutDashboard, CalendarDays, Users, BarChart3,
   Building2, Settings, Bell, ChevronLeft, ChevronRight,
   LogOut, HelpCircle, FileCheck, Swords, MessageSquare,
+  Heart, CalendarCheck,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
+import { useCommunityStore } from '../stores/communityStore';
+import { useChatStore } from '../stores/chatStore';
+import { chatSocket } from '../services/chatSocket';
 import { BRAND } from '../theme/antdTheme';
 
 const { Text } = Typography;
@@ -34,8 +38,7 @@ const USER_MENU: MenuItem[] = [
   { to: '/user/dashboard',         label: 'Tổng quan',        icon: <LayoutDashboard size={18} /> },
   { to: '/user/bookings',          label: 'Booking của tôi',  icon: <CalendarDays    size={18} /> },
   { to: '/user/challenges',        label: 'Kèo của tôi',      icon: <Swords          size={18} /> },
-  { to: '/user/chat',              label: 'Tin nhắn',         icon: <MessageSquare    size={18} /> },
-  { to: '/user/notifications',     label: 'Thông báo',        icon: <Bell            size={18} /> },
+  { to: '/chat',                   label: 'Tin nhắn',         icon: <MessageSquare   size={18} /> },
   { to: '/user/profile',           label: 'Hồ sơ',            icon: <Users           size={18} /> },
 ];
 
@@ -43,7 +46,7 @@ const OWNER_MENU: MenuItem[] = [
   { to: '/owner',            label: 'Tổng quan',      icon: <LayoutDashboard size={18} /> },
   { to: '/owner/venues',     label: 'Quản lý sân',    icon: <Building2       size={18} /> },
   { to: '/owner/bookings',   label: 'Booking',         icon: <CalendarDays    size={18} /> },
-  { to: '/owner/chat',       label: 'Tin nhắn',        icon: <MessageSquare    size={18} /> },
+  { to: '/chat',             label: 'Tin nhắn',        icon: <MessageSquare    size={18} /> },
   { to: '/owner/revenue',    label: 'Doanh thu',       icon: <BarChart3       size={18} /> },
   { to: '/owner/settings',   label: 'Cấu hình',        icon: <Settings        size={18} /> },
   { to: '/owner/support',    label: 'Hỗ trợ',          icon: <HelpCircle      size={18} /> },
@@ -125,6 +128,38 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     }
   }, [isAuthenticated, navigate]);
 
+  // Connect STOMP socket when logged in
+  useEffect(() => {
+    if (isAuthenticated) {
+      chatSocket.connect();
+    } else {
+      chatSocket.disconnect();
+    }
+  }, [isAuthenticated]);
+
+  // Toast listener for new chat messages
+  useEffect(() => {
+    const handleNewMessage = (e: Event) => {
+      const msg = (e as CustomEvent).detail;
+      // Do not notify if user is currently on the chat page
+      if (window.location.pathname !== '/chat') {
+        notification.info({
+          message: `Tin nhắn mới từ ${msg.senderName}`,
+          description: msg.content,
+          placement: 'bottomRight',
+          duration: 4,
+          onClick: () => {
+            navigate('/chat');
+          },
+          className: 'cursor-pointer hover:bg-slate-50 transition-colors',
+        });
+      }
+    };
+
+    window.addEventListener('new_chat_message', handleNewMessage);
+    return () => window.removeEventListener('new_chat_message', handleNewMessage);
+  }, [navigate]);
+
   const handleLogout = () => {
     message.success('Đã đăng xuất thành công');
     navigate('/login');
@@ -155,29 +190,108 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     },
   ];
 
-  const notificationMenu = (
-    <div className="bg-white rounded-xl shadow-2xl border border-gray-100 w-80 overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-50 flex justify-between items-center bg-gray-50/50">
-        <span className="font-bold text-gray-800">Thông báo</span>
-        <button className="text-xs text-brand-green font-semibold">Đánh dấu đã đọc</button>
+  const { favorites, selectedMatches, notifications, markNotificationAsRead, markAllNotificationsAsRead } = useCommunityStore();
+  const { conversations } = useChatStore();
+
+  const favoriteCount = favorites.length;
+  const selectedCount = selectedMatches.filter(sm => sm.selectedStatus !== 'deselected').length;
+  const unreadNotifCount = notifications.filter(n => !n.readAt).length;
+  const unreadChatCount = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+
+  const handleNotificationClick = (notif: any) => {
+    markNotificationAsRead(notif.id);
+    switch (notif.type) {
+      case 'BOOKING_PAID':
+      case 'BOOKING_EXPIRED':
+        navigate('/user/bookings');
+        break;
+      case 'MATCH_JOIN_REQUESTED':
+        if (notif.data?.matchId) {
+          navigate(`/community/matches/${notif.data.matchId}`);
+        } else {
+          navigate('/user/challenges');
+        }
+        break;
+      case 'MATCH_APPROVED':
+      case 'MATCH_REJECTED':
+        if (notif.data?.matchId) {
+          navigate(`/community/matches/${notif.data.matchId}`);
+        } else {
+          navigate('/selected-matches');
+        }
+        break;
+      case 'RATING_CREATED':
+        navigate('/user/profile');
+        break;
+      case 'VENUE_APPROVED':
+      case 'VENUE_REJECTED':
+        navigate('/owner/venues');
+        break;
+      default:
+        break;
+    }
+  };
+
+  const notificationDropdown = (
+    <div className="bg-white rounded-2xl shadow-2xl border border-slate-100 w-80 overflow-hidden mt-2 z-[1002]">
+      <div className="px-4 py-3 border-b border-slate-50 flex justify-between items-center bg-slate-50/50">
+        <span className="font-extrabold text-slate-800 text-sm">Thông báo</span>
+        {unreadNotifCount > 0 && (
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              markAllNotificationsAsRead();
+            }}
+            className="text-xs text-brand-green hover:text-emerald-700 font-bold border-none bg-transparent cursor-pointer"
+          >
+            Đánh dấu đã đọc
+          </button>
+        )}
       </div>
-      <div className="max-h-80 overflow-y-auto">
-        {[
-          { id: 1, title: 'Booking mới', desc: 'Có một khách hàng vừa đặt Sân 1 vào lúc 18:00', time: '5 phút trước', unread: true },
-          { id: 2, title: 'Thanh toán thành công', desc: 'Doanh thu +200.000đ từ booking #BK102', time: '1 giờ trước', unread: false },
-          { id: 3, title: 'Nhắc nhở lịch', desc: 'Bạn có 3 ca làm việc sắp tới vào ngày mai', time: '3 giờ trước', unread: false },
-        ].map(n => (
-          <div key={n.id} className={clsx("px-4 py-3 border-b border-gray-50 hover:bg-gray-50 cursor-pointer transition-colors", n.unread && "bg-brand-green/5")}>
-            <div className="flex justify-between items-start mb-1">
-              <span className="text-sm font-bold text-gray-800">{n.title}</span>
-              <span className="text-[10px] text-gray-400">{n.time}</span>
-            </div>
-            <p className="text-xs text-gray-500 line-clamp-2">{n.desc}</p>
-          </div>
-        ))}
-      </div>
-      <div className="px-4 py-2 text-center border-t border-gray-50">
-        <button className="text-xs text-gray-400 hover:text-brand-green font-medium">Xem tất cả thông báo</button>
+      <div className="max-h-[350px] overflow-y-auto">
+        {notifications.length === 0 ? (
+          <div className="py-8 text-center text-slate-400 text-xs font-semibold">Chưa có thông báo nào</div>
+        ) : (
+          notifications.map(n => {
+            const getIcon = (type: string) => {
+              const icons: Record<string, string> = {
+                BOOKING_PAID: '✅',
+                BOOKING_EXPIRED: '⏰',
+                MATCH_JOIN_REQUESTED: '👥',
+                MATCH_APPROVED: '✔️',
+                MATCH_REJECTED: '❌',
+                RATING_CREATED: '⭐',
+                VENUE_APPROVED: '🏸',
+                VENUE_REJECTED: '🚫',
+              };
+              return icons[type] || '📢';
+            };
+            return (
+              <div 
+                key={n.id} 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleNotificationClick(n);
+                }}
+                className={clsx(
+                  "px-4 py-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-colors flex gap-3 items-start", 
+                  !n.readAt && "bg-emerald-500/[0.03]"
+                )}
+              >
+                <span className="text-xl leading-none flex-shrink-0 mt-0.5">{getIcon(n.type)}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-start mb-0.5 gap-1">
+                    <span className={clsx("text-xs truncate text-slate-800", !n.readAt ? "font-bold" : "font-medium")}>
+                      {n.title}
+                    </span>
+                    {!n.readAt && <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0 mt-1" />}
+                  </div>
+                  <p className="text-[11px] text-slate-500 leading-normal line-clamp-2">{n.content}</p>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );
@@ -263,26 +377,65 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
             </h2>
           </div>
 
-          <div className="flex items-center gap-2">
-            <Dropdown dropdownRender={() => notificationMenu} trigger={['click']} placement="bottomRight">
-              <button
-                type="button"
-                className="relative w-10 h-10 flex items-center justify-center rounded-xl text-app-muted hover:bg-app-bg transition-colors"
-                aria-label="Thông báo"
-              >
-                <Badge dot color="#ff4d4f" offset={[-4, 4]}>
-                  <Bell size={20} />
+          <div className="flex items-center gap-3">
+            {role === 'USER' && (
+              <>
+                {/* Heart Icon (Favorites) */}
+                <Badge count={favoriteCount} size="small" color="#ef4444" offset={[-2, 2]}>
+                  <button
+                    onClick={() => navigate('/favorites')}
+                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-500 hover:scale-105 transition-all duration-150 cursor-pointer"
+                    title="Bài viết quan tâm"
+                  >
+                    <Heart size={16} fill={favoriteCount > 0 ? "#ef4444" : "none"} />
+                  </button>
                 </Badge>
-              </button>
+
+                {/* Calendar Check Icon (Selected Matches) */}
+                <Badge count={selectedCount} size="small" color="#10b981" offset={[-2, 2]}>
+                  <button
+                    onClick={() => navigate('/selected-matches')}
+                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-600 hover:scale-105 transition-all duration-150 cursor-pointer"
+                    title="Kèo đã chọn"
+                  >
+                    <CalendarCheck size={16} />
+                  </button>
+                </Badge>
+              </>
+            )}
+
+            {/* Bell Icon (Notifications) */}
+            <Dropdown dropdownRender={() => notificationDropdown} trigger={['click']} placement="bottomRight">
+              <div>
+                <Badge count={unreadNotifCount} size="small" color="#3b82f6" offset={[-2, 2]}>
+                  <button
+                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-500 hover:scale-105 transition-all duration-150 cursor-pointer"
+                    title="Thông báo"
+                  >
+                    <Bell size={16} />
+                  </button>
+                </Badge>
+              </div>
             </Dropdown>
+
+            {/* Message/Chat Icon */}
+            <Badge count={unreadChatCount} size="small" color="#0ea5e9" offset={[-2, 2]}>
+              <button
+                onClick={() => navigate('/chat')}
+                className="w-9 h-9 flex items-center justify-center rounded-xl bg-sky-50 hover:bg-sky-100 border border-sky-200 text-sky-600 hover:scale-105 transition-all duration-150 cursor-pointer"
+                title="Tin nhắn"
+              >
+                <MessageSquare size={16} />
+              </button>
+            </Badge>
 
             <button
               type="button"
-              className="w-10 h-10 flex items-center justify-center rounded-xl text-app-muted hover:bg-app-bg transition-colors"
+              className="w-9 h-9 flex items-center justify-center rounded-xl text-app-muted hover:bg-app-bg transition-colors cursor-pointer"
               aria-label="Cài đặt"
               onClick={() => navigate(`/${role.toLowerCase()}/settings`)}
             >
-              <Settings size={20} />
+              <Settings size={18} />
             </button>
 
             <Dropdown menu={{ items: userMenuItems }} trigger={['click']} placement="bottomRight">

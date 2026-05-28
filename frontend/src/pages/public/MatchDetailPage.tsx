@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
@@ -311,9 +311,17 @@ export default function MatchDetailPage() {
     setJoining(true);
     try {
       await communityApi.joinMatch(matchId);
-      message.success('Đăng ký tham gia thành công');
+
+      if (match?.joinMode === 'APPROVAL') {
+        message.info('Bạn đã yêu cầu tham gia kèo thành công. Vui lòng đợi chủ kèo xác nhận');
+      } else {
+        message.success('Đăng ký tham gia thành công');
+      }
+
       setJoinModalOpen(false);
-      setGroupModalOpen(true);
+      if (match?.joinMode !== 'APPROVAL') {
+        setGroupModalOpen(true);
+      }
       await loadData();
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Không thể tham gia kèo');
@@ -351,6 +359,11 @@ export default function MatchDetailPage() {
   };
 
   const openHostChat = async () => {
+    if (!user) {
+      message.info('Vui lòng đăng nhập để nhắn tin');
+      navigate('/login');
+      return;
+    }
     if (!match?.hostId || !user?.id) return;
     if (match.hostId === user.id) {
       message.info('Bạn là chủ kèo');
@@ -564,7 +577,14 @@ export default function MatchDetailPage() {
                   myParticipant?.status === 'PENDING' ||
                   myParticipant?.status === 'APPROVED'
                 }
-                onClick={() => setJoinModalOpen(true)}
+                onClick={() => {
+                  if (!user) {
+                    message.info('Vui lòng đăng nhập để tham gia kèo');
+                    navigate('/login');
+                    return;
+                  }
+                  setJoinModalOpen(true);
+                }}
               >
                 {myParticipant?.status === 'PENDING'
                   ? 'Đã yêu cầu tham gia'
@@ -726,7 +746,7 @@ export default function MatchDetailPage() {
                 }
               }
               setGroupModalOpen(false);
-              navigate('/user/chat');
+              navigate('/chat');
             }}
           >
             Vào nhóm tin nhắn kèo

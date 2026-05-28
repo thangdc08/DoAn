@@ -14,6 +14,7 @@ export interface Conversation {
   id: string;
   type: 'PRIVATE' | 'GROUP';
   name?: string;
+  avatarUrl?: string;
   lastMessage?: string;
   lastMessageTime?: string;
   unreadCount: number;
@@ -70,6 +71,20 @@ export const chatApi = {
 
   createGroupForMatch: async (matchPostId: string) => {
     const response = await apiClient.post('/chat/api/conversation', { matchPostId });
+    return unwrap(response);
+  },
+
+  deleteMessage: async (messageId: string, conversationId: string, type: 'DELETED' | 'REVOKED') => {
+    const response = await apiClient.delete('/chat/api/chat', {
+      data: { messageId, conversationId, type },
+    });
+    return unwrap(response);
+  },
+
+  deleteConversation: async (conversationId: string, type: 'ALL' | 'ONE') => {
+    const response = await apiClient.delete('/chat/api/conversation', {
+      data: { conversationId, type },
+    });
     return unwrap(response);
   },
 };

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Card, Table, Tag, Button, Select, Space, Typography, Modal, Input, Row, Col, Badge, Divider, Spin, Empty, message } from 'antd';
+import { Card, Table, Tag, Button, Select, Space, Typography, Modal, Input, Row, Col, Badge, Divider, Spin, Empty, message, Rate } from 'antd';
 import {
   EyeOutlined,
   CalendarOutlined,
@@ -10,9 +10,11 @@ import {
   ClockCircleOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
-  InfoCircleOutlined
+  InfoCircleOutlined,
+  StarOutlined
 } from '@ant-design/icons';
 import { bookingApi } from '../../services/bookingApi';
+import { venueApi } from '../../services/venueApi';
 import type { Booking } from '../../types/booking.types';
 import dayjs from 'dayjs';
 import { BRAND } from '../../theme/antdTheme';
@@ -42,6 +44,42 @@ export default function BookingHistoryPage() {
   const [searchText, setSearchText] = useState<string>('');
   const [page, setPage] = useState(1);
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null);
+  
+  // Venue Rating Modal state
+  const [venueRatingModalOpen, setVenueRatingModalOpen] = useState(false);
+  const [ratingVenueId, setRatingVenueId] = useState('');
+  const [ratingVenueName, setRatingVenueName] = useState('');
+  const [venueStars, setVenueStars] = useState(5);
+  const [venueComment, setVenueComment] = useState('');
+  const [submittingVenueRating, setSubmittingVenueRating] = useState(false);
+
+  const handleOpenVenueRating = (booking: Booking, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setRatingVenueId(booking.venueId);
+    setRatingVenueName(booking.venueNameSnapshot);
+    setVenueStars(5);
+    setVenueComment('');
+    setVenueRatingModalOpen(true);
+  };
+
+  const handleSubmitVenueRating = async () => {
+    if (!ratingVenueId) return;
+    setSubmittingVenueRating(true);
+    try {
+      await venueApi.rateVenue(ratingVenueId, {
+        stars: venueStars,
+        comment: venueComment
+      });
+      message.success(`Đã gửi đánh giá thành công cho sân ${ratingVenueName}!`);
+      setVenueRatingModalOpen(false);
+    } catch (error) {
+      console.error(error);
+      message.error('Không thể gửi đánh giá sân');
+    } finally {
+      setSubmittingVenueRating(false);
+    }
+  };
+
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [totalElements, setTotalElements] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -158,15 +196,27 @@ export default function BookingHistoryPage() {
       key: 'action',
       align: 'right' as any,
       render: (_: any, record: Booking) => (
-        <Button
-          type="primary"
-          ghost
-          icon={<EyeOutlined />}
-          onClick={() => setSelectedBooking(record)}
-          className="rounded-lg border-brand-green text-brand-green hover:bg-brand-green/5"
-        >
-          Chi tiết
-        </Button>
+        <Space>
+          {record.status === 'PAID' && (
+            <Button
+              type="default"
+              icon={<StarOutlined />}
+              onClick={(e) => handleOpenVenueRating(record, e)}
+              className="rounded-lg border-amber-200 text-amber-600 hover:bg-amber-50 hover:border-amber-300"
+            >
+              Đánh giá
+            </Button>
+          )}
+          <Button
+            type="primary"
+            ghost
+            icon={<EyeOutlined />}
+            onClick={() => setSelectedBooking(record)}
+            className="rounded-lg border-brand-green text-brand-green hover:bg-brand-green/5"
+          >
+            Chi tiết
+          </Button>
+        </Space>
       ),
     },
   ];
@@ -380,6 +430,16 @@ export default function BookingHistoryPage() {
                 </div>
               </div>
               <Space size={16}>
+                {selectedBooking.status === 'PAID' && (
+                  <Button 
+                    type="default"
+                    icon={<StarOutlined />}
+                    className="h-11 px-6 rounded-xl font-bold border-amber-200 text-amber-600 hover:bg-amber-50 hover:border-amber-300"
+                    onClick={() => handleOpenVenueRating(selectedBooking)}
+                  >
+                    Đánh giá sân
+                  </Button>
+                )}
                 <Button className="h-11 px-6 rounded-xl font-bold border-slate-200 text-slate-500 hover:text-red-500 hover:border-red-200 transition-all">Hủy đơn</Button>
                 <Button 
                   type="primary" 
@@ -392,6 +452,51 @@ export default function BookingHistoryPage() {
             </div>
           </div>
         )}
+      </Modal>
+
+      {/* Venue Rating Modal */}
+      <Modal
+        title={
+          <div className="flex items-center gap-2 pt-2">
+            <StarOutlined style={{ color: '#f59e0b', fontSize: 20 }} />
+            <span className="font-extrabold text-slate-800 text-lg">Đánh giá sân đấu 🏟️</span>
+          </div>
+        }
+        open={venueRatingModalOpen}
+        onOk={handleSubmitVenueRating}
+        onCancel={() => setVenueRatingModalOpen(false)}
+        okText="Gửi đánh giá"
+        cancelText="Đóng"
+        okButtonProps={{ 
+          className: 'bg-emerald-600 hover:bg-emerald-700 rounded-xl font-bold h-10 px-6',
+          loading: submittingVenueRating 
+        }}
+        cancelButtonProps={{ className: 'rounded-xl font-bold h-10 px-6' }}
+        className="rounded-3xl overflow-hidden"
+        width={450}
+      >
+        <div className="py-4 space-y-4">
+          <div className="p-4 bg-emerald-50/50 border border-emerald-100/50 rounded-2xl">
+            <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block mb-1">Tên sân đấu</span>
+            <Text strong className="text-slate-800 text-sm block">{ratingVenueName}</Text>
+          </div>
+
+          <div className="space-y-1.5">
+            <Text strong className="text-slate-700 text-xs block">Vui lòng chọn số sao chất lượng dịch vụ & cơ sở vật chất:</Text>
+            <Rate allowHalf value={venueStars} onChange={setVenueStars} className="text-amber-500 text-2xl" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Text strong className="text-slate-700 text-xs block">Nhận xét chi tiết (Không bắt buộc):</Text>
+            <Input.TextArea
+              rows={4}
+              placeholder="Chia sẻ trải nghiệm của bạn về chất lượng sân, nhân viên, ánh sáng, bãi giữ xe..."
+              value={venueComment}
+              onChange={(e) => setVenueComment(e.target.value)}
+              className="rounded-xl border-slate-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
+            />
+          </div>
+        </div>
       </Modal>
     </div>
   );
