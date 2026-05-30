@@ -6,4 +6,5 @@ import lombok.*;
 public class VenueRatingRequest {
     private Integer stars;
     private String comment;
+    private java.util.List<String> images;
 }

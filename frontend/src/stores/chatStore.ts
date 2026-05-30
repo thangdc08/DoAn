@@ -22,7 +22,6 @@ const persistLastRead = (conversationId: string, timestamp: string) => {
 
 /** Compute unread count for a conversation from localStorage lastReadAt */
 const computeUnread = (conv: any): number => {
-  // If already has a real-time unread count from WebSocket, respect it
   if (typeof conv.unreadCount === 'number' && conv.unreadCount > 0) return conv.unreadCount;
 
   const lastReadMap = getLastReadMap();
@@ -30,7 +29,7 @@ const computeUnread = (conv: any): number => {
   const lastMsgDate = conv.lastMessageDate || conv.lastMessageTime;
 
   if (!lastMsgDate) return 0;
-  if (!lastReadAt) return 1; // Never opened this conversation before — assume 1 unread
+  if (!lastReadAt) return 1;
 
   return new Date(lastMsgDate) > new Date(lastReadAt) ? 1 : 0;
 };
@@ -41,7 +40,6 @@ interface ChatState {
   messages: Record<string, ChatMessage[]>;
   isLoading: boolean;
 
-  // Actions
   setConversations: (conversations: Conversation[]) => void;
   mergeConversations: (conversations: Conversation[]) => void;
   setActiveConversation: (id: string | null) => void;
@@ -60,7 +58,6 @@ export const useChatStore = create<ChatState>((set) => ({
   isLoading: false,
 
   setConversations: (conversations) => set({
-    // Compute unread from localStorage when loading conversations from API
     conversations: conversations.map(conv => ({
       ...conv,
       lastMessageTime: (conv as any).lastMessageTime || (conv as any).lastMessageDate || null,
@@ -68,7 +65,6 @@ export const useChatStore = create<ChatState>((set) => ({
     })),
   }),
 
-  /** Merge socket-driven updates: preserves existing unreadCount, only increments if lastMessage changed */
   mergeConversations: (updates) => set((state) => {
     const activeId = state.activeConversationId;
     const currentMap = new Map(state.conversations.map(c => [c.id, c]));
@@ -90,7 +86,6 @@ export const useChatStore = create<ChatState>((set) => ({
       };
     });
 
-    // Add conversations that exist in current but not in updates
     const updatedIds = new Set(updates.map(u => u.id));
     const unchanged = state.conversations.filter(c => !updatedIds.has(c.id));
 
@@ -108,14 +103,19 @@ export const useChatStore = create<ChatState>((set) => ({
 
   addMessage: (conversationId, message) => set((state) => {
     const currentMessages = state.messages[conversationId] || [];
-    const messageExists = currentMessages.some(m => m.id === message.id);
-    const nextMessages = messageExists ? currentMessages : [...currentMessages, message];
-    return {
-      messages: {
-        ...state.messages,
-        [conversationId]: nextMessages,
-      },
-    };
+    const optimisticIdx = currentMessages.findIndex(
+      (m) => m.id.startsWith('temp-') && m.conversationId === message.conversationId && m.senderId === message.senderId
+    );
+    let nextMessages: ChatMessage[];
+    if (optimisticIdx >= 0) {
+      const filtered = currentMessages.filter((_, i) => i !== optimisticIdx);
+      const exists = filtered.some((m) => m.id === message.id);
+      nextMessages = exists ? filtered : [...filtered, message];
+    } else {
+      const exists = currentMessages.some((m) => m.id === message.id);
+      nextMessages = exists ? currentMessages : [...currentMessages, message];
+    }
+    return { messages: { ...state.messages, [conversationId]: nextMessages } };
   }),
 
   setLoading: (loading) => set({ isLoading: loading }),
@@ -126,7 +126,6 @@ export const useChatStore = create<ChatState>((set) => ({
     ),
   })),
 
-  /** Mark a conversation as fully read: persist timestamp, reset badge */
   markConversationRead: (conversationId) => {
     persistLastRead(conversationId, new Date().toISOString());
     set((state) => ({
@@ -203,7 +202,3 @@ export const useChatStore = create<ChatState>((set) => ({
     };
   }),
 }));
-
-
-
-

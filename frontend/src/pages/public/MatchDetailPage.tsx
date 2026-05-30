@@ -6,10 +6,12 @@ import {
   Button,
   Card,
   Col,
+  Descriptions,
   Empty,
   Input,
   List,
   Modal,
+  Rate,
   Row,
   Space,
   Spin,
@@ -30,6 +32,9 @@ import {
   EnvironmentFilled,
   AimOutlined,
   StarFilled,
+  MailOutlined,
+  CheckOutlined,
+  CloseOutlined,
 } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import { communityApi } from '../../services/communityApi';
@@ -114,6 +119,18 @@ export default function MatchDetailPage() {
   const [joinModalOpen, setJoinModalOpen] = useState(false);
   const [messageModalOpen, setMessageModalOpen] = useState(false);
   const [groupModalOpen, setGroupModalOpen] = useState(false);
+  const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
+
+  const selectedRequest = useMemo(() => {
+    if (!selectedRequestId) return null;
+    return participants.find((p) => p.id === selectedRequestId) || null;
+  }, [participants, selectedRequestId]);
+
+  const selectedPlayerProfile = useMemo(() => {
+    if (!selectedRequest?.userId) return null;
+    return participantProfiles[selectedRequest.userId] || null;
+  }, [participantProfiles, selectedRequest]);
+
   const [quickMessage, setQuickMessage] = useState('');
 
   const [chatLoading, setChatLoading] = useState(false);
@@ -215,6 +232,21 @@ export default function MatchDetailPage() {
   useEffect(() => {
     loadData();
   }, [matchId]);
+
+  useEffect(() => {
+    if (participants.length === 0) return;
+    const queryParams = new URLSearchParams(window.location.search);
+    const userIdFromUrl = queryParams.get('userId');
+    if (userIdFromUrl) {
+      const req = participants.find((p) => p.userId === userIdFromUrl && p.status === 'PENDING')
+        || participants.find((p) => p.userId === userIdFromUrl);
+      if (req) {
+        setSelectedRequestId(req.id);
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, '', newUrl);
+      }
+    }
+  }, [participants]);
 
   useEffect(() => {
     const userIds = Array.from(
@@ -356,6 +388,16 @@ export default function MatchDetailPage() {
     } finally {
       setRejectingId(null);
     }
+  };
+
+  const handleApproveInModal = async (participantId: string) => {
+    await handleApproveParticipant(participantId);
+    setSelectedRequestId(null);
+  };
+
+  const handleRejectInModal = async (participantId: string) => {
+    await handleRejectParticipant(participantId);
+    setSelectedRequestId(null);
   };
 
   const openHostChat = async () => {
@@ -516,7 +558,20 @@ export default function MatchDetailPage() {
                 renderItem={(p) => (
                   <List.Item style={{ borderRadius: 14, padding: 14, background: '#fafafa', marginBottom: 10, border: '1px solid #f1f5f9' }}>
                     <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
-                      <div style={{ display: 'flex', gap: 12, minWidth: 260 }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          gap: 12,
+                          minWidth: 260,
+                          cursor: 'pointer',
+                          padding: '6px 10px',
+                          borderRadius: '10px',
+                          transition: 'all 0.2s',
+                        }}
+                        onClick={() => setSelectedRequestId(p.id)}
+                        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                      >
                         <Avatar style={{ background: '#16a34a', flexShrink: 0 }} icon={<UserOutlined />} />
                         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                           <Space size={8} wrap>
@@ -610,7 +665,21 @@ export default function MatchDetailPage() {
                   renderItem={(p) => (
                     <List.Item style={{ borderRadius: 14, padding: 14, background: '#fafafa', marginBottom: 10, border: '1px solid #f1f5f9' }}>
                       <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 240 }}>
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 12,
+                            minWidth: 240,
+                            cursor: 'pointer',
+                            padding: '6px 10px',
+                            borderRadius: '10px',
+                            transition: 'all 0.2s',
+                          }}
+                          onClick={() => setSelectedRequestId(p.id)}
+                          onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#f1f5f9'}
+                          onMouseLeave={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
+                        >
                           <Avatar style={{ background: '#f59e0b', flexShrink: 0 }} icon={<UserOutlined />} />
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                             <Space size={8} wrap>
@@ -756,6 +825,175 @@ export default function MatchDetailPage() {
         <Paragraph style={{ marginBottom: 0 }}>
           Bạn đã tham gia kèo thành công. Hãy vào nhóm tin nhắn của kèo để trao đổi lịch chơi với mọi người.
         </Paragraph>
+      </Modal>
+
+      <Modal
+        title={
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingBottom: 10, borderBottom: '1px solid #f1f5f9' }}>
+            <UserOutlined style={{ color: '#16a34a' }} />
+            <span>Thông tin người chơi</span>
+          </div>
+        }
+        open={!!selectedRequestId}
+        onCancel={() => setSelectedRequestId(null)}
+        footer={
+          selectedRequest?.status === 'PENDING' ? (
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 12, padding: '10px 0 0 0' }}>
+              <Button
+                danger
+                icon={<CloseOutlined />}
+                onClick={() => selectedRequest && handleRejectInModal(selectedRequest.id)}
+                loading={rejectingId === selectedRequest?.id}
+                style={{ borderRadius: 10, fontWeight: 700 }}
+              >
+                Từ chối
+              </Button>
+              <Button
+                type="primary"
+                icon={<CheckOutlined />}
+                onClick={() => selectedRequest && handleApproveInModal(selectedRequest.id)}
+                loading={approvingId === selectedRequest?.id}
+                style={{ borderRadius: 10, fontWeight: 700, backgroundColor: '#16a34a', borderColor: '#16a34a' }}
+              >
+                Duyệt tham gia
+              </Button>
+            </div>
+          ) : (
+            <Button onClick={() => setSelectedRequestId(null)} style={{ borderRadius: 10 }}>
+              Đóng
+            </Button>
+          )
+        }
+        width={550}
+        style={{ borderRadius: 20, overflow: 'hidden' }}
+      >
+        {selectedRequest ? (
+          <div style={{ padding: '10px 0' }}>
+            {selectedRequest.status !== 'PENDING' && (
+              <Alert
+                type={selectedRequest.status === 'APPROVED' ? 'success' : 'warning'}
+                message={
+                  <span>
+                    Yêu cầu này đã được xử lý: <strong>{getParticipantStatus(selectedRequest).text}</strong>
+                  </span>
+                }
+                showIcon
+                style={{ marginBottom: 16, borderRadius: 10 }}
+              />
+            )}
+
+            <div style={{ display: 'flex', gap: 20, marginBottom: 24, alignItems: 'center', background: '#f8fafc', padding: 16, borderRadius: 16 }}>
+              <Avatar
+                size={72}
+                src={selectedPlayerProfile?.avatarUrl}
+                style={{
+                  background: selectedRequest.status === 'APPROVED' ? '#16a34a' : '#f59e0b',
+                  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.1)',
+                }}
+                icon={<UserOutlined />}
+              />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <Title level={4} style={{ margin: 0, fontSize: 20 }}>
+                  {getParticipantName(selectedRequest)}
+                </Title>
+                <Space wrap size={6}>
+                  <Tag color={getParticipantStatus(selectedRequest).color} style={{ borderRadius: 999 }}>
+                    {getParticipantStatus(selectedRequest).text}
+                  </Tag>
+                  {selectedPlayerProfile?.level && (
+                    <Tag color="blue" style={{ borderRadius: 999 }}>
+                      {levelLabel[selectedPlayerProfile.level] || selectedPlayerProfile.level}
+                    </Tag>
+                  )}
+                  {selectedPlayerProfile?.gender && (
+                    <Tag color="purple" style={{ borderRadius: 999 }}>
+                      {selectedPlayerProfile.gender === 'MALE'
+                        ? 'Nam'
+                        : selectedPlayerProfile.gender === 'FEMALE'
+                        ? 'Nữ'
+                        : 'Khác'}
+                    </Tag>
+                  )}
+                </Space>
+                {selectedPlayerProfile?.rating ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+                    <Rate disabled allowHalf defaultValue={selectedPlayerProfile.rating} style={{ fontSize: 14 }} />
+                    <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>
+                      {Number(selectedPlayerProfile.rating).toFixed(1)} ({selectedPlayerProfile.reviewCount || 0} đánh giá)
+                    </span>
+                  </div>
+                ) : (
+                  <span style={{ fontSize: 13, color: '#94a3b8', marginTop: 4 }}>Chưa có đánh giá</span>
+                )}
+              </div>
+            </div>
+
+            <Descriptions column={1} bordered size="small" layout="horizontal" labelStyle={{ width: 140, fontWeight: 600, background: '#f8fafc' }}>
+              <Descriptions.Item label="Mã người chơi">
+                <Text copyable type="secondary">{selectedRequest.userId}</Text>
+              </Descriptions.Item>
+              <Descriptions.Item label="Số điện thoại">
+                {selectedPlayerProfile?.phone ? (
+                  <Space>
+                    <PhoneOutlined style={{ color: '#16a34a' }} />
+                    <Text strong>{selectedPlayerProfile.phone}</Text>
+                  </Space>
+                ) : (
+                  <Text type="secondary">Chưa cung cấp</Text>
+                )}
+              </Descriptions.Item>
+              <Descriptions.Item label="Email">
+                {selectedPlayerProfile?.email ? (
+                  <Space>
+                    <MailOutlined style={{ color: '#0284c7' }} />
+                    <Text>{selectedPlayerProfile.email}</Text>
+                  </Space>
+                ) : (
+                  <Text type="secondary">Chưa cung cấp</Text>
+                )}
+              </Descriptions.Item>
+              <Descriptions.Item label="Thời gian yêu cầu">
+                <Space>
+                  <ClockCircleOutlined style={{ color: '#64748b' }} />
+                  <Text>{dayjs(getParticipantTime(selectedRequest)).format('DD/MM/YYYY HH:mm:ss')}</Text>
+                </Space>
+              </Descriptions.Item>
+              {selectedPlayerProfile?.preferredAreas && selectedPlayerProfile.preferredAreas.length > 0 && (
+                <Descriptions.Item label="Khu vực chơi">
+                  <Space wrap size={4}>
+                    {selectedPlayerProfile.preferredAreas.map((area: string, idx: number) => (
+                      <Tag key={idx} color="cyan">{area}</Tag>
+                    ))}
+                  </Space>
+                </Descriptions.Item>
+              )}
+            </Descriptions>
+
+            {selectedPlayerProfile?.bio && (
+              <div style={{ marginTop: 20 }}>
+                <Text strong style={{ display: 'block', marginBottom: 6 }}>Giới thiệu bản thân:</Text>
+                <div style={{ padding: '10px 14px', background: '#f1f5f9', borderRadius: 10, fontStyle: 'italic', color: '#475569' }}>
+                  "{selectedPlayerProfile.bio}"
+                </div>
+              </div>
+            )}
+
+            {selectedPlayerProfile?.availabilities && selectedPlayerProfile.availabilities.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <Text strong style={{ display: 'block', marginBottom: 6 }}>Thời gian hoạt động:</Text>
+                <Space wrap size={6}>
+                  {selectedPlayerProfile.availabilities.map((av: any, idx: number) => (
+                    <Tag key={idx} color="geekblue" style={{ borderRadius: 6 }}>
+                      {av.dayOfWeek}: {av.startTime} - {av.endTime}
+                    </Tag>
+                  ))}
+                </Space>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={{ textAlign: 'center', padding: 20 }}><Spin size="large" /></div>
+        )}
       </Modal>
     </div>
   );

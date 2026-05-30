@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Card, Table, Tag, Button, Select, Space, Typography, Modal, Input, Row, Col, Badge, Divider, Spin, Empty, message, Rate } from 'antd';
+import { Card, Table, Tag, Button, Select, Space, Typography, Modal, Input, Row, Col, Badge, Divider, Spin, Empty, message, Rate, Upload } from 'antd';
 import {
   EyeOutlined,
   CalendarOutlined,
@@ -11,7 +11,8 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   InfoCircleOutlined,
-  StarOutlined
+  StarOutlined,
+  CameraOutlined
 } from '@ant-design/icons';
 import { bookingApi } from '../../services/bookingApi';
 import { venueApi } from '../../services/venueApi';
@@ -52,6 +53,7 @@ export default function BookingHistoryPage() {
   const [venueStars, setVenueStars] = useState(5);
   const [venueComment, setVenueComment] = useState('');
   const [submittingVenueRating, setSubmittingVenueRating] = useState(false);
+  const [ratingFileList, setRatingFileList] = useState<any[]>([]);
 
   const handleOpenVenueRating = (booking: Booking, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
@@ -59,6 +61,7 @@ export default function BookingHistoryPage() {
     setRatingVenueName(booking.venueNameSnapshot);
     setVenueStars(5);
     setVenueComment('');
+    setRatingFileList([]);
     setVenueRatingModalOpen(true);
   };
 
@@ -66,9 +69,19 @@ export default function BookingHistoryPage() {
     if (!ratingVenueId) return;
     setSubmittingVenueRating(true);
     try {
+      let uploadedUrls: string[] = [];
+      const filesToUpload = ratingFileList
+        .filter((file) => file.originFileObj)
+        .map((file) => file.originFileObj as File);
+
+      if (filesToUpload.length > 0) {
+        uploadedUrls = await venueApi.uploadRatingImages(filesToUpload);
+      }
+
       await venueApi.rateVenue(ratingVenueId, {
         stars: venueStars,
-        comment: venueComment
+        comment: venueComment,
+        images: uploadedUrls
       });
       message.success(`Đã gửi đánh giá thành công cho sân ${ratingVenueName}!`);
       setVenueRatingModalOpen(false);
@@ -495,6 +508,38 @@ export default function BookingHistoryPage() {
               onChange={(e) => setVenueComment(e.target.value)}
               className="rounded-xl border-slate-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"
             />
+          </div>
+
+          <div className="space-y-1.5">
+            <Text strong className="text-slate-700 text-xs block">Hình ảnh thực tế (Tối đa 5 ảnh, JPG/PNG/WebP):</Text>
+            <div className="p-3 bg-slate-50 border border-slate-100 rounded-2xl">
+              <Upload
+                listType="picture-card"
+                fileList={ratingFileList}
+                onChange={({ fileList }) => setRatingFileList(fileList)}
+                beforeUpload={(file) => {
+                  const isAcceptedType = file.type === 'image/jpeg' || file.type === 'image/png' || file.type === 'image/webp';
+                  if (!isAcceptedType) {
+                    message.error('Chỉ hỗ trợ file ảnh định dạng JPG, PNG hoặc WebP!');
+                    return Upload.LIST_IGNORE;
+                  }
+                  const isLt5M = file.size / 1024 / 1024 < 5;
+                  if (!isLt5M) {
+                    message.error('Kích thước ảnh không được vượt quá 5MB!');
+                    return Upload.LIST_IGNORE;
+                  }
+                  return false;
+                }}
+                accept="image/*"
+              >
+                {ratingFileList.length < 5 && (
+                  <div className="flex flex-col items-center justify-center text-slate-500 hover:text-emerald-600 transition-colors duration-200">
+                    <CameraOutlined style={{ fontSize: 20 }} className="text-slate-400 mb-1.5" />
+                    <div className="text-[11px] font-bold">Thêm ảnh</div>
+                  </div>
+                )}
+              </Upload>
+            </div>
           </div>
         </div>
       </Modal>

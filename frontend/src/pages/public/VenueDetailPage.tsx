@@ -1,5 +1,5 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { Card, Row, Col, Typography, Button, Tag, Image, Space, Divider, Spin } from 'antd';
+import { Card, Row, Col, Typography, Button, Tag, Image, Space, Divider, Spin, Rate, Empty } from 'antd';
 import { EnvironmentOutlined, PhoneOutlined, ClockCircleOutlined, StarFilled, CalendarOutlined, DollarOutlined } from '@ant-design/icons';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -53,6 +53,12 @@ export default function VenueDetailPage() {
   const { data: priceRules = [], isLoading: isLoadingPriceRules } = useQuery({
     queryKey: ['price-rules', venueId],
     queryFn: () => venueApi.getPriceRules(venueId!),
+    enabled: !!venueId,
+  });
+
+  const { data: ratingsData, isLoading: isLoadingRatings } = useQuery({
+    queryKey: ['venue-ratings', venueId],
+    queryFn: () => venueApi.getVenueRatings(venueId!, { page: 0, size: 20 }),
     enabled: !!venueId,
   });
 
@@ -119,6 +125,57 @@ export default function VenueDetailPage() {
           {/* Description */}
           <Card title="Giới thiệu" style={{ marginTop: 16 }}>
             <Paragraph>{venue.description || 'Chưa có mô tả'}</Paragraph>
+          </Card>
+
+          {/* Customer Reviews */}
+          <Card title={`Đánh giá từ khách hàng (${venue.ratingCount || 0})`} style={{ marginTop: 16 }}>
+            {isLoadingRatings ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: '24px' }}>
+                <Spin tip="Đang tải đánh giá..." />
+              </div>
+            ) : !ratingsData || !ratingsData.content || ratingsData.content.length === 0 ? (
+              <Empty description="Chưa có đánh giá nào cho sân này" />
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                {ratingsData.content.map((rating: any) => (
+                  <div key={rating.id} style={{ display: 'flex', flexDirection: 'column', gap: '8px', paddingBottom: '16px', borderBottom: '1px solid #f0f0f0' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#00a651', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', fontSize: '14px' }}>
+                          K
+                        </div>
+                        <div>
+                          <div style={{ fontWeight: 'bold', fontSize: '14px' }}>Khách hàng</div>
+                          <div style={{ fontSize: '11px', color: '#8c8c8c' }}>
+                            {dayjs(rating.createdAt).format('DD/MM/YYYY HH:mm')}
+                          </div>
+                        </div>
+                      </div>
+                      <Rate disabled defaultValue={rating.stars} style={{ fontSize: '14px' }} />
+                    </div>
+                    {rating.comment && (
+                      <div style={{ color: '#262626', fontSize: '14px', whiteSpace: 'pre-wrap' }}>
+                        {rating.comment}
+                      </div>
+                    )}
+                    {rating.images && rating.images.length > 0 && (
+                      <Image.PreviewGroup>
+                        <Space size={8} wrap style={{ marginTop: '8px' }}>
+                          {rating.images.map((imgUrl: string, idx: number) => (
+                            <Image
+                              key={idx}
+                              src={imgUrl}
+                              alt={`Review image ${idx + 1}`}
+                              style={{ width: '70px', height: '70px', objectFit: 'cover', borderRadius: '8px' }}
+                            />
+                          ))}
+                        </Space>
+                      </Image.PreviewGroup>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </Card>
 
           {/* Preview Schedule */}

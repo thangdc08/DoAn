@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect } from 'react';
 import { Card, List, Typography, Button, Space, Tag, Empty, Badge, message } from 'antd';
 import { CheckOutlined } from '@ant-design/icons';
-import { mockNotifications } from '../../data/mockNotifications';
+import { useCommunityStore } from '../../stores/communityStore';
 import type { Notification } from '../../types/notification.types';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -13,7 +13,11 @@ dayjs.locale('vi');
 const { Title, Text } = Typography;
 
 export default function NotificationsPage() {
-  const [notifications, setNotifications] = useState(mockNotifications);
+  const { notifications, markNotificationAsRead, markAllNotificationsAsRead, fetchNotifications } = useCommunityStore();
+
+  useEffect(() => {
+    fetchNotifications().catch(console.error);
+  }, [fetchNotifications]);
 
   const unreadCount = notifications.filter((n) => !n.readAt).length;
 
@@ -45,16 +49,22 @@ export default function NotificationsPage() {
     return colors[type] || 'default';
   };
 
-  const handleMarkAsRead = (notificationId: string) => {
-    setNotifications(notifications.map(n =>
-      n.id === notificationId ? { ...n, readAt: new Date().toISOString() } : n
-    ));
-    message.success('Đã đánh dấu đã đọc (mock)');
+  const handleMarkAsRead = async (notificationId: string) => {
+    try {
+      await markNotificationAsRead(notificationId);
+      message.success('Đã đánh dấu đã đọc');
+    } catch {
+      message.error('Không thể đánh dấu đã đọc');
+    }
   };
 
-  const handleMarkAllAsRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, readAt: new Date().toISOString() })));
-    message.success('Đã đánh dấu tất cả đã đọc (mock)');
+  const handleMarkAllAsRead = async () => {
+    try {
+      await markAllNotificationsAsRead();
+      message.success('Đã đánh dấu tất cả đã đọc');
+    } catch {
+      message.error('Không thể đánh dấu tất cả đã đọc');
+    }
   };
 
   return (

@@ -163,8 +163,26 @@ export const venueApi = {
     });
   },
 
-  rateVenue: async (venueId: string, data: { stars: number; comment?: string }): Promise<any> => {
+  rateVenue: async (venueId: string, data: { stars: number; comment?: string; images?: string[] }): Promise<any> => {
     const response = await apiClient.post(`/venues/api/venues/${venueId}/ratings`, data);
-    return response.data;
+    return response.data.result !== undefined ? response.data.result : response.data;
+  },
+
+  uploadRatingImages: async (files: File[]): Promise<string[]> => {
+    const formData = new FormData();
+    files.forEach((file) => {
+      formData.append('images', file);
+    });
+    const response = await apiClient.post('/venues/api/venues/ratings/upload-images', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return response.data.result !== undefined ? response.data.result : response.data;
+  },
+
+  getVenueRatings: async (venueId: string, params?: { page?: number; size?: number }): Promise<{ content: any[]; totalElements: number }> => {
+    const response = await apiClient.get(`/venues/api/venues/${venueId}/ratings`, { params });
+    return response.data.result !== undefined ? response.data.result : response.data;
   },
 };

@@ -132,6 +132,7 @@ export const router = createBrowserRouter([
       { path: 'revenue', element: <Suspense fallback={<PageLoader />}><OwnerRevenuePage /></Suspense> },
       { path: 'settings', element: <Suspense fallback={<PageLoader />}><OwnerSettingsPage /></Suspense> },
       { path: 'support', element: <Suspense fallback={<PageLoader />}><OwnerSupportPage /></Suspense> },
+      { path: 'profile', element: <Suspense fallback={<PageLoader />}><ProfilePage /></Suspense> },
     ],
   },
 
@@ -147,6 +148,7 @@ export const router = createBrowserRouter([
       { path: 'reports', element: <Suspense fallback={<PageLoader />}><AdminReportPage /></Suspense> },
       { path: 'settings', element: <Suspense fallback={<PageLoader />}><AdminSettingsPage /></Suspense> },
       { path: 'support', element: <Suspense fallback={<PageLoader />}><AdminSupportPage /></Suspense> },
+      { path: 'profile', element: <Suspense fallback={<PageLoader />}><ProfilePage /></Suspense> },
     ],
   },
 ]);

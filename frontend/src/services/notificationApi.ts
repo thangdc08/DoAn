@@ -8,13 +8,13 @@ export const notificationApi = {
     size?: number;
   }): Promise<{ content: Notification[]; totalElements: number; totalPages: number }> => {
     const response = await apiClient.get('/notifications/my', { params });
-    return response.data;
+    return response.data.result !== undefined ? response.data.result : response.data;
   },
 
   // Get unread count
   getUnreadCount: async (): Promise<NotificationCount> => {
     const response = await apiClient.get('/notifications/unread-count');
-    return response.data;
+    return response.data.result !== undefined ? response.data.result : response.data;
   },
 
   // Mark notification as read

@@ -12,5 +12,6 @@ public class VenueRatingResponse {
     private UUID userId;
     private Integer stars;
     private String comment;
+    private java.util.List<String> images;
     private LocalDateTime createdAt;
 }

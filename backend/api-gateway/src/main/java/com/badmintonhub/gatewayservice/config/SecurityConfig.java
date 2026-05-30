@@ -93,6 +93,8 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.POST, "/identity/api/v1/auth/refresh").permitAll()
                         .pathMatchers(HttpMethod.POST, "/identity/api/v1/auth/logout").permitAll()
                         // Venue Onboarding & Management — Owner & Admin
+                        .pathMatchers(HttpMethod.POST, "/venues/api/venues/*/ratings").hasAnyAuthority("SCOPE_USER", "SCOPE_OWNER", "SCOPE_ADMIN")
+                        .pathMatchers(HttpMethod.POST, "/venues/api/venues/ratings/upload-images").hasAnyAuthority("SCOPE_USER", "SCOPE_OWNER", "SCOPE_ADMIN")
                         .pathMatchers(HttpMethod.POST, "/venues/api/v1/venues/onboard").hasAuthority("SCOPE_OWNER")
                         .pathMatchers(HttpMethod.GET, "/venues/api/venues/my").hasAnyAuthority("SCOPE_OWNER", "SCOPE_ADMIN")
                         .pathMatchers(HttpMethod.POST, "/venues/**").hasAnyAuthority("SCOPE_OWNER", "SCOPE_ADMIN")

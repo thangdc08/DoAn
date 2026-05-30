@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Card, Input, Button, Space, Typography, Select, Slider, Tag, Drawer, Spin, Empty, message } from 'antd';
+import { Card, Input, Button, Space, Typography, Select, Slider, Tag, Drawer, Spin, Empty, message, Segmented } from 'antd';
 import {
   SearchOutlined,
   FilterOutlined,
@@ -11,7 +11,7 @@ import {
   PlayCircleOutlined,
   CloseOutlined
 } from '@ant-design/icons';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polyline, useMap, Circle } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import * as L from 'leaflet';
 import { useNavigate } from 'react-router-dom';
@@ -23,8 +23,8 @@ import type { Venue } from '../../types/venue.types';
 const { Text, Title } = Typography;
 
 // Fix Leaflet default marker icon
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
+delete ((L.Icon as any).Default.prototype as any)._getIconUrl;
+(L.Icon as any).Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
   iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
@@ -70,6 +70,9 @@ const MOCK_CITIES = [
 
 const DEFAULT_CENTER: [number, number] = [10.8231, 106.6297]; // TP.HCM
 
+const LCircle = Circle as any;
+const LPolyline = Polyline as any;
+
 // Location marker component
 function LocationMarker({ position, setUserLocation }: { position?: [number, number]; setUserLocation: (loc: [number, number] | null) => void }) {
   useMapEvents({
@@ -83,30 +86,84 @@ function LocationMarker({ position, setUserLocation }: { position?: [number, num
       position={position}
       icon={L.divIcon({
         className: 'user-location-marker',
-        html: `<div style="
-          background: ${BRAND.primary};
-          width: 20px;
-          height: 20px;
-          border-radius: 50%;
-          border: 3px solid white;
-          box-shadow: 0 0 0 6px rgba(59, 130, 246, 0.2);
-        "></div>`,
-        iconSize: [20, 20],
-        iconAnchor: [10, 10],
+        html: `
+          <div style="position: relative; display: flex; align-items: center; justify-content: center; width: 40px; height: 40px;">
+            <style>
+              @keyframes locationPulse {
+                0% {
+                  transform: scale(0.5);
+                  opacity: 1;
+                }
+                100% {
+                  transform: scale(2.4);
+                  opacity: 0;
+                }
+              }
+            </style>
+            <!-- Pulsating Halo -->
+            <div style="
+              position: absolute;
+              width: 32px;
+              height: 32px;
+              border-radius: 50%;
+              border: 2px solid #2563eb;
+              background: rgba(37, 99, 235, 0.15);
+              animation: locationPulse 2s infinite cubic-bezier(0.165, 0.84, 0.44, 1);
+              z-index: 1;
+            "></div>
+            <!-- Inner Glowing Dot -->
+            <div style="
+              background: #2563eb;
+              width: 16px;
+              height: 16px;
+              border-radius: 50%;
+              border: 3px solid white;
+              box-shadow: 0 4px 12px rgba(37, 99, 235, 0.5), 0 0 0 2px rgba(37, 99, 235, 0.2);
+              z-index: 2;
+            "></div>
+          </div>
+        `,
+        iconSize: [40, 40],
+        iconAnchor: [20, 20],
       })}
     />
   ) : null;
 }
 
-// Zoom to venue component
-function ZoomToVenue({ venue }: { venue: Venue | null }) {
-  const map = useMap();
+// Map controller for initial focus, user locate action, and selected venue panning
+function MapController({ 
+  userLocation, 
+  selectedVenue, 
+  recenterCount 
+}: { 
+  userLocation: [number, number] | null; 
+  selectedVenue: Venue | null;
+  recenterCount: number;
+}) {
+  const map = useMap() as any;
+  const [hasCenteredOnStart, setHasCenteredOnStart] = useState(false);
 
+  // Auto-focus on start when userLocation is first retrieved
   useEffect(() => {
-    if (venue?.latitude && venue?.longitude) {
-      map.setView([venue.latitude, venue.longitude], 14);
+    if (userLocation && !hasCenteredOnStart) {
+      map.setView(userLocation, 13); // Zoom 13 is excellent for a 10km radius circle
+      setHasCenteredOnStart(true);
     }
-  }, [venue, map]);
+  }, [userLocation, map, hasCenteredOnStart]);
+
+  // Recenter when the target trigger count changes
+  useEffect(() => {
+    if (recenterCount > 0 && userLocation) {
+      map.setView(userLocation, 13);
+    }
+  }, [recenterCount, userLocation, map]);
+
+  // Focus on selected venue
+  useEffect(() => {
+    if (selectedVenue?.latitude && selectedVenue?.longitude) {
+      map.setView([selectedVenue.latitude, selectedVenue.longitude], 14);
+    }
+  }, [selectedVenue, map]);
 
   return null;
 }
@@ -134,6 +191,7 @@ export default function VenueMapPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const [recenterCount, setRecenterCount] = useState(0);
 
   // Fetch venues từ API
   const { data: venues = [], isLoading, error } = useQuery({
@@ -288,7 +346,26 @@ export default function VenueMapPage() {
             <Space direction="vertical" size={12} style={{ width: '100%' }}>
               <Title level={4} style={{ margin: 0 }}>Tìm sân</Title>
               <Input prefix={<SearchOutlined style={{ color: '#94a3b8' }} />} placeholder="Tên sân, địa chỉ..." size="large" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ borderRadius: 12 }} />
-              <Button block type="primary" ghost icon={<CompassOutlined />} onClick={() => { if (navigator.geolocation) { navigator.geolocation.getCurrentPosition((pos) => setUserLocation([pos.coords.latitude, pos.coords.longitude]), (err) => message.error('Không thể lấy vị trí: ' + err.message)); } else message.error('Trình duyệt không hỗ trợ geolocation'); }} style={{ borderRadius: 12 }}>
+              <Button 
+                block 
+                type="primary" 
+                ghost 
+                icon={<CompassOutlined />} 
+                onClick={() => { 
+                  if (navigator.geolocation) { 
+                    navigator.geolocation.getCurrentPosition(
+                      (pos) => {
+                        setUserLocation([pos.coords.latitude, pos.coords.longitude]);
+                        setRecenterCount(prev => prev + 1);
+                      }, 
+                      (err) => message.error('Không thể lấy vị trí: ' + err.message)
+                    ); 
+                  } else {
+                    message.error('Trình duyệt không hỗ trợ geolocation');
+                  }
+                }} 
+                style={{ borderRadius: 12 }}
+              >
                 Dùng vị trí hiện tại
               </Button>
             </Space>
@@ -305,9 +382,30 @@ export default function VenueMapPage() {
         <MapContainer center={center} zoom={13} style={{ height: '100%', width: '100%' }} zoomControl={false}>
           <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
           <LocationMarker position={userLocation} setUserLocation={setUserLocation} />
-          <ZoomToVenue venue={selectedVenue} />
+          <MapController userLocation={userLocation} selectedVenue={selectedVenue} recenterCount={recenterCount} />
+          {userLocation && (
+            <LCircle
+              center={userLocation}
+              radius={10000}
+              pathOptions={{
+                color: '#2563eb',
+                fillColor: '#2563eb',
+                fillOpacity: 0.04,
+                weight: 1.5,
+                dashArray: '6, 12'
+              }}
+            />
+          )}
           {userLocation && selectedVenue?.latitude && selectedVenue?.longitude && (
-            <Polyline positions={[userLocation, [selectedVenue.latitude, selectedVenue.longitude]]} color={BRAND.primary} weight={3} dashArray="5, 10" opacity={0.6} />
+            <LPolyline
+              positions={[userLocation, [selectedVenue.latitude, selectedVenue.longitude]]}
+              pathOptions={{
+                color: BRAND.primary,
+                weight: 3,
+                dashArray: '5, 10',
+                opacity: 0.6
+              }}
+            />
           )}
           {venuesWithDistance.map(venue => venue.latitude && venue.longitude && (
             <Marker key={venue.id} position={[venue.latitude, venue.longitude]} icon={createVenueIcon(venue.ratingAvg || 0, selectedVenue?.id === venue.id)} eventHandlers={{ click: () => handleVenueSelect(venue) }}>
@@ -334,7 +432,26 @@ export default function VenueMapPage() {
 
         {/* Controls */}
         <div style={{ position: 'absolute', top: 16, left: 16, zIndex: 1000, display: 'flex', flexDirection: 'column', gap: 8 }}>
-          <Button icon={<AimOutlined />} size="large" style={{ borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} onClick={() => { if (userLocation) setSelectedVenue(null); else if (navigator.geolocation) { navigator.geolocation.getCurrentPosition((pos) => setUserLocation([pos.coords.latitude, pos.coords.longitude])); } }} title="Vị trí của tôi" />
+          <Button 
+            icon={<AimOutlined />} 
+            size="large" 
+            style={{ borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} 
+            onClick={() => { 
+              if (userLocation) {
+                setSelectedVenue(null);
+                setRecenterCount(prev => prev + 1);
+              } else if (navigator.geolocation) { 
+                navigator.geolocation.getCurrentPosition(
+                  (pos) => {
+                    setUserLocation([pos.coords.latitude, pos.coords.longitude]);
+                    setRecenterCount(prev => prev + 1);
+                  },
+                  (err) => message.error('Không thể lấy vị trí: ' + err.message)
+                ); 
+              } 
+            }} 
+            title="Vị trí của tôi" 
+          />
           <Button icon={<HomeOutlined />} size="large" style={{ borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} onClick={() => { setUserLocation(null); setSelectedVenue(null); }} title="Về mặc định" />
         </div>
 
@@ -344,30 +461,119 @@ export default function VenueMapPage() {
 
         {/* Filter Panel */}
         {showFilters && (
-          <div style={{ position: 'absolute', top: 80, right: 16, width: 280, maxHeight: 'calc(100vh - 120px)', overflowY: 'auto', background: 'white', borderRadius: 16, padding: 16, boxShadow: '0 8px 24px rgba(0,0,0,0.12)', zIndex: 1000 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <Title level={5} style={{ margin: 0 }}>Bộ lọc</Title>
-              <Button type="text" size="small" icon={<CloseOutlined />} onClick={() => setShowFilters(false)} />
+          <div style={{ 
+            position: 'absolute', 
+            top: 80, 
+            right: 16, 
+            width: 'calc(100vw - 32px)', 
+            maxWidth: 320, 
+            maxHeight: 'calc(100vh - 140px)', 
+            overflowY: 'auto', 
+            background: 'rgba(255, 255, 255, 0.98)',
+            backdropFilter: 'blur(12px)',
+            borderRadius: 20, 
+            padding: 20, 
+            boxShadow: '0 20px 40px rgba(15, 23, 42, 0.15)', 
+            border: '1px solid rgba(226, 232, 240, 0.8)',
+            zIndex: 1000,
+            transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <FilterOutlined style={{ color: BRAND.primary, fontSize: 16 }} />
+                <Title level={5} style={{ margin: 0, fontWeight: 700, color: '#0f172a' }}>Bộ lọc tìm kiếm</Title>
+              </div>
+              <Button 
+                type="text" 
+                shape="circle" 
+                size="small" 
+                icon={<CloseOutlined style={{ color: '#64748b', fontSize: 12 }} />} 
+                onClick={() => setShowFilters(false)} 
+                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}
+              />
             </div>
-            <Space direction="vertical" size={16} style={{ width: '100%' }}>
+            <Space direction="vertical" size={20} style={{ width: '100%' }}>
               <div>
-                <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>Thành phố</Text>
-                <Select style={{ width: '100%' }} placeholder="Tất cả" value={cityFilter || undefined} onChange={setCityFilter} allowClear size="small">
+                <Text strong style={{ fontSize: 13, color: '#1e293b', display: 'block', marginBottom: 8 }}>Thành phố</Text>
+                <Select 
+                  style={{ width: '100%' }} 
+                  placeholder="Tất cả thành phố" 
+                  value={cityFilter || undefined} 
+                  onChange={setCityFilter} 
+                  allowClear
+                  size="middle"
+                  dropdownStyle={{ borderRadius: 12 }}
+                >
                   {MOCK_CITIES.map(city => <Select.Option key={city.value} value={city.value}>{city.label}</Select.Option>)}
                 </Select>
               </div>
+
               <div>
-                <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>Đánh giá tối thiểu: {ratingFilter}+</Text>
-                <Slider min={0} max={5} step={0.5} value={ratingFilter} onChange={setRatingFilter} marks={{ 0: 'Tất cả', 3: '3', 4: '4', 4.5: '4.5', 5: '5' }} />
+                <Text strong style={{ fontSize: 13, color: '#1e293b', display: 'block', marginBottom: 10 }}>Đánh giá tối thiểu</Text>
+                <Segmented
+                  block
+                  value={ratingFilter.toString()}
+                  onChange={(val) => setRatingFilter(Number(val))}
+                  options={[
+                    { label: 'Tất cả', value: '0' },
+                    { label: '3★+', value: '3' },
+                    { label: '4★+', value: '4' },
+                    { label: '4.5★+', value: '4.5' }
+                  ]}
+                  style={{ background: '#f1f5f9', borderRadius: 10, padding: 3 }}
+                />
               </div>
+
               <div>
-                <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>Giá (k/ca): {priceRange[0].toLocaleString()}đ - {priceRange[1].toLocaleString()}đ</Text>
-                <Slider range min={0} max={500000} step={10000} value={priceRange} onChange={(val) => setPriceRange(val as [number, number])} tooltip={{ formatter: (v) => `${v?.toLocaleString()}đ` }} />
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text strong style={{ fontSize: 13, color: '#1e293b' }}>Mức giá (mỗi giờ)</Text>
+                  <Tag color="success" style={{ borderRadius: 6, margin: 0, fontWeight: 600, border: 'none', background: '#e2fbe8', color: '#10b981' }}>
+                    {priceRange[0] === 0 ? '0đ' : `${(priceRange[0]/1000)}k`} - {priceRange[1] >= 500000 ? '500k+' : `${(priceRange[1]/1000)}k`}
+                  </Tag>
+                </div>
+                <Slider 
+                  range 
+                  min={0} 
+                  max={500000} 
+                  step={10000} 
+                  value={priceRange} 
+                  onChange={(val) => setPriceRange(val as [number, number])} 
+                  tooltip={{ formatter: (v) => `${v?.toLocaleString()}đ` }}
+                  style={{ margin: '8px 8px 16px 8px' }}
+                />
               </div>
-              <Button type="primary" block size="small" onClick={() => setShowFilters(false)}>Áp dụng</Button>
+
+              <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+                <Button 
+                  block 
+                  style={{ borderRadius: 12, height: 40, fontWeight: 600 }}
+                  onClick={() => {
+                    setCityFilter('');
+                    setRatingFilter(0);
+                    setPriceRange([0, 500000]);
+                  }}
+                >
+                  Xóa lọc
+                </Button>
+                <Button 
+                  type="primary" 
+                  block 
+                  style={{ 
+                    borderRadius: 12, 
+                    height: 40, 
+                    fontWeight: 600,
+                    background: BRAND.primary,
+                    border: 'none',
+                    boxShadow: `0 4px 14px rgba(0, 168, 84, 0.3)`
+                  }} 
+                  onClick={() => setShowFilters(false)}
+                >
+                  Áp dụng
+                </Button>
+              </div>
             </Space>
           </div>
-        )}
+        ) /* end Filter Panel */}
 
         {isLoading && (
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 }}>

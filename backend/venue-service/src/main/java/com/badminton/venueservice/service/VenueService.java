@@ -272,6 +272,22 @@ public class VenueService {
   }
 
   @Transactional
+  public List<String> uploadRatingImages(List<org.springframework.web.multipart.MultipartFile> files) {
+    log.info("Uploading {} rating images to Cloudinary", files.size());
+    List<String> imageUrls = new ArrayList<>();
+    for (org.springframework.web.multipart.MultipartFile file : files) {
+      try {
+        Map<?, ?> uploadResult = cloudinary.uploader().upload(file.getBytes(), ObjectUtils.emptyMap());
+        String imageUrl = uploadResult.get("url").toString();
+        imageUrls.add(imageUrl);
+      } catch (java.io.IOException e) {
+        log.error("Failed to upload image to Cloudinary", e);
+        throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR, "Lỗi khi tải ảnh lên Cloudinary");
+      }
+    }
+    return imageUrls;
+  }
+
   public void deleteVenueImage(UUID venueId, UUID imageId) {
     log.info("Deleting image {} from venue {}", imageId, venueId);
     VenueImage image = venueImageRepository.findById(imageId)
@@ -916,6 +932,11 @@ public class VenueService {
 
     rating.setStars(request.getStars());
     rating.setComment(request.getComment());
+    if (request.getImages() != null) {
+      rating.setImages(String.join(",", request.getImages()));
+    } else {
+      rating.setImages(null);
+    }
     venueRatingRepository.save(rating);
 
     Double avg = venueRatingRepository.getAverageStarsByVenueId(venueId);
@@ -926,7 +947,12 @@ public class VenueService {
     venue.setRatingCount((int) count);
     venueRepository.save(venue);
 
+    List<String> imagesList = rating.getImages() != null && !rating.getImages().trim().isEmpty()
+        ? List.of(rating.getImages().split(","))
+        : List.of();
+
     return VenueRatingResponse.builder()
+        .images(imagesList)
         .id(rating.getId())
         .venueId(rating.getVenueId())
         .userId(rating.getUserId())
@@ -939,14 +965,20 @@ public class VenueService {
   public Page<VenueRatingResponse> getVenueRatings(UUID venueId, Pageable pageable) {
     log.info("Fetching ratings for venue {}", venueId);
     return venueRatingRepository.findByVenueId(venueId, pageable)
-        .map(r -> VenueRatingResponse.builder()
+        .map(r -> {
+            List<String> imagesList = r.getImages() != null && !r.getImages().trim().isEmpty()
+                ? List.of(r.getImages().split(","))
+                : List.of();
+            return VenueRatingResponse.builder()
+                .images(imagesList)
             .id(r.getId())
             .venueId(r.getVenueId())
             .userId(r.getUserId())
             .stars(r.getStars())
             .comment(r.getComment())
             .createdAt(r.getCreatedAt())
-            .build());
+            .build();
+        });
   }
 
   private Boolean checkUserHasPaidBooking(UUID userId, UUID venueId) {

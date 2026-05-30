@@ -3,6 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 import type { MatchPost } from '../types/community.types';
 import type { Notification } from '../types/notification.types';
 import { mockNotifications } from '../data/mockNotifications';
+import { notificationApi } from '../services/notificationApi';
 import dayjs from 'dayjs';
 
 export type SelectedMatchStatus = 'today' | 'upcoming' | 'pending' | 'joined' | 'deselected';
@@ -30,8 +31,9 @@ interface CommunityState {
 
   // Notifications Actions
   addNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => void;
-  markNotificationAsRead: (id: string) => void;
-  markAllNotificationsAsRead: () => void;
+  markNotificationAsRead: (id: string) => Promise<void>;
+  markAllNotificationsAsRead: () => Promise<void>;
+  fetchNotifications: () => Promise<void>;
 }
 
 export const useCommunityStore = create<CommunityState>()(
@@ -128,22 +130,51 @@ export const useCommunityStore = create<CommunityState>()(
         });
       },
 
-      markNotificationAsRead: (id) => {
-        const { notifications } = get();
-        set({
-          notifications: notifications.map((n) =>
-            n.id === id ? { ...n, readAt: new Date().toISOString() } : n
-          ),
-        });
+      fetchNotifications: async () => {
+        try {
+          const res = await notificationApi.getMyNotifications({ page: 0, size: 20 });
+          set({ notifications: res?.content || [] });
+        } catch (err) {
+          console.error('Failed to fetch real notifications', err);
+        }
       },
 
-      markAllNotificationsAsRead: () => {
+      markNotificationAsRead: async (id) => {
         const { notifications } = get();
-        set({
-          notifications: notifications.map((n) =>
-            n.readAt ? n : { ...n, readAt: new Date().toISOString() }
-          ),
-        });
+        try {
+          await notificationApi.markAsRead(id);
+          set({
+            notifications: notifications.map((n) =>
+              n.id === id ? { ...n, readAt: new Date().toISOString() } : n
+            ),
+          });
+        } catch (err) {
+          console.error('Failed to mark notification as read', err);
+          set({
+            notifications: notifications.map((n) =>
+              n.id === id ? { ...n, readAt: new Date().toISOString() } : n
+            ),
+          });
+        }
+      },
+
+      markAllNotificationsAsRead: async () => {
+        const { notifications } = get();
+        try {
+          await notificationApi.markAllAsRead();
+          set({
+            notifications: notifications.map((n) =>
+              n.readAt ? n : { ...n, readAt: new Date().toISOString() }
+            ),
+          });
+        } catch (err) {
+          console.error('Failed to mark all as read', err);
+          set({
+            notifications: notifications.map((n) =>
+              n.readAt ? n : { ...n, readAt: new Date().toISOString() }
+            ),
+          });
+        }
       },
     }),
     {

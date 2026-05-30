@@ -13,6 +13,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useCommunityStore } from '../stores/communityStore';
 import { useChatStore } from '../stores/chatStore';
 import { chatSocket } from '../services/chatSocket';
+import { chatApi } from '../services/chatApi';
 import { BRAND } from '../theme/antdTheme';
 
 const { Text } = Typography;
@@ -132,6 +133,9 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   useEffect(() => {
     if (isAuthenticated) {
       chatSocket.connect();
+      chatApi.getConversations().then((convs) => {
+        if (convs?.length) useChatStore.getState().setConversations(convs);
+      }).catch(console.error);
     } else {
       chatSocket.disconnect();
     }
@@ -178,6 +182,33 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
       icon: <Settings size={14} />,
       onClick: () => navigate(`/${role.toLowerCase()}/settings`),
     },
+    
+    // Links to other dashboard layouts if user has authority
+    ...(role !== 'OWNER' && user?.roles?.includes('OWNER') ? [
+      {
+        key: 'owner-dashboard',
+        label: 'Trang quản lý chủ sân',
+        icon: <Building2 size={14} />,
+        onClick: () => navigate('/owner'),
+      }
+    ] : []),
+    ...(role !== 'ADMIN' && user?.roles?.includes('ADMIN') ? [
+      {
+        key: 'admin-dashboard',
+        label: 'Quản trị hệ thống',
+        icon: <FileCheck size={14} />,
+        onClick: () => navigate('/admin'),
+      }
+    ] : []),
+    ...(role !== 'USER' ? [
+      {
+        key: 'user-dashboard',
+        label: 'Trang khách hàng',
+        icon: <CalendarDays size={14} />,
+        onClick: () => navigate('/user/dashboard'),
+      }
+    ] : []),
+
     {
       type: 'divider',
     },
@@ -190,13 +221,24 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     },
   ];
 
-  const { favorites, selectedMatches, notifications, markNotificationAsRead, markAllNotificationsAsRead } = useCommunityStore();
-  const { conversations } = useChatStore();
+  const { favorites, selectedMatches, notifications, markNotificationAsRead, markAllNotificationsAsRead, fetchNotifications } = useCommunityStore();
+  const conversations = useChatStore((s) => s.conversations);
 
   const favoriteCount = favorites.length;
   const selectedCount = selectedMatches.filter(sm => sm.selectedStatus !== 'deselected').length;
   const unreadNotifCount = notifications.filter(n => !n.readAt).length;
   const unreadChatCount = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
+
+  // Fetch real notifications when logged in
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchNotifications().catch(console.error);
+      const interval = setInterval(() => {
+        fetchNotifications().catch(console.error);
+      }, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated, fetchNotifications]);
 
   const handleNotificationClick = (notif: any) => {
     markNotificationAsRead(notif.id);
@@ -207,7 +249,8 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         break;
       case 'MATCH_JOIN_REQUESTED':
         if (notif.data?.matchId) {
-          navigate(`/community/matches/${notif.data.matchId}`);
+          const query = notif.data.userId ? `?userId=${notif.data.userId}` : '';
+          navigate(`/community/matches/${notif.data.matchId}${query}`);
         } else {
           navigate('/user/challenges');
         }

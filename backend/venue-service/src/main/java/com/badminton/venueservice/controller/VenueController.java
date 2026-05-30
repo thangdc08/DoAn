@@ -272,6 +272,17 @@ public class VenueController {
                 .build();
     }
 
+    @PostMapping("/ratings/upload-images")
+    @Operation(summary = "Upload rating images", description = "Allows users to upload images for their rating before submitting")
+    public ApiResponse<List<String>> uploadRatingImages(
+            @RequestParam("images") List<org.springframework.web.multipart.MultipartFile> images) {
+        log.info("API Request: Upload {} rating images", images.size());
+        return ApiResponse.<List<String>>builder()
+                .result(venueService.uploadRatingImages(images))
+                .message("Tải ảnh lên thành công")
+                .build();
+    }
+
     @PostMapping("/{venueId}/ratings")
     @Operation(summary = "Rate a venue", description = "Allows users with a paid booking to submit a rating")
     public ApiResponse<VenueRatingResponse> createRating(

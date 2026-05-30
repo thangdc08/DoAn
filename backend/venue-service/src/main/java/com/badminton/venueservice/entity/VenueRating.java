@@ -27,6 +27,9 @@ public class VenueRating {
     @Column(columnDefinition = "TEXT")
     private String comment;
 
+    @Column(columnDefinition = "TEXT")
+    private String images;
+
     @CreationTimestamp
     private LocalDateTime createdAt;
 }

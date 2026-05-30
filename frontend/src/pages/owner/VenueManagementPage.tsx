@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import dayjs from 'dayjs';
-import { Card, Button, Table, Tag, Space, Modal, Form, Input, Select, message, Typography, Row, Col, Tabs, Checkbox, Divider, Avatar, Tooltip, AutoComplete, InputNumber, Upload, TimePicker, Popconfirm } from 'antd';
+import { Card, Button, Table, Tag, Space, Modal, Form, Input, Select, message, Typography, Row, Col, Tabs, Checkbox, Divider, Avatar, Tooltip, AutoComplete, InputNumber, Upload, TimePicker, Popconfirm, Rate, Empty, Image, Spin } from 'antd';
 import type { UploadFile, UploadProps } from 'antd';
 import { 
   PlusOutlined, 
@@ -16,7 +16,9 @@ import {
   CustomerServiceOutlined,
   PictureOutlined,
   DeleteOutlined,
-  ExclamationCircleOutlined
+  ExclamationCircleOutlined,
+  StarOutlined,
+  StarFilled
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -87,11 +89,20 @@ export default function VenueManagementPage() {
   const [previewImage, setPreviewImage] = useState('');
   const [activeTab, setActiveTab] = useState('1');
   const searchTimeoutRef = useRef<any>(null);
+  const [viewingRatingsVenueId, setViewingRatingsVenueId] = useState<string | null>(null);
+  const [viewingRatingsVenueName, setViewingRatingsVenueName] = useState<string>('');
 
   // Lấy dữ liệu thật từ API
   const { data: venues = [], isLoading } = useQuery({
     queryKey: ['my-venues'],
     queryFn: () => venueApi.getMyVenues(),
+  });
+
+  // Query lấy đánh giá của sân đang chọn
+  const { data: ownerRatingsData, isLoading: isLoadingOwnerRatings } = useQuery({
+    queryKey: ['owner-venue-ratings', viewingRatingsVenueId],
+    queryFn: () => venueApi.getVenueRatings(viewingRatingsVenueId!),
+    enabled: !!viewingRatingsVenueId,
   });
 
   // Mutation tạo sân mới
@@ -295,10 +306,21 @@ export default function VenueManagementPage() {
       dataIndex: 'ratingAvg',
       key: 'rating',
       render: (rating: number, record: Venue) => (
-        <Space direction="vertical" size={0}>
-          <Text strong>{(rating || 0).toFixed(1)} ⭐</Text>
-          <Text type="secondary" style={{ fontSize: 11 }}>{record.ratingCount || 0} đánh giá</Text>
-        </Space>
+        <div 
+          onClick={() => {
+            setViewingRatingsVenueId(record.id);
+            setViewingRatingsVenueName(record.name);
+          }}
+          style={{ cursor: 'pointer' }}
+          className="hover:opacity-80 transition-opacity"
+        >
+          <Space direction="vertical" size={0}>
+            <Text strong>{(rating || 0).toFixed(1)} ⭐</Text>
+            <Text type="secondary" style={{ fontSize: 11, textDecoration: 'underline', color: BRAND.primary }}>
+              {record.ratingCount || 0} đánh giá
+            </Text>
+          </Space>
+        </div>
       )
     },
     {
@@ -321,6 +343,15 @@ export default function VenueManagementPage() {
           >
             Quản lý sân lẻ
           </Button>
+          <Tooltip title="Xem đánh giá của sân">
+            <Button
+              icon={<StarOutlined style={{ color: '#f59e0b' }} />}
+              onClick={() => {
+                setViewingRatingsVenueId(record.id);
+                setViewingRatingsVenueName(record.name);
+              }}
+            />
+          </Tooltip>
           <Tooltip title="Chỉnh sửa thông tin">
             <Button
               icon={<EditOutlined />}
@@ -731,6 +762,159 @@ export default function VenueManagementPage() {
              ]}
            />
         </Form>
+      </Modal>
+
+      {/* View Ratings Modal */}
+      <Modal
+        title={
+          <div style={{ paddingBottom: 12, borderBottom: '1px solid #f1f5f9' }}>
+            <Space>
+              <StarFilled style={{ color: '#f59e0b' }} />
+              <Text strong style={{ fontSize: 16 }}>Đánh giá từ khách hàng - {viewingRatingsVenueName}</Text>
+            </Space>
+          </div>
+        }
+        open={!!viewingRatingsVenueId}
+        onCancel={() => {
+          setViewingRatingsVenueId(null);
+          setViewingRatingsVenueName('');
+        }}
+        footer={[
+          <Button 
+            key="close" 
+            type="primary"
+            onClick={() => {
+              setViewingRatingsVenueId(null);
+              setViewingRatingsVenueName('');
+            }}
+            style={{ background: BRAND.primary, borderRadius: 8 }}
+          >
+            Đóng
+          </Button>
+        ]}
+        width={700}
+        bodyStyle={{ padding: '20px 0 10px' }}
+      >
+        <div style={{ maxHeight: '550px', overflowY: 'auto', padding: '0 8px' }}>
+          {isLoadingOwnerRatings ? (
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '40px 0' }}>
+              <Spin size="large" tip="Đang tải danh sách đánh giá..." />
+            </div>
+          ) : !ownerRatingsData || !ownerRatingsData.content || ownerRatingsData.content.length === 0 ? (
+            <div style={{ padding: '40px 0', textAlign: 'center' }}>
+              <Empty description="Cơ sở này chưa nhận được đánh giá nào từ khách hàng." />
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              {/* Summary Card */}
+              <Card 
+                style={{ 
+                  background: 'linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%)', 
+                  border: 'none', 
+                  borderRadius: 12, 
+                  marginBottom: 8 
+                }}
+                bodyStyle={{ padding: '16px 24px' }}
+              >
+                <Row align="middle" gutter={24}>
+                  <Col span={8} style={{ textAlign: 'center', borderRight: '1px solid #cbd5e1' }}>
+                    <div style={{ fontSize: 40, fontWeight: 800, color: '#1e293b', lineHeight: 1 }}>
+                      {ownerRatingsData.content.reduce((acc: number, item: any) => acc + item.stars, 0) / ownerRatingsData.content.length ? 
+                        (ownerRatingsData.content.reduce((acc: number, item: any) => acc + item.stars, 0) / ownerRatingsData.content.length).toFixed(1) : 
+                        '0.0'
+                      }
+                    </div>
+                    <Rate 
+                      disabled 
+                      allowHalf 
+                      defaultValue={ownerRatingsData.content.reduce((acc: number, item: any) => acc + item.stars, 0) / ownerRatingsData.content.length} 
+                      style={{ fontSize: 14, margin: '8px 0' }} 
+                    />
+                    <div style={{ fontSize: 12, color: '#64748b' }}>
+                      Trung bình ({ownerRatingsData.content.length} đánh giá)
+                    </div>
+                  </Col>
+                  <Col span={16}>
+                    <Text type="secondary" style={{ fontSize: 13, display: 'block', marginBottom: 6 }}>
+                      Ý kiến phản hồi từ khách hàng đóng vai trò rất quan trọng để nâng cao chất lượng dịch vụ của sân đấu.
+                    </Text>
+                    <Text strong style={{ fontSize: 13, color: BRAND.primary }}>
+                      Mẹo: Hãy ghi nhận phản hồi để không ngừng cải thiện trải nghiệm khách hàng.
+                    </Text>
+                  </Col>
+                </Row>
+              </Card>
+
+              {/* Ratings List */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {ownerRatingsData.content.map((rating: any) => (
+                  <Card 
+                    key={rating.id} 
+                    style={{ 
+                      borderRadius: 12, 
+                      border: '1px solid #e2e8f0',
+                      boxShadow: '0 2px 8px rgba(0,0,0,0.02)'
+                    }}
+                    bodyStyle={{ padding: 16 }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                      <Space size={12}>
+                        <Avatar 
+                          style={{ 
+                            backgroundColor: BRAND.primary, 
+                            verticalAlign: 'middle',
+                            boxShadow: '0 2px 4px rgba(0,166,81,0.2)'
+                          }} 
+                          size="large"
+                        >
+                          K
+                        </Avatar>
+                        <div>
+                          <div style={{ fontWeight: 600, color: '#1e293b', fontSize: 14 }}>
+                            Khách hàng
+                          </div>
+                          <div style={{ fontSize: 11, color: '#94a3b8' }}>
+                            {dayjs(rating.createdAt).format('DD/MM/YYYY HH:mm')}
+                          </div>
+                        </div>
+                      </Space>
+                      <Rate disabled defaultValue={rating.stars} style={{ fontSize: 14 }} />
+                    </div>
+
+                    {rating.comment && (
+                      <div style={{ margin: '12px 0 8px 52px', color: '#334155', fontSize: 14, lineHeight: 1.5 }}>
+                        {rating.comment}
+                      </div>
+                    )}
+
+                    {rating.images && rating.images.length > 0 && (
+                      <div style={{ marginLeft: 52, marginTop: 12 }}>
+                        <Image.PreviewGroup>
+                          <Space size={8} wrap>
+                            {rating.images.map((imgUrl: string, idx: number) => (
+                              <Image
+                                key={idx}
+                                src={imgUrl}
+                                alt={`Đánh giá sân ${idx + 1}`}
+                                style={{ 
+                                  width: '72px', 
+                                  height: '72px', 
+                                  objectFit: 'cover', 
+                                  borderRadius: '8px',
+                                  border: '1px solid #e2e8f0'
+                                }}
+                              />
+                            ))}
+                          </Space>
+                        </Image.PreviewGroup>
+                      </div>
+                    )}
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </Modal>
     </div>
   );

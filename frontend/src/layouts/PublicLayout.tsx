@@ -15,6 +15,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useCommunityStore } from '../stores/communityStore';
 import { useChatStore } from '../stores/chatStore';
 import { chatSocket } from '../services/chatSocket';
+import { chatApi } from '../services/chatApi';
 import { authApi } from '../services/authApi';
 import { Avatar, Divider, Button, Typography, Dropdown, Badge, type MenuProps, notification } from 'antd';
 import { LogoutOutlined, UserOutlined, SettingOutlined, CalendarOutlined, ShopOutlined, DashboardOutlined } from '@ant-design/icons';
@@ -55,18 +56,32 @@ export const PublicLayout: React.FC = () => {
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const { isAuthenticated, user, logout } = useAuthStore();
-  const { favorites, selectedMatches, notifications, markNotificationAsRead, markAllNotificationsAsRead } = useCommunityStore();
-  const { conversations } = useChatStore();
+  const { favorites, selectedMatches, notifications, markNotificationAsRead, markAllNotificationsAsRead, fetchNotifications } = useCommunityStore();
+  const conversations = useChatStore((s) => s.conversations);
 
   const favoriteCount = favorites.length;
   const selectedCount = selectedMatches.filter(sm => sm.selectedStatus !== 'deselected').length;
   const unreadNotifCount = notifications.filter(n => !n.readAt).length;
   const unreadChatCount = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
 
+  // Fetch real notifications when logged in
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchNotifications().catch(console.error);
+      const interval = setInterval(() => {
+        fetchNotifications().catch(console.error);
+      }, 10000);
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated, fetchNotifications]);
+
   // Connect STOMP socket when logged in
   useEffect(() => {
     if (isAuthenticated) {
       chatSocket.connect();
+      chatApi.getConversations().then((convs) => {
+        if (convs?.length) useChatStore.getState().setConversations(convs);
+      }).catch(console.error);
     } else {
       chatSocket.disconnect();
     }
@@ -104,7 +119,8 @@ export const PublicLayout: React.FC = () => {
         break;
       case 'MATCH_JOIN_REQUESTED':
         if (notif.data?.matchId) {
-          navigate(`/community/matches/${notif.data.matchId}`);
+          const query = notif.data.userId ? `?userId=${notif.data.userId}` : '';
+          navigate(`/community/matches/${notif.data.matchId}${query}`);
         } else {
           navigate('/user/challenges');
         }
