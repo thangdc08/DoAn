@@ -105,6 +105,8 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.GET, "/venues/**").permitAll()
                         .pathMatchers(HttpMethod.GET, "/bookings/**").permitAll()
                         .pathMatchers(HttpMethod.GET, "/communities/**").permitAll()
+                        .pathMatchers(HttpMethod.GET, "/payments/api/payments/vnpay/callback").permitAll()
+                        .pathMatchers(HttpMethod.GET, "/payments/api/payments/vnpay/ipn").permitAll()
                         // Admin only
                         .pathMatchers("/identity/admin/**").hasAuthority("SCOPE_ADMIN")
                         // Tất cả còn lại phải authenticated

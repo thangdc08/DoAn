@@ -28,7 +28,10 @@
       "Bash(netstat -ano)",
       "mcp__browserdocs__browser_open",
       "Bash(npx playwright *)",
-      "Bash(ls \"C:/Users/lonovo/AppData/Local/ms-playwright/\" 2>/dev/null)"
+      "Bash(ls \"C:/Users/lonovo/AppData/Local/ms-playwright/\" 2>/dev/null)",
+      "Bash(node -e \"console.log\\('node available'\\)\")",
+      "Bash(where mvn *)",
+      "Bash(./mvnw compile *)"
     ]
   }
 }

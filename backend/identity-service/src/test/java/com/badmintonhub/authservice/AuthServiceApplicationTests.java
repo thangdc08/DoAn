@@ -2,8 +2,9 @@ package com.badmintonhub.authservice;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import com.badminton.identityservice.IdentityServiceApplication;
 
-@SpringBootTest
+@SpringBootTest(classes = IdentityServiceApplication.class)
 class AuthServiceApplicationTests {
 
 	@Test

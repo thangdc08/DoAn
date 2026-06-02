@@ -7,12 +7,17 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
 @Repository
 public interface MatchPostRepository extends JpaRepository<MatchPost, UUID>, JpaSpecificationExecutor<MatchPost> {
     List<MatchPost> findByHostIdOrderByCreatedAtDesc(UUID hostId);
+    
+    List<MatchPost> findByStatusAndStartTimeBefore(String status, LocalDateTime time);
+    
+    List<MatchPost> findByStatusInAndEndTimeBefore(List<String> statuses, LocalDateTime time);
     
     List<MatchPost> findByStatusOrderByStartTimeAsc(String status);
     

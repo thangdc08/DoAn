@@ -1,7 +1,9 @@
 package com.badminton.notificationservice.consumer;
 
+import com.badminton.notificationservice.client.IdentityServiceClient;
 import com.badminton.notificationservice.document.Notification;
 import com.badminton.notificationservice.repository.NotificationRepository;
+import com.badminton.notificationservice.service.AsyncEmailService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -17,6 +19,8 @@ import java.util.UUID;
 public class PaymentEventConsumer {
 
     private final NotificationRepository notificationRepository;
+    private final IdentityServiceClient identityServiceClient;
+    private final AsyncEmailService emailService;
 
     @KafkaListener(topics = "booking-events", groupId = "notification-group")
     public void handleBookingEvent(Map<String, Object> event) {
@@ -48,6 +52,13 @@ public class PaymentEventConsumer {
                     .data(Map.of("bookingId", bookingId, "venueName", venueName))
                     .createdAt(LocalDateTime.now())
                     .build());
+
+            String email = identityServiceClient.getUserEmail(userId);
+            if (email != null) {
+                emailService.sendBookingPaidEmail(email, venueName, bookingId.toString());
+            } else {
+                log.warn("Cannot send email notification: user email not found for userId: {}", userId);
+            }
         }
     }
 }

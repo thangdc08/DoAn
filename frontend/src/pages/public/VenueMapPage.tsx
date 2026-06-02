@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Card, Input, Button, Space, Typography, Select, Slider, Tag, Drawer, Spin, Empty, message, Segmented } from 'antd';
+import { Card, Input, Button, Space, Typography, Select, Slider, Tag, Drawer, Spin, Empty, message, Segmented, Modal } from 'antd';
 import {
   SearchOutlined,
   FilterOutlined,
@@ -9,7 +9,8 @@ import {
   StarFilled,
   CompassOutlined,
   PlayCircleOutlined,
-  CloseOutlined
+  CloseOutlined,
+  InfoCircleOutlined
 } from '@ant-design/icons';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, Polyline, useMap, Circle } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
@@ -30,29 +31,45 @@ delete ((L.Icon as any).Default.prototype as any)._getIconUrl;
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-// Custom venue marker icon
+// Custom venue marker icon displaying rating score inside
 const createVenueIcon = (rating: number = 0, isSelected: boolean = false): L.DivIcon => {
   const color = rating >= 4.5 ? '#10b981' : rating >= 4.0 ? '#3b82f6' : rating >= 3.5 ? '#f59e0b' : '#ef4444';
+  const scale = isSelected ? 'scale(1.15)' : 'scale(1)';
+  const zIndex = isSelected ? 9999 : 1000;
 
   return L.divIcon({
     className: 'custom-venue-marker',
     html: `
       <div style="
-        background: ${isSelected ? BRAND.primary : color};
-        width: 40px;
-        height: 40px;
-        border-radius: 50% 50% 50% 0;
-        transform: rotate(-45deg);
-        border: 3px solid white;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        transition: all 0.3s ease;
+        position: relative;
+        transform: ${scale};
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        z-index: ${zIndex};
       ">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="white" style="transform: rotate(45deg)">
-          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/>
-        </svg>
+        <div style="
+          background: ${isSelected ? BRAND.primary : color};
+          width: 38px;
+          height: 38px;
+          border-radius: 50% 50% 50% 0;
+          transform: rotate(-45deg);
+          border: 2.5px solid white;
+          box-shadow: 0 4px 10px rgba(0,0,0,0.18), 0 0 0 3px ${isSelected ? 'rgba(0, 168, 84, 0.25)' : 'rgba(0,0,0,0.05)'};
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        ">
+          <div style="
+            transform: rotate(45deg);
+            color: white;
+            font-size: 11px;
+            font-weight: 800;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          ">
+            ${rating > 0 ? rating.toFixed(1) : '🏸'}
+          </div>
+        </div>
       </div>
     `,
     iconSize: [40, 40],
@@ -68,7 +85,7 @@ const MOCK_CITIES = [
   { value: 'Cần Thơ', label: 'Cần Thơ' },
 ];
 
-const DEFAULT_CENTER: [number, number] = [10.8231, 106.6297]; // TP.HCM
+const DEFAULT_CENTER: [number, number] = [10.762622, 106.660172]; // TP.HCM center
 
 const LCircle = Circle as any;
 const LPolyline = Polyline as any;
@@ -146,7 +163,7 @@ function MapController({
   // Auto-focus on start when userLocation is first retrieved
   useEffect(() => {
     if (userLocation && !hasCenteredOnStart) {
-      map.setView(userLocation, 13); // Zoom 13 is excellent for a 10km radius circle
+      map.setView(userLocation, 13);
       setHasCenteredOnStart(true);
     }
   }, [userLocation, map, hasCenteredOnStart]);
@@ -192,6 +209,18 @@ export default function VenueMapPage() {
   const [userLocation, setUserLocation] = useState<[number, number] | null>(null);
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [recenterCount, setRecenterCount] = useState(0);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  // Position Permission Modal state
+  const [locationModalOpen, setLocationModalOpen] = useState(false);
+  const [locationStatus, setLocationStatus] = useState<'prompt' | 'granted' | 'denied' | 'unsupported'>('prompt');
+
+  // Handle screen resizing
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Fetch venues từ API
   const { data: venues = [], isLoading, error } = useQuery({
@@ -206,19 +235,60 @@ export default function VenueMapPage() {
     staleTime: 5 * 60 * 1000,
   });
 
-  // Get user geolocation on mount
+  // Handle Geolocation Authorization
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setUserLocation([position.coords.latitude, position.coords.longitude]);
-        },
-        (error) => {
-          console.log('Geolocation not available:', error.message);
+    if (!navigator.geolocation) {
+      setLocationStatus('unsupported');
+      return;
+    }
+
+    if (navigator.permissions && navigator.permissions.query) {
+      navigator.permissions.query({ name: 'geolocation' as PermissionName }).then((permissionStatus) => {
+        setLocationStatus(permissionStatus.state);
+        if (permissionStatus.state === 'prompt') {
+          setLocationModalOpen(true);
+        } else if (permissionStatus.state === 'granted') {
+          requestActualLocation(true);
         }
-      );
+
+        permissionStatus.onchange = () => {
+          setLocationStatus(permissionStatus.state);
+          if (permissionStatus.state === 'granted') {
+            requestActualLocation(false);
+          }
+        };
+      }).catch(() => {
+        // Fallback
+        requestActualLocation(true);
+      });
+    } else {
+      requestActualLocation(true);
     }
   }, []);
+
+  const requestActualLocation = (silent = false) => {
+    if (!navigator.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setUserLocation([position.coords.latitude, position.coords.longitude]);
+        setLocationStatus('granted');
+        if (!silent) {
+          message.success('Định vị thành công! 📍');
+        }
+      },
+      (err) => {
+        console.warn('Geolocation error:', err);
+        if (err.code === err.PERMISSION_DENIED) {
+          setLocationStatus('denied');
+          if (!silent) {
+            message.warning('Truy cập vị trí bị từ chối. Bạn có thể cấp lại quyền ở góc thanh địa chỉ trình duyệt.');
+          }
+        }
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    );
+  };
 
   // Handle API errors
   useEffect(() => {
@@ -248,12 +318,12 @@ export default function VenueMapPage() {
         const distance = calculateDistance(userLocation[0], userLocation[1], venue.latitude, venue.longitude);
         return { ...venue, distance };
       })
-      .sort((a, b) => (a.distance || 0) - (b.distance || 0));
+      .sort((a, b) => (a.distance || 9999) - (b.distance || 9999));
   }, [filteredVenues, userLocation]);
 
   const handleVenueSelect = (venue: Venue) => {
     setSelectedVenue(venue);
-    if (window.innerWidth < 768) setMobileDrawerOpen(false);
+    if (isMobile) setMobileDrawerOpen(false);
   };
 
   const handleBookNow = (venueId: string) => {
@@ -272,117 +342,258 @@ export default function VenueMapPage() {
     return DEFAULT_CENTER;
   }, [selectedVenue, userLocation]);
 
-  // Render venue card
-  const renderVenueCard = (venue: Venue & { distance?: number | null }) => (
-    <Card
-      key={venue.id}
-      hoverable
-      bodyStyle={{ padding: 16 }}
-      style={{
-        borderRadius: 16,
-        border: selectedVenue?.id === venue.id ? `2px solid ${BRAND.primary}` : '1px solid #f1f5f9',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-        marginBottom: 12,
-        cursor: 'pointer'
-      }}
-      onClick={() => handleVenueSelect(venue)}
-    >
-      <div style={{ display: 'flex', gap: 12 }}>
-        <div style={{ width: 80, height: 80, borderRadius: 10, overflow: 'hidden', flexShrink: 0 }}>
-          <img
-            src={venue.images?.[0]?.imageUrl || 'https://via.placeholder.com/80x80?text=No+image'}
-            alt={venue.name}
-            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          />
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <Title level={5} style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {venue.name}
-          </Title>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
-            <StarFilled style={{ color: '#f59e0b', fontSize: 12 }} />
-            <Text strong style={{ fontSize: 12 }}>{venue.ratingAvg?.toFixed(1) || '0.0'}</Text>
-            <Text type="secondary" style={{ fontSize: 11 }}>({venue.ratingCount || 0})</Text>
-            {venue.distance && (
-              <Tag color="blue" style={{ fontSize: 10, marginLeft: 4 }}>
-                {venue.distance.toFixed(1)} km
-              </Tag>
-            )}
+  // Render venue card with beautiful glassmorphism/shadow effects
+  const renderVenueCard = (venue: Venue & { distance?: number | null }) => {
+    const isSelected = selectedVenue?.id === venue.id;
+    return (
+      <Card
+        key={venue.id}
+        hoverable
+        bodyStyle={{ padding: 14 }}
+        style={{
+          borderRadius: 16,
+          border: isSelected ? `2.5px solid ${BRAND.primary}` : '1px solid #f1f5f9',
+          boxShadow: isSelected 
+            ? '0 8px 24px rgba(0, 168, 84, 0.12)' 
+            : '0 2px 8px rgba(0,0,0,0.03)',
+          marginBottom: 12,
+          cursor: 'pointer',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          background: isSelected ? '#f6fdf9' : '#fff',
+        }}
+        onClick={() => handleVenueSelect(venue)}
+      >
+        <div style={{ display: 'flex', gap: 12 }}>
+          <div style={{ 
+            width: 84, 
+            height: 84, 
+            borderRadius: 12, 
+            overflow: 'hidden', 
+            flexShrink: 0,
+            boxShadow: '0 2px 6px rgba(0,0,0,0.06)'
+          }}>
+            <img
+              src={venue.images?.[0]?.imageUrl || 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=120&auto=format&fit=crop&q=60'}
+              alt={venue.name}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s' }}
+              className="hover:scale-110"
+            />
           </div>
-          <Space direction="vertical" size={2} style={{ width: '100%' }}>
-            <div style={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
-              <EnvironmentOutlined style={{ color: '#94a3b8', fontSize: 11, marginTop: 2, flexShrink: 0 }} />
-              <Text type="secondary" style={{ fontSize: 11, lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                {venue.address}
-              </Text>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <Title level={5} style={{ 
+              margin: '0 0 4px', 
+              fontSize: 13.5, 
+              fontWeight: 700, 
+              whiteSpace: 'nowrap', 
+              overflow: 'hidden', 
+              textOverflow: 'ellipsis',
+              color: '#0f172a'
+            }}>
+              {venue.name}
+            </Title>
+            
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 6 }}>
+              <StarFilled style={{ color: '#f59e0b', fontSize: 11 }} />
+              <Text strong style={{ fontSize: 12, color: '#1e293b' }}>{venue.ratingAvg?.toFixed(1) || '0.0'}</Text>
+              <Text type="secondary" style={{ fontSize: 11 }}>({venue.ratingCount || 0})</Text>
+              {venue.distance !== null && venue.distance !== undefined && (
+                <Tag color="success" style={{ 
+                  fontSize: 10, 
+                  marginLeft: 6, 
+                  border: 'none', 
+                  borderRadius: 6,
+                  fontWeight: 600,
+                  background: '#e2fbe8', 
+                  color: '#10b981'
+                }}>
+                  📍 {venue.distance.toFixed(1)} km
+                </Tag>
+              )}
             </div>
-            {venue.priceMin && (
-              <div style={{ display: 'flex', gap: 4 }}>
-                <Text strong style={{ color: BRAND.primary, fontSize: 12 }}>
-                  {venue.priceMin.toLocaleString()}đ - {venue.priceMax?.toLocaleString() || '...'}đ
+
+            <Space direction="vertical" size={2} style={{ width: '100%' }}>
+              <div style={{ display: 'flex', gap: 4, alignItems: 'flex-start' }}>
+                <EnvironmentOutlined style={{ color: '#94a3b8', fontSize: 11, marginTop: 2, flexShrink: 0 }} />
+                <Text type="secondary" style={{ 
+                  fontSize: 11, 
+                  lineHeight: 1.3, 
+                  display: '-webkit-box', 
+                  WebkitLineClamp: 1, 
+                  WebkitBoxOrient: 'vertical', 
+                  overflow: 'hidden',
+                  color: '#64748b'
+                }}>
+                  {venue.address}
                 </Text>
               </div>
-            )}
-          </Space>
+              {venue.priceMin && (
+                <div style={{ display: 'flex', gap: 4, marginTop: 2 }}>
+                  <Text strong style={{ color: BRAND.primary, fontSize: 12 }}>
+                    {venue.priceMin.toLocaleString('vi-VN')}đ - {venue.priceMax?.toLocaleString('vi-VN') || '...'}đ
+                  </Text>
+                  <Text type="secondary" style={{ fontSize: 10, alignSelf: 'flex-end' }}>/ giờ</Text>
+                </div>
+              )}
+            </Space>
+          </div>
         </div>
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 10, borderTop: '1px solid #f1f5f9' }}>
-        <Button size="small" type="link" style={{ padding: 0, fontWeight: 600 }} onClick={(e) => { e.stopPropagation(); handleViewDetails(venue.id); }}>
-          Chi tiết
-        </Button>
-        <Button size="small" type="primary" style={{ borderRadius: 8 }} onClick={(e) => { e.stopPropagation(); handleBookNow(venue.id); }}>
-          Đặt sân
-        </Button>
-      </div>
-    </Card>
-  );
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 8, borderTop: '1px solid #f1f5f9' }}>
+          <Button 
+            size="small" 
+            type="link" 
+            style={{ padding: 0, fontWeight: 700, color: '#64748b' }} 
+            onClick={(e) => { e.stopPropagation(); handleViewDetails(venue.id); }}
+          >
+            Chi tiết
+          </Button>
+          <Button 
+            size="small" 
+            type="primary" 
+            style={{ 
+              borderRadius: 8, 
+              background: BRAND.primary, 
+              border: 'none',
+              fontWeight: 600,
+              padding: '0 12px'
+            }} 
+            onClick={(e) => { e.stopPropagation(); handleBookNow(venue.id); }}
+          >
+            Đặt sân
+          </Button>
+        </div>
+      </Card>
+    );
+  };
 
   return (
-    <div style={{ height: 'calc(100vh - 72px)', display: 'flex', background: '#fff' }}>
+    <div style={{ height: 'calc(100vh - 72px)', display: 'flex', background: '#fff', overflow: 'hidden' }}>
+      
+      {/* Geolocation Explanation Modal */}
+      <Modal
+        open={locationModalOpen}
+        onCancel={() => setLocationModalOpen(false)}
+        footer={null}
+        width={380}
+        centered
+        styles={{
+          body: {
+            padding: '28px 24px',
+            textAlign: 'center'
+          }
+        }}
+      >
+        <div style={{ 
+          width: 56, 
+          height: 56, 
+          borderRadius: '50%', 
+          backgroundColor: '#e6f4ea', 
+          color: BRAND.primary,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          margin: '0 auto 16px',
+          fontSize: 24,
+          boxShadow: '0 4px 10px rgba(0, 168, 84, 0.15)'
+        }}>
+          <CompassOutlined />
+        </div>
+        <Title level={4} style={{ margin: '0 0 8px', fontWeight: 800, color: '#0f172a' }}>Tìm sân gần bạn?</Title>
+        <Text type="secondary" style={{ display: 'block', marginBottom: 24, fontSize: 13, lineHeight: 1.5, color: '#475569' }}>
+          Hãy cho phép định vị giúp bạn nhanh chóng tìm thấy các sân cầu lông xung quanh trong bán kính 10km và ước tính khoảng cách chính xác nhất.
+        </Text>
+        <Space direction="vertical" style={{ width: '100%' }} size={8}>
+          <Button 
+            type="primary" 
+            block 
+            size="large" 
+            style={{ 
+              background: BRAND.primary, 
+              border: 'none', 
+              borderRadius: 12, 
+              fontWeight: 600,
+              boxShadow: `0 4px 12px rgba(0, 168, 84, 0.2)`
+            }}
+            onClick={() => {
+              setLocationModalOpen(false);
+              requestActualLocation(false);
+            }}
+          >
+            Đồng ý chia sẻ vị trí
+          </Button>
+          <Button 
+            block 
+            size="large" 
+            style={{ borderRadius: 12, fontWeight: 600 }}
+            onClick={() => setLocationModalOpen(false)}
+          >
+            Để sau, nhập thủ công
+          </Button>
+        </Space>
+      </Modal>
+
       {/* Desktop Sidebar */}
-      {window.innerWidth >= 768 && (
-        <div style={{ width: 420, height: '100%', borderRight: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', zIndex: 10, background: '#fff' }}>
-          <div style={{ padding: '20px', borderBottom: '1px solid #f1f5f9' }}>
-            <Space direction="vertical" size={12} style={{ width: '100%' }}>
-              <Title level={4} style={{ margin: 0 }}>Tìm sân</Title>
-              <Input prefix={<SearchOutlined style={{ color: '#94a3b8' }} />} placeholder="Tên sân, địa chỉ..." size="large" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} style={{ borderRadius: 12 }} />
+      {!isMobile && (
+        <div style={{ width: 400, height: '100%', borderRight: '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', zIndex: 10, background: '#fff' }}>
+          <div style={{ padding: '24px 20px', borderBottom: '1px solid #f1f5f9', background: '#fafafa' }}>
+            <Space direction="vertical" size={16} style={{ width: '100%' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Title level={4} style={{ margin: 0, fontWeight: 800, color: '#0f172a' }}>Tìm kiếm cơ sở</Title>
+                <Tag color="blue" style={{ borderRadius: 6, fontWeight: 600, border: 'none', padding: '2px 8px' }}>
+                  {venuesWithDistance.length} Sân bóng
+                </Tag>
+              </div>
+              <Input 
+                prefix={<SearchOutlined style={{ color: '#94a3b8' }} />} 
+                placeholder="Nhập tên sân, địa chỉ tìm kiếm..." 
+                size="large" 
+                value={searchQuery} 
+                onChange={e => setSearchQuery(e.target.value)} 
+                style={{ borderRadius: 12, border: '1px solid #cbd5e1', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }} 
+                allowClear
+              />
               <Button 
                 block 
                 type="primary" 
                 ghost 
-                icon={<CompassOutlined />} 
-                onClick={() => { 
-                  if (navigator.geolocation) { 
-                    navigator.geolocation.getCurrentPosition(
-                      (pos) => {
-                        setUserLocation([pos.coords.latitude, pos.coords.longitude]);
-                        setRecenterCount(prev => prev + 1);
-                      }, 
-                      (err) => message.error('Không thể lấy vị trí: ' + err.message)
-                    ); 
+                icon={<AimOutlined />} 
+                onClick={() => {
+                  if (locationStatus === 'denied') {
+                    message.warning('Truy cập vị trí đang bị chặn. Vui lòng cho phép truy cập vị trí trên trình duyệt.');
                   } else {
-                    message.error('Trình duyệt không hỗ trợ geolocation');
+                    requestActualLocation(false);
                   }
                 }} 
-                style={{ borderRadius: 12 }}
+                style={{ 
+                  borderRadius: 12, 
+                  fontWeight: 600, 
+                  height: 40,
+                  border: `1.5px solid ${BRAND.primary}`,
+                  color: BRAND.primary
+                }}
               >
                 Dùng vị trí hiện tại
               </Button>
             </Space>
           </div>
-          <div style={{ flex: 1, overflowY: 'auto', padding: '16px' }}>
-            <div style={{ marginBottom: 12, padding: '0 4px' }}><Text type="secondary" strong style={{ fontSize: 12 }}>{venuesWithDistance.length} sân</Text></div>
-            {venuesWithDistance.length === 0 && !isLoading ? <Empty description="Không tìm thấy sân" /> : venuesWithDistance.map(renderVenueCard)}
+          
+          <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px' }} className="custom-scrollbar">
+            {venuesWithDistance.length === 0 && !isLoading ? (
+              <Empty description="Không có sân nào phù hợp với bộ lọc của bạn." style={{ marginTop: 40 }} />
+            ) : (
+              venuesWithDistance.map(renderVenueCard)
+            )}
           </div>
         </div>
       )}
 
-      {/* Map */}
-      <div style={{ flex: 1, position: 'relative' }}>
+      {/* Map Content */}
+      <div style={{ flex: 1, position: 'relative', height: '100%' }}>
         <MapContainer center={center} zoom={13} style={{ height: '100%', width: '100%' }} zoomControl={false}>
           <TileLayer attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>' url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
           <LocationMarker position={userLocation} setUserLocation={setUserLocation} />
           <MapController userLocation={userLocation} selectedVenue={selectedVenue} recenterCount={recenterCount} />
+          
+          {/* 10km Radius circle of search */}
           {userLocation && (
             <LCircle
               center={userLocation}
@@ -390,90 +601,166 @@ export default function VenueMapPage() {
               pathOptions={{
                 color: '#2563eb',
                 fillColor: '#2563eb',
-                fillOpacity: 0.04,
+                fillOpacity: 0.03,
                 weight: 1.5,
                 dashArray: '6, 12'
               }}
             />
           )}
+          
+          {/* Polyline path between user and selected venue */}
           {userLocation && selectedVenue?.latitude && selectedVenue?.longitude && (
             <LPolyline
               positions={[userLocation, [selectedVenue.latitude, selectedVenue.longitude]]}
               pathOptions={{
                 color: BRAND.primary,
-                weight: 3,
-                dashArray: '5, 10',
-                opacity: 0.6
+                weight: 3.5,
+                dashArray: '6, 10',
+                opacity: 0.75
               }}
             />
           )}
+          
+          {/* Venue Markers */}
           {venuesWithDistance.map(venue => venue.latitude && venue.longitude && (
-            <Marker key={venue.id} position={[venue.latitude, venue.longitude]} icon={createVenueIcon(venue.ratingAvg || 0, selectedVenue?.id === venue.id)} eventHandlers={{ click: () => handleVenueSelect(venue) }}>
+            <Marker 
+              key={venue.id} 
+              position={[venue.latitude, venue.longitude]} 
+              icon={createVenueIcon(venue.ratingAvg || 0, selectedVenue?.id === venue.id)} 
+              eventHandlers={{ click: () => handleVenueSelect(venue) }}
+            >
               <Popup>
-                <div style={{ minWidth: 240, maxWidth: 280 }}>
-                  <div style={{ marginBottom: 8 }}>
-                    <img src={venue.images?.[0]?.imageUrl || 'https://via.placeholder.com/280x120'} alt={venue.name} style={{ width: '100%', height: 100, objectFit: 'cover', borderRadius: 6 }} />
+                <div style={{ minWidth: 260, maxWidth: 300, padding: '2px' }}>
+                  <div style={{ 
+                    marginBottom: 10, 
+                    borderRadius: 8, 
+                    overflow: 'hidden', 
+                    height: 110,
+                    boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
+                  }}>
+                    <img 
+                      src={venue.images?.[0]?.imageUrl || 'https://images.unsplash.com/photo-1626224583764-f87db24ac4ea?w=280&auto=format&fit=crop&q=60'} 
+                      alt={venue.name} 
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                    />
                   </div>
-                  <Title level={5} style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 700 }}>{venue.name}</Title>
-                  <Space direction="vertical" size={2} style={{ width: '100%', marginBottom: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}><StarFilled style={{ color: '#f59e0b', fontSize: 12 }} /><Text strong style={{ fontSize: 12 }}>{venue.ratingAvg?.toFixed(1) || '0.0'}</Text><Text type="secondary" style={{ fontSize: 11 }}>({venue.ratingCount || 0} đánh giá)</Text></div>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}><EnvironmentOutlined style={{ color: '#94a3b8', fontSize: 11, marginTop: 2 }} /><Text style={{ fontSize: 11, lineHeight: 1.4 }}>{venue.address}</Text></div>
-                    {venue.priceMin && <Text strong style={{ color: BRAND.primary, fontSize: 13 }}>{venue.priceMin.toLocaleString()}đ - {venue.priceMax?.toLocaleString() || '...'}đ / giờ</Text>}
+                  <Title level={5} style={{ margin: '0 0 6px', fontSize: 14, fontWeight: 700, color: '#0f172a' }}>{venue.name}</Title>
+                  <Space direction="vertical" size={4} style={{ width: '100%', marginBottom: 12 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                      <StarFilled style={{ color: '#f59e0b', fontSize: 12 }} />
+                      <Text strong style={{ fontSize: 12 }}>{venue.ratingAvg?.toFixed(1) || '0.0'}</Text>
+                      <Text type="secondary" style={{ fontSize: 11 }}>({venue.ratingCount || 0} đánh giá)</Text>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 4 }}>
+                      <EnvironmentOutlined style={{ color: '#94a3b8', fontSize: 11, marginTop: 2, flexShrink: 0 }} />
+                      <Text style={{ fontSize: 11, lineHeight: 1.4, color: '#475569' }}>{venue.address}</Text>
+                    </div>
+                    {venue.priceMin && (
+                      <Text strong style={{ color: BRAND.primary, fontSize: 13 }}>
+                        {venue.priceMin.toLocaleString('vi-VN')}đ - {venue.priceMax?.toLocaleString('vi-VN') || '...'}đ / giờ
+                      </Text>
+                    )}
                   </Space>
-                  <Space style={{ marginTop: 8 }}>
-                    <Button size="small" type="primary" icon={<PlayCircleOutlined />} style={{ flex: 1 }} onClick={() => handleBookNow(venue.id)}>Đặt sân</Button>
-                    <Button size="small" onClick={() => handleViewDetails(venue.id)}>Chi tiết</Button>
-                  </Space>
+                  <div style={{ display: 'flex', gap: 8, borderTop: '1px solid #f1f5f9', paddingTop: 8 }}>
+                    <Button 
+                      size="small" 
+                      type="primary" 
+                      icon={<PlayCircleOutlined />} 
+                      style={{ flex: 1, background: BRAND.primary, border: 'none', borderRadius: 6, fontWeight: 600 }} 
+                      onClick={() => handleBookNow(venue.id)}
+                    >
+                      Đặt sân
+                    </Button>
+                    <Button 
+                      size="small" 
+                      style={{ borderRadius: 6 }} 
+                      onClick={() => handleViewDetails(venue.id)}
+                    >
+                      Chi tiết
+                    </Button>
+                  </div>
                 </div>
               </Popup>
             </Marker>
           ))}
         </MapContainer>
 
-        {/* Controls */}
-        <div style={{ position: 'absolute', top: 16, left: 16, zIndex: 1000, display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {/* Floating Controls Overlay */}
+        <div style={{ position: 'absolute', top: 20, left: 20, zIndex: 1000, display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Button 
             icon={<AimOutlined />} 
             size="large" 
-            style={{ borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} 
+            style={{ 
+              borderRadius: 12, 
+              boxShadow: '0 4px 12px rgba(15,23,42,0.1)', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              border: 'none',
+              background: '#fff'
+            }} 
             onClick={() => { 
               if (userLocation) {
                 setSelectedVenue(null);
                 setRecenterCount(prev => prev + 1);
-              } else if (navigator.geolocation) { 
-                navigator.geolocation.getCurrentPosition(
-                  (pos) => {
-                    setUserLocation([pos.coords.latitude, pos.coords.longitude]);
-                    setRecenterCount(prev => prev + 1);
-                  },
-                  (err) => message.error('Không thể lấy vị trí: ' + err.message)
-                ); 
+              } else { 
+                requestActualLocation(false);
               } 
             }} 
             title="Vị trí của tôi" 
           />
-          <Button icon={<HomeOutlined />} size="large" style={{ borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} onClick={() => { setUserLocation(null); setSelectedVenue(null); }} title="Về mặc định" />
+          <Button 
+            icon={<HomeOutlined />} 
+            size="large" 
+            style={{ 
+              borderRadius: 12, 
+              boxShadow: '0 4px 12px rgba(15,23,42,0.1)', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              border: 'none',
+              background: '#fff'
+            }} 
+            onClick={() => { 
+              setUserLocation(null); 
+              setSelectedVenue(null); 
+            }} 
+            title="Về mặc định" 
+          />
         </div>
 
-        <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 1000 }}>
-          <Button icon={<FilterOutlined />} size="large" style={{ borderRadius: 12, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} onClick={() => setShowFilters(!showFilters)} type={showFilters ? 'primary' : 'default'} />
+        <div style={{ position: 'absolute', top: 20, right: 20, zIndex: 1000 }}>
+          <Button 
+            icon={<FilterOutlined />} 
+            size="large" 
+            style={{ 
+              borderRadius: 12, 
+              boxShadow: '0 4px 12px rgba(15,23,42,0.1)', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              border: 'none'
+            }} 
+            onClick={() => setShowFilters(!showFilters)} 
+            type={showFilters ? 'primary' : 'default'} 
+          />
         </div>
 
-        {/* Filter Panel */}
+        {/* Beautiful Filter Panel */}
         {showFilters && (
           <div style={{ 
             position: 'absolute', 
             top: 80, 
-            right: 16, 
-            width: 'calc(100vw - 32px)', 
+            right: 20, 
+            width: 'calc(100vw - 40px)', 
             maxWidth: 320, 
-            maxHeight: 'calc(100vh - 140px)', 
+            maxHeight: 'calc(100vh - 160px)', 
             overflowY: 'auto', 
             background: 'rgba(255, 255, 255, 0.98)',
-            backdropFilter: 'blur(12px)',
+            backdropFilter: 'blur(16px)',
             borderRadius: 20, 
             padding: 20, 
-            boxShadow: '0 20px 40px rgba(15, 23, 42, 0.15)', 
+            boxShadow: '0 20px 40px rgba(15, 23, 42, 0.12)', 
             border: '1px solid rgba(226, 232, 240, 0.8)',
             zIndex: 1000,
             transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)'
@@ -481,7 +768,7 @@ export default function VenueMapPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <FilterOutlined style={{ color: BRAND.primary, fontSize: 16 }} />
-                <Title level={5} style={{ margin: 0, fontWeight: 700, color: '#0f172a' }}>Bộ lọc tìm kiếm</Title>
+                <Title level={5} style={{ margin: 0, fontWeight: 800, color: '#0f172a' }}>Bộ lọc tìm kiếm</Title>
               </div>
               <Button 
                 type="text" 
@@ -492,6 +779,7 @@ export default function VenueMapPage() {
                 style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#f8fafc' }}
               />
             </div>
+            
             <Space direction="vertical" size={20} style={{ width: '100%' }}>
               <div>
                 <Text strong style={{ fontSize: 13, color: '#1e293b', display: 'block', marginBottom: 8 }}>Thành phố</Text>
@@ -573,7 +861,7 @@ export default function VenueMapPage() {
               </div>
             </Space>
           </div>
-        ) /* end Filter Panel */}
+        )}
 
         {isLoading && (
           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(255,255,255,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 999 }}>
@@ -588,24 +876,51 @@ export default function VenueMapPage() {
         placement="left"
         onClose={() => setMobileDrawerOpen(false)}
         open={mobileDrawerOpen}
-        width={400}
-        styles={{ body: { padding: 16 } }}
+        width="85%"
+        styles={{ body: { padding: '16px 12px' } }}
         extra={<Button icon={<FilterOutlined />} type={showFilters ? 'primary' : 'default'} onClick={() => setShowFilters(!showFilters)} />}
       >
         <div style={{ marginBottom: 16 }}>
-          <Input placeholder="Tìm kiếm sân..." prefix={<SearchOutlined />} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} allowClear />
+          <Input placeholder="Tìm kiếm sân..." prefix={<SearchOutlined />} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} allowClear style={{ borderRadius: 10 }} />
         </div>
         <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
-          <Select style={{ flex: 1 }} placeholder="Thành phố" value={cityFilter || undefined} onChange={setCityFilter} allowClear size="small">
+          <Select style={{ flex: 1 }} placeholder="Thành phố" value={cityFilter || undefined} onChange={setCityFilter} allowClear dropdownStyle={{ borderRadius: 10 }}>
             {MOCK_CITIES.map(city => <Select.Option key={city.value} value={city.value}>{city.label}</Select.Option>)}
           </Select>
         </div>
-        {venuesWithDistance.length === 0 ? <Empty description="Không tìm thấy sân nào" /> : <div style={{ maxHeight: 'calc(100vh - 200px)', overflowY: 'auto' }}>{venuesWithDistance.map(renderVenueCard)}</div>}
+        {venuesWithDistance.length === 0 ? (
+          <Empty description="Không tìm thấy sân nào" />
+        ) : (
+          <div style={{ height: 'calc(100vh - 220px)', overflowY: 'auto' }}>
+            {venuesWithDistance.map(renderVenueCard)}
+          </div>
+        )}
       </Drawer>
 
-      {/* Mobile Toggle Button */}
-      {window.innerWidth < 768 && (
-        <Button icon={<EnvironmentOutlined />} size="large" style={{ position: 'absolute', bottom: 24, right: 24, borderRadius: '50%', width: 60, height: 60, boxShadow: '0 4px 16px rgba(0,0,0,0.2)', zIndex: 1000 }} onClick={() => setMobileDrawerOpen(true)} type="primary" />
+      {/* Mobile Toggle Trigger Button */}
+      {isMobile && (
+        <Button 
+          icon={<EnvironmentOutlined />} 
+          size="large" 
+          style={{ 
+            position: 'absolute', 
+            bottom: 24, 
+            right: 24, 
+            borderRadius: '50%', 
+            width: 56, 
+            height: 56, 
+            boxShadow: '0 4px 16px rgba(0,0,0,0.2)', 
+            zIndex: 1000,
+            background: BRAND.primary,
+            color: '#fff',
+            border: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }} 
+          onClick={() => setMobileDrawerOpen(true)} 
+          type="primary" 
+        />
       )}
     </div>
   );

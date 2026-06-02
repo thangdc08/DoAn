@@ -18,6 +18,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageImpl;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -39,6 +41,10 @@ public class BookingService {
   private final VenueClient venueClient;
   private final BookingMapper bookingMapper;
   private final BookingEventPublisher bookingEventPublisher;
+  private final StringRedisTemplate redisTemplate;
+
+  @Value("${app.booking.cancel-before-hours:24}")
+  private int cancelBeforeHours;
 
   public List<ActiveSlotLockResponse> findActiveLocks(UUID courtId, LocalDateTime startOfDay, LocalDateTime endOfDay) {
     List<ActiveSlotLockResponse> activeLocks = slotLockRepository
@@ -86,6 +92,12 @@ public class BookingService {
       throw new AppException(HttpStatus.BAD_REQUEST, "Thời gian slot không hợp lệ");
     }
 
+    String lockKey = String.format("lock:court:%s:slot:%s:%s", courtId, startTime.toString(), endTime.toString());
+    Boolean acquired = redisTemplate.opsForValue().setIfAbsent(lockKey, userId.toString(), java.time.Duration.ofSeconds(60));
+    if (acquired == null || !acquired) {
+      throw new AppException(HttpStatus.CONFLICT, "Khung giờ này đang được xử lý hoặc giữ chỗ bởi người dùng khác");
+    }
+
     validateSlotAvailability(courtId, startTime, endTime);
 
     SlotLock lock = SlotLock.builder()
@@ -127,6 +139,7 @@ public class BookingService {
 
   @Transactional
   public CreateBookingResponse createBookingForCheckout(UUID userId, List<UUID> lockIds) {
+    List<SlotLock> locks = slotLockRepository.findAllById(lockIds);
     BookingResponse booking = createBooking(userId, lockIds);
     List<BookingItem> items = bookingItemRepository.findByBookingId(booking.getId());
     VenueInternalResponse venue = venueClient.getVenueById(booking.getVenueId());
@@ -140,6 +153,8 @@ public class BookingService {
         .totalAmount(booking.getTotalAmount())
         .createdAt(booking.getCreatedAt())
         .build());
+
+    releaseSlotLocks(userId, locks);
 
     return CreateBookingResponse.builder()
         .bookingId(booking.getId())
@@ -251,6 +266,19 @@ public class BookingService {
     slotLockRepository.saveAll(locks);
   }
 
+  private void releaseSlotLocks(UUID userId, List<SlotLock> locks) {
+    if (locks == null) return;
+    for (SlotLock lock : locks) {
+      try {
+        String lockKey = String.format("lock:court:%s:slot:%s:%s", lock.getCourtId(), lock.getStartTime().toString(), lock.getEndTime().toString());
+        redisTemplate.delete(lockKey);
+        log.info("Released Redis lock key: {}", lockKey);
+      } catch (Exception e) {
+        log.error("Failed to release Redis lock for lock {}", lock.getId(), e);
+      }
+    }
+  }
+
   // Admin methods
   public org.springframework.data.domain.Page<BookingResponse> getAllBookingsForAdmin(
       String status, UUID venueId, UUID userId, org.springframework.data.domain.Pageable pageable) {
@@ -313,6 +341,54 @@ public class BookingService {
     // TODO: Publish BookingCancelledByAdmin event
 
     log.info("Booking {} cancelled by admin {}", bookingId, adminId);
+    return bookingMapper.toBookingResponse(savedBooking);
+  }
+
+  @Transactional
+  public BookingResponse cancelBookingByUser(UUID bookingId, UUID userId) {
+    log.info("User {} cancelling booking {}", userId, bookingId);
+
+    Booking booking = bookingRepository.findById(bookingId)
+        .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy đơn đặt sân"));
+
+    if (!booking.getUserId().equals(userId)) {
+      throw new AppException(HttpStatus.FORBIDDEN, "Bạn không có quyền hủy đơn đặt sân này");
+    }
+
+    if ("CANCELLED_BY_USER".equals(booking.getStatus()) || "CANCELLED_BY_ADMIN".equals(booking.getStatus())) {
+      throw new AppException(HttpStatus.CONFLICT, "Đơn đặt sân đã được hủy trước đó");
+    }
+
+    if ("EXPIRED".equals(booking.getStatus()) || "FAILED".equals(booking.getStatus())) {
+      throw new AppException(HttpStatus.CONFLICT, "Không thể hủy đơn đặt sân đã hết hạn hoặc thất bại");
+    }
+
+    // Retrieve booking items to check starting times
+    List<BookingItem> items = bookingItemRepository.findByBookingId(bookingId);
+    if (items.isEmpty()) {
+      throw new AppException(HttpStatus.BAD_REQUEST, "Đơn đặt sân không chứa thông tin khung giờ");
+    }
+
+    // Find the earliest starting time among all slots booked
+    LocalDateTime earliestStart = items.stream()
+        .map(BookingItem::getStartTime)
+        .min(LocalDateTime::compareTo)
+        .orElseThrow();
+
+    if (earliestStart.isBefore(LocalDateTime.now().plusHours(cancelBeforeHours))) {
+      throw new AppException(HttpStatus.BAD_REQUEST, 
+          String.format("Không thể hủy đặt sân trước giờ bắt đầu dưới %d giờ", cancelBeforeHours));
+    }
+
+    booking.setStatus("CANCELLED_BY_USER");
+
+    // Cancel all booking items to release court slots
+    items.forEach(item -> item.setStatus("CANCELLED"));
+    bookingItemRepository.saveAll(items);
+
+    Booking savedBooking = bookingRepository.save(booking);
+
+    log.info("Booking {} cancelled by user {}", bookingId, userId);
     return bookingMapper.toBookingResponse(savedBooking);
   }
 

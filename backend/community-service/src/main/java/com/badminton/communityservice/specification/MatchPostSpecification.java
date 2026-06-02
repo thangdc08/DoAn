@@ -55,11 +55,14 @@ public class MatchPostSpecification {
         return (root, query, cb) -> {
             if (userId == null) return null;
 
-            var participants = root.join("participants", JoinType.LEFT);
+            var subquery = query.subquery(UUID.class);
+            var subParticipant = subquery.from(com.badminton.communityservice.entity.Participant.class);
+            subquery.select(subParticipant.get("matchPostId"));
+            subquery.where(cb.equal(subParticipant.get("userId"), userId));
 
             return cb.or(
                 cb.equal(root.get("hostId"), userId),
-                cb.equal(participants.get("userId"), userId)
+                root.get("id").in(subquery)
             );
         };
     }

@@ -142,6 +142,17 @@ public class BookingController {
                 .orElseThrow(() -> new RuntimeException("Booking not found"));
     }
 
+    @PostMapping("/{id}/cancel")
+    @Operation(summary = "Cancel booking", description = "Allows user to cancel their booking")
+    public ApiResponse<BookingResponse> cancelBooking(
+            @PathVariable UUID id,
+            @RequestHeader("X-Auth-User-Id") UUID userId) {
+        log.info("API Request: User {} cancelling booking {}", userId, id);
+        return ApiResponse.<BookingResponse>builder()
+                .result(bookingService.cancelBookingByUser(id, userId))
+                .build();
+    }
+
     @GetMapping("/internal/has-paid")
     @Operation(summary = "Check if user has paid booking at venue", description = "Internal API for venue-service to verify rating eligibility")
     public boolean hasPaidBooking(

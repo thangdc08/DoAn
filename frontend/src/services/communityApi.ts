@@ -95,6 +95,14 @@ export const communityApi = {
     await apiClient.post(`/communities/api/community/match-posts/${matchId}/close`);
   },
 
+  leaveMatch: async (matchId: string): Promise<void> => {
+    await apiClient.post(`/communities/api/community/match-posts/${matchId}/leave`);
+  },
+
+  finishMatch: async (matchId: string): Promise<void> => {
+    await apiClient.post(`/communities/api/community/match-posts/${matchId}/finish`);
+  },
+
   // Comments
   getComments: async (matchId: string): Promise<Comment[]> => {
     const response = await apiClient.get(`/community/matches/${matchId}/comments`);

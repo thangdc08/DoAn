@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Tabs, Badge, Button, Empty, Typography, Tag, Avatar, Space, Modal, Rate, Input, message, Spin, Divider } from 'antd';
+import { Card, Tabs, Badge, Button, Empty, Typography, Tag, Avatar, Space, Modal, Rate, Input, message, Spin, Divider, Upload } from 'antd';
 import {
   CalendarOutlined,
   ClockCircleOutlined,
@@ -13,9 +13,11 @@ import {
   CheckCircleOutlined,
   CloseCircleOutlined,
   LoadingOutlined,
+  PlusOutlined,
+  UploadOutlined,
 } from '@ant-design/icons';
-import { useCommunityStore } from '../../stores/communityStore';
-import type { SelectedMatchStatus, SelectedMatch } from '../../stores/communityStore';
+import { useQuery } from '@tanstack/react-query';
+import type { RcFile, UploadFile } from 'antd/es/upload/interface';
 import { BRAND } from '../../theme/antdTheme';
 import dayjs from 'dayjs';
 import { useAuthStore } from '../../stores/authStore';
@@ -26,17 +28,55 @@ import type { MatchPost, MatchParticipant } from '../../types/community.types';
 const { Title, Text, Paragraph } = Typography;
 const { TextArea } = Input;
 
+interface UnifiedMatchItem {
+  match: MatchPost;
+  participants: MatchParticipant[];
+  myParticipant?: MatchParticipant;
+}
+
 export default function SelectedMatchesPage() {
   const navigate = useNavigate();
-  const { selectedMatches, cancelJoin, updateMatchStatus, removeSelectedMatch } = useCommunityStore();
-
   const { user } = useAuthStore();
+
+  // Fetch match posts involved (joined/created by user) along with their participants
+  const { data: matchedList = [], isLoading, refetch } = useQuery({
+    queryKey: ['my-selected-matches', user?.id],
+    queryFn: async () => {
+      // 1. Fetch joined matches (includes both hosted matches and joined matches)
+      const res = await communityApi.getJoinedMatches({ page: 0, size: 50 });
+      const matchPosts = res.content || [];
+      
+      // 2. Fetch participants for each match post to resolve statuses
+      const resolved = await Promise.all(
+        matchPosts.map(async (match) => {
+          try {
+            const participants = await communityApi.getMatchParticipants(match.id);
+            const myParticipant = participants.find(p => p.userId === user?.id);
+            return {
+              match,
+              participants,
+              myParticipant,
+            };
+          } catch (err) {
+            console.error(`Lỗi tải danh sách thành viên cho kèo ${match.id}:`, err);
+            return {
+              match,
+              participants: [],
+              myParticipant: undefined,
+            };
+          }
+        })
+      );
+      return resolved;
+    },
+    enabled: !!user?.id,
+  });
 
   // Rating Modal state
   const [ratingModalOpen, setRatingModalOpen] = useState(false);
   const [selectedMatch, setSelectedMatch] = useState<MatchPost | null>(null);
-  const [participants, setParticipants] = useState<MatchParticipant[]>([]);
-  const [loadingParticipants, setLoadingParticipants] = useState(false);
+  const [ratingParticipants, setRatingParticipants] = useState<MatchParticipant[]>([]);
+  const [fileList, setFileList] = useState<UploadFile[]>([]);
   
   // Venue rating state
   const [venueStars, setVenueStars] = useState(5);
@@ -46,52 +86,73 @@ export default function SelectedMatchesPage() {
   const [playerRatings, setPlayerRatings] = useState<Record<string, { stars: number; comment: string }>>({});
   const [submittingRating, setSubmittingRating] = useState(false);
 
-  // Group matches by tab/status
-  const matchesToday = selectedMatches.filter((sm) => {
-    if (sm.selectedStatus === 'deselected' || sm.selectedStatus === 'joined') return false;
-    const isTodayDate = dayjs(sm.match.startTime).isSame(dayjs(), 'day');
-    return sm.selectedStatus === 'today' || (sm.selectedStatus === 'upcoming' && isTodayDate);
+  // Group matches by tab/status based on live API data
+  const matchesToday = matchedList.filter((item) => {
+    const isTodayDate = dayjs(item.match.startTime).isSame(dayjs(), 'day');
+    const isHost = item.match.hostId === user?.id;
+    const isApprovedParticipant = item.myParticipant?.status === 'APPROVED';
+    const isActive = item.match.status !== 'FINISHED' && item.match.status !== 'CANCELLED';
+    
+    return isTodayDate && isActive && (isHost || isApprovedParticipant);
   });
 
-  const matchesUpcoming = selectedMatches.filter((sm) => {
-    if (sm.selectedStatus === 'deselected' || sm.selectedStatus === 'joined') return false;
-    const isTodayDate = dayjs(sm.match.startTime).isSame(dayjs(), 'day');
-    return sm.selectedStatus === 'upcoming' && !isTodayDate;
+  const matchesUpcoming = matchedList.filter((item) => {
+    const isTodayDate = dayjs(item.match.startTime).isSame(dayjs(), 'day');
+    const isFuture = dayjs(item.match.startTime).isAfter(dayjs());
+    const isHost = item.match.hostId === user?.id;
+    const isApprovedParticipant = item.myParticipant?.status === 'APPROVED';
+    const isActive = item.match.status !== 'FINISHED' && item.match.status !== 'CANCELLED';
+    
+    return isFuture && !isTodayDate && isActive && (isHost || isApprovedParticipant);
   });
 
-  const matchesPending = selectedMatches.filter((sm) => sm.selectedStatus === 'pending');
-  const matchesJoined = selectedMatches.filter((sm) => sm.selectedStatus === 'joined');
-  const matchesDeselected = selectedMatches.filter((sm) => sm.selectedStatus === 'deselected');
+  const matchesPending = matchedList.filter((item) => {
+    // Case 1: Host has pending participants
+    const isHost = item.match.hostId === user?.id;
+    const hasPendingParticipants = item.participants.some(p => p.status === 'PENDING');
+    
+    // Case 2: I am participant and my status is PENDING
+    const isParticipant = item.match.hostId !== user?.id;
+    const isPendingParticipant = item.myParticipant?.status === 'PENDING';
+    
+    return (isHost && hasPendingParticipants) || (isParticipant && isPendingParticipant);
+  });
 
-  const handleOpenRating = async (match: MatchPost, e: React.MouseEvent) => {
+  const matchesJoined = matchedList.filter((item) => {
+    const isFinished = item.match.status === 'FINISHED' || dayjs(item.match.endTime).isBefore(dayjs());
+    const isHost = item.match.hostId === user?.id;
+    const isApprovedParticipant = item.myParticipant?.status === 'APPROVED';
+    
+    return isFinished && (isHost || isApprovedParticipant);
+  });
+
+  const matchesDeselected = matchedList.filter((item) => {
+    const isParticipant = item.match.hostId !== user?.id;
+    const isRejectedOrCancelled = item.myParticipant?.status === 'REJECTED' || item.myParticipant?.status === 'CANCELLED_BY_USER';
+    
+    return isParticipant && isRejectedOrCancelled;
+  });
+
+  // Action handlers
+  const handleOpenRating = (item: UnifiedMatchItem, e: React.MouseEvent) => {
     e.stopPropagation();
-    setSelectedMatch(match);
+    setSelectedMatch(item.match);
     setVenueStars(5);
     setVenueComment('');
-    setPlayerRatings({});
-    setRatingModalOpen(true);
+    setFileList([]);
     
-    if (match.id) {
-      setLoadingParticipants(true);
-      try {
-        const list = await communityApi.getMatchParticipants(match.id);
-        // Filter out current user & approved participants
-        const otherParticipants = list.filter((p) => p.userId !== user?.id && p.status === 'APPROVED');
-        setParticipants(otherParticipants);
-        
-        // Initialize ratings state
-        const initialRatings: Record<string, { stars: number; comment: string }> = {};
-        otherParticipants.forEach((p) => {
-          initialRatings[p.userId] = { stars: 5, comment: '' };
-        });
-        setPlayerRatings(initialRatings);
-      } catch (err) {
-        console.error('Lỗi tải danh sách thành viên:', err);
-        message.error('Không thể tải danh sách thành viên tham gia.');
-      } finally {
-        setLoadingParticipants(false);
-      }
-    }
+    // Filter out current user & approved participants
+    const otherParticipants = item.participants.filter((p) => p.userId !== user?.id && p.status === 'APPROVED');
+    setRatingParticipants(otherParticipants);
+    
+    // Initialize ratings state
+    const initialRatings: Record<string, { stars: number; comment: string }> = {};
+    otherParticipants.forEach((p) => {
+      initialRatings[p.userId] = { stars: 5, comment: '' };
+    });
+    setPlayerRatings(initialRatings);
+    
+    setRatingModalOpen(true);
   };
 
   const handleSubmitRating = async () => {
@@ -99,14 +160,32 @@ export default function SelectedMatchesPage() {
     
     setSubmittingRating(true);
     try {
+      // 1. Upload rating images to server if any
+      let uploadedImageUrls: string[] = [];
+      if (fileList.length > 0) {
+        const filesToUpload = fileList
+          .map(file => file.originFileObj)
+          .filter((file): file is RcFile => !!file);
+          
+        if (filesToUpload.length > 0) {
+          try {
+            uploadedImageUrls = await venueApi.uploadRatingImages(filesToUpload);
+          } catch (err: any) {
+            console.error('Lỗi upload ảnh:', err);
+            message.warning('Không thể tải ảnh lên hệ thống, sẽ gửi đánh giá không kèm ảnh.');
+          }
+        }
+      }
+
       const promises: Promise<any>[] = [];
       
-      // 1. Rate Venue if present & stars > 0
+      // 2. Rate Venue
       if (selectedMatch.venueId) {
         promises.push(
           venueApi.rateVenue(selectedMatch.venueId, {
             stars: venueStars,
             comment: venueComment,
+            images: uploadedImageUrls,
           }).catch((err) => {
             console.error('Lỗi đánh giá sân:', err);
             throw new Error(`Không thể gửi đánh giá cho sân: ${err.message || ''}`);
@@ -114,7 +193,7 @@ export default function SelectedMatchesPage() {
         );
       }
       
-      // 2. Rate Players
+      // 3. Rate Players
       Object.entries(playerRatings).forEach(([ratedUserId, rating]) => {
         promises.push(
           communityApi.ratePlayer(selectedMatch.id, {
@@ -131,6 +210,7 @@ export default function SelectedMatchesPage() {
       await Promise.all(promises);
       message.success('Đã gửi đánh giá thành công! Cảm ơn nhận xét của bạn.');
       setRatingModalOpen(false);
+      refetch();
     } catch (err: any) {
       message.error(err.message || 'Đã xảy ra lỗi khi gửi đánh giá.');
     } finally {
@@ -138,22 +218,60 @@ export default function SelectedMatchesPage() {
     }
   };
 
-  const handleStatusChange = (matchId: string, status: SelectedMatchStatus, e: React.MouseEvent) => {
+  const handleFinishMatch = async (matchId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    updateMatchStatus(matchId, status);
-    message.success('Cập nhật trạng thái kèo đấu thành công.');
+    try {
+      await communityApi.finishMatch(matchId);
+      message.success('Kèo đấu đã được đánh dấu hoàn thành.');
+      refetch();
+    } catch (err: any) {
+      message.error(err.message || 'Không thể hoàn thành kèo đấu.');
+    }
   };
 
-  const handleCancelJoin = (matchId: string, e: React.MouseEvent) => {
+  const handleLeaveMatch = async (matchId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    cancelJoin(matchId);
-    message.success('Đã hủy tham gia kèo đấu.');
+    try {
+      await communityApi.leaveMatch(matchId);
+      message.success('Hủy tham gia kèo đấu thành công.');
+      refetch();
+    } catch (err: any) {
+      message.error(err.message || 'Không thể hủy tham gia kèo đấu.');
+    }
   };
 
-  const handleRemoveMatch = (matchId: string, e: React.MouseEvent) => {
+  const handleCloseMatch = async (matchId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    removeSelectedMatch(matchId);
-    message.success('Đã xóa kèo đấu khỏi lịch sử.');
+    try {
+      await communityApi.closeMatch(matchId);
+      message.success('Kèo đấu đã được đóng.');
+      refetch();
+    } catch (err: any) {
+      message.error(err.message || 'Không thể đóng kèo đấu.');
+    }
+  };
+
+  // Host approvals
+  const handleApproveParticipant = async (matchId: string, participantId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await communityApi.approveParticipant(matchId, participantId);
+      message.success('Đã đồng ý thành viên tham gia.');
+      refetch();
+    } catch (err: any) {
+      message.error(err.message || 'Lỗi khi duyệt thành viên.');
+    }
+  };
+
+  const handleRejectParticipant = async (matchId: string, participantId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await communityApi.rejectParticipant(matchId, participantId);
+      message.success('Đã từ chối thành viên tham gia.');
+      refetch();
+    } catch (err: any) {
+      message.error(err.message || 'Lỗi khi từ chối thành viên.');
+    }
   };
 
   const renderEmptyState = (tabLabel: string) => (
@@ -184,14 +302,18 @@ export default function SelectedMatchesPage() {
     </div>
   );
 
-  const renderMatchList = (items: SelectedMatch[], tabLabel: string) => {
+  const renderMatchList = (items: UnifiedMatchItem[], tabLabel: string) => {
     if (items.length === 0) return renderEmptyState(tabLabel);
 
     return (
       <div className="space-y-4">
-        {items.map(({ match, selectedStatus, joinedAt }) => {
+        {items.map((item) => {
+          const { match, participants, myParticipant } = item;
           const start = dayjs(match.startTime);
           const end = dayjs(match.endTime);
+          const isHost = match.hostId === user?.id;
+          
+          const pendingParticipants = participants.filter(p => p.status === 'PENDING');
 
           return (
             <Card
@@ -217,18 +339,18 @@ export default function SelectedMatchesPage() {
                       <Title level={5} className="font-extrabold text-slate-900 m-0 leading-tight">
                         {match.title}
                       </Title>
-                      {selectedStatus === 'today' && <Tag color="red" className="border-none font-bold text-[10px] rounded-md px-1.5 py-0.5 animate-pulse">HÔM NAY</Tag>}
-                      {selectedStatus === 'pending' && <Tag color="warning" className="border-none font-bold text-[10px] rounded-md px-1.5 py-0.5">CHỜ DUYỆT</Tag>}
-                      {selectedStatus === 'joined' && <Tag color="success" className="border-none font-bold text-[10px] rounded-md px-1.5 py-0.5">ĐÃ THAM GIA</Tag>}
-                      {selectedStatus === 'deselected' && <Tag color="default" className="border-none font-bold text-[10px] rounded-md px-1.5 py-0.5">ĐÃ HỦY/TỪ CHỐI</Tag>}
+                      {isHost && <Tag color="purple" className="border-none font-bold text-[10px] rounded-md px-1.5 py-0.5">CHỦ KÈO</Tag>}
+                      {!isHost && myParticipant?.status === 'PENDING' && <Tag color="warning" className="border-none font-bold text-[10px] rounded-md px-1.5 py-0.5">CHỜ DUYỆT</Tag>}
+                      {!isHost && myParticipant?.status === 'APPROVED' && <Tag color="success" className="border-none font-bold text-[10px] rounded-md px-1.5 py-0.5">ĐÃ DUYỆT</Tag>}
+                      {!isHost && myParticipant?.status === 'REJECTED' && <Tag color="error" className="border-none font-bold text-[10px] rounded-md px-1.5 py-0.5">ĐÃ TỪ CHỐI</Tag>}
                     </div>
 
                     <div className="flex items-center gap-2 text-xs text-slate-500 font-medium">
                       <EnvironmentOutlined className="text-red-400" />
-                      <span className="truncate max-w-[200px] md:max-w-md">{match.venueName || match.venueAddress || (match as any).location || 'Chưa cập nhật'}</span>
+                      <span className="truncate max-w-[200px] md:max-w-md">{match.venueName || match.venueAddress || 'Chưa cập nhật'}</span>
                       <span className="text-slate-300">|</span>
                       <UserOutlined className="text-slate-400" />
-                      <span>{match.hostName || (match as any).userName || 'Chủ kèo'}</span>
+                      <span>{match.hostName || 'Chủ kèo'}</span>
                     </div>
                   </div>
                 </div>
@@ -247,63 +369,61 @@ export default function SelectedMatchesPage() {
 
                 {/* Tab specific actions */}
                 <div className="flex items-center gap-2 justify-end">
-                  {selectedStatus === 'pending' && (
+                  
+                  {/* Participant Pending action */}
+                  {!isHost && myParticipant?.status === 'PENDING' && (
                     <Button
                       type="default"
                       danger
-                      onClick={(e) => handleCancelJoin(match.id, e)}
+                      onClick={(e) => handleLeaveMatch(match.id, e)}
                       className="rounded-xl font-bold h-10 px-4"
                     >
                       Hủy yêu cầu
                     </Button>
                   )}
 
-                  {(selectedStatus === 'upcoming' || selectedStatus === 'today') && (
+                  {/* Active Match Actions (Today / Upcoming) */}
+                  {(tabLabel === 'Hôm nay' || tabLabel === 'Sắp tới') && (
                     <div className="flex gap-2">
-                      <Button
-                        type="default"
-                        onClick={(e) => handleCancelJoin(match.id, e)}
-                        className="rounded-xl font-bold h-10 px-4"
-                      >
-                        Hủy lịch
-                      </Button>
-                      <Button
-                        type="primary"
-                        onClick={(e) => handleStatusChange(match.id, 'joined', e)}
-                        className="rounded-xl font-bold h-10 px-4"
-                      >
-                        Đã chơi xong
-                      </Button>
+                      {isHost ? (
+                        <>
+                          <Button
+                            type="default"
+                            onClick={(e) => handleCloseMatch(match.id, e)}
+                            className="rounded-xl font-bold h-10 px-4"
+                          >
+                            Đóng đăng ký
+                          </Button>
+                          <Button
+                            type="primary"
+                            onClick={(e) => handleFinishMatch(match.id, e)}
+                            className="rounded-xl font-bold h-10 px-4"
+                          >
+                            Đã chơi xong
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          type="default"
+                          danger
+                          onClick={(e) => handleLeaveMatch(match.id, e)}
+                          className="rounded-xl font-bold h-10 px-4"
+                        >
+                          Rút lui
+                        </Button>
+                      )}
                     </div>
                   )}
 
-                  {selectedStatus === 'joined' && (
-                    <div className="flex gap-2">
-                      <Button
-                        type="default"
-                        icon={<StarOutlined />}
-                        onClick={(e) => handleOpenRating(match, e)}
-                        className="rounded-xl font-bold h-10 px-4 border-amber-200 text-amber-600 hover:bg-amber-50"
-                      >
-                        Đánh giá buổi chơi
-                      </Button>
-                      <Button
-                        type="default"
-                        onClick={(e) => handleRemoveMatch(match.id, e)}
-                        className="rounded-xl font-bold h-10 px-4"
-                      >
-                        Xóa lịch sử
-                      </Button>
-                    </div>
-                  )}
-
-                  {selectedStatus === 'deselected' && (
+                  {/* Completed Match Actions */}
+                  {tabLabel === 'Đã tham gia' && (
                     <Button
                       type="default"
-                      onClick={(e) => handleRemoveMatch(match.id, e)}
-                      className="rounded-xl font-bold h-10 px-4"
+                      icon={<StarOutlined />}
+                      onClick={(e) => handleOpenRating(item, e)}
+                      className="rounded-xl font-bold h-10 px-4 border-amber-200 text-amber-600 hover:bg-amber-50"
                     >
-                      Xóa khỏi danh sách
+                      Đánh giá buổi chơi
                     </Button>
                   )}
 
@@ -315,6 +435,46 @@ export default function SelectedMatchesPage() {
                   />
                 </div>
               </div>
+
+              {/* Host Approvals sub-section */}
+              {isHost && pendingParticipants.length > 0 && tabLabel === 'Cần xác nhận' && (
+                <div style={{ marginTop: 16, padding: 12, background: '#f8fafc', borderRadius: 12, border: '1px solid #f1f5f9' }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 8 }}>
+                    Yêu cầu tham gia chờ duyệt ({pendingParticipants.length}):
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {pendingParticipants.map((p) => (
+                      <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <Space>
+                          <Avatar size="small" style={{ backgroundColor: BRAND.primary }}>
+                            {p.userFullName ? p.userFullName.charAt(0).toUpperCase() : 'U'}
+                          </Avatar>
+                          <Text style={{ fontSize: 13, fontWeight: 600 }}>{p.userFullName}</Text>
+                          <Tag style={{ fontSize: 10 }}>{p.userLevel || 'Trung bình'}</Tag>
+                        </Space>
+                        <Space>
+                          <Button
+                            type="primary"
+                            size="small"
+                            onClick={(e) => handleApproveParticipant(match.id, p.id, e)}
+                            style={{ background: BRAND.primary, border: 'none', fontSize: 11, borderRadius: 6 }}
+                          >
+                            Đồng ý
+                          </Button>
+                          <Button
+                            danger
+                            size="small"
+                            onClick={(e) => handleRejectParticipant(match.id, p.id, e)}
+                            style={{ fontSize: 11, borderRadius: 6 }}
+                          >
+                            Từ chối
+                          </Button>
+                        </Space>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </Card>
           );
         })}
@@ -327,113 +487,119 @@ export default function SelectedMatchesPage() {
       <div className="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8 w-full">
         {/* Wave Header / Banner */}
         <div className="relative bg-gradient-to-r from-emerald-900 to-emerald-800 text-white rounded-3xl p-6 md:p-8 mb-8 overflow-hidden shadow-lg shadow-emerald-950/10">
-        <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
-          <div className="max-w-2xl">
-            <div className="inline-flex items-center gap-2 bg-emerald-700/50 border border-emerald-600/30 rounded-lg px-2.5 py-1 text-xs font-bold uppercase tracking-wider mb-3">
-              <CalendarOutlined /> Lịch trình cá nhân
+          <div className="relative z-10 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+            <div className="max-w-2xl">
+              <div className="inline-flex items-center gap-2 bg-emerald-700/50 border border-emerald-600/30 rounded-lg px-2.5 py-1 text-xs font-bold uppercase tracking-wider mb-3">
+                <CalendarOutlined /> Lịch trình cá nhân
+              </div>
+              <Title level={2} style={{ margin: 0, color: 'white', fontWeight: 800, fontSize: 28 }}>
+                Kèo đã chọn 🏸
+              </Title>
+              <Paragraph style={{ margin: '8px 0 0', color: 'rgba(255,255,255,0.8)', fontSize: 14, fontWeight: 500 }}>
+                Theo dõi kèo đấu hôm nay, xác nhận tham gia các kèo đã qua và lưu giữ lịch trình rèn luyện của bạn.
+              </Paragraph>
             </div>
-            <Title level={2} style={{ margin: 0, color: 'white', fontWeight: 800, fontSize: 28 }}>
-              Kèo đã chọn 🏸
-            </Title>
-            <Paragraph style={{ margin: '8px 0 0', color: 'rgba(255,255,255,0.8)', fontSize: 14, fontWeight: 500 }}>
-              Theo dõi kèo đấu hôm nay, xác nhận tham gia các kèo đã qua và lưu giữ lịch trình rèn luyện của bạn.
-            </Paragraph>
+            <Button
+              type="default"
+              icon={<HistoryOutlined />}
+              onClick={() => navigate('/user/bookings')}
+              className="bg-white/10 hover:bg-white/20 border-white/20 hover:border-white/40 text-white font-extrabold rounded-xl h-12 px-6 flex items-center gap-2"
+            >
+              Lịch sử đặt sân (Nhật ký)
+            </Button>
           </div>
-          <Button
-            type="default"
-            icon={<HistoryOutlined />}
-            onClick={() => navigate('/user/bookings')}
-            className="bg-white/10 hover:bg-white/20 border-white/20 hover:border-white/40 text-white font-extrabold rounded-xl h-12 px-6 flex items-center gap-2"
-          >
-            Lịch sử đặt sân (Nhật ký)
-          </Button>
+          {/* Subtle Decorative Circle */}
+          <div className="absolute top-[-30%] right-[-10%] w-72 h-72 bg-radial-gradient(circle, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 70%) pointer-events-none rounded-full" />
         </div>
-        {/* Subtle Decorative Circle */}
-        <div className="absolute top-[-30%] right-[-10%] w-72 h-72 bg-radial-gradient(circle, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0) 70%) pointer-events-none rounded-full" />
-      </div>
 
-      {/* Tabs list matching Screen 3 */}
-      <div className="bg-white rounded-3xl p-4 md:p-6 border border-slate-100 shadow-sm">
-        <Tabs
-          defaultActiveKey="1"
-          className="custom-tabs"
-          items={[
-            {
-              key: '1',
-              label: (
-                <div className="flex items-center gap-2 font-extrabold pb-1">
-                  <span>Hôm nay</span>
-                  <Badge count={matchesToday.length} showZero={false} overflowCount={9} style={{ backgroundColor: '#ef4444' }} />
-                </div>
-              ),
-              children: renderMatchList(matchesToday, 'Hôm nay'),
-            },
-            {
-              key: '2',
-              label: (
-                <div className="flex items-center gap-2 font-extrabold pb-1">
-                  <span>Sắp tới</span>
-                  <Badge count={matchesUpcoming.length} showZero={false} overflowCount={99} style={{ backgroundColor: '#10b981' }} />
-                </div>
-              ),
-              children: renderMatchList(matchesUpcoming, 'Sắp tới'),
-            },
-            {
-              key: '3',
-              label: (
-                <div className="flex items-center gap-2 font-extrabold pb-1">
-                  <span>Cần xác nhận</span>
-                  <Badge count={matchesPending.length} showZero={false} style={{ backgroundColor: '#f59e0b' }} />
-                </div>
-              ),
-              children: renderMatchList(matchesPending, 'Cần xác nhận'),
-            },
-            {
-              key: '4',
-              label: (
-                <div className="flex items-center gap-2 font-extrabold pb-1">
-                  <span>Đã tham gia</span>
-                  <Badge count={matchesJoined.length} showZero={false} style={{ backgroundColor: '#3b82f6' }} />
-                </div>
-              ),
-              children: renderMatchList(matchesJoined, 'Đã tham gia'),
-            },
-            {
-              key: '5',
-              label: (
-                <div className="flex items-center gap-2 font-extrabold pb-1">
-                  <span>Đã bỏ chọn</span>
-                  <Badge count={matchesDeselected.length} showZero={false} style={{ backgroundColor: '#64748b' }} />
-                </div>
-              ),
-              children: renderMatchList(matchesDeselected, 'Đã bỏ chọn'),
-            },
-          ]}
-        />
-      </div>
-
-      {/* Complete Rating Modal */}
-      <Modal
-        title={
-          <div className="flex items-center gap-2 pt-2">
-            <StarOutlined style={{ color: '#f59e0b', fontSize: 20 }} />
-            <span className="font-extrabold text-slate-800 text-lg">Đánh giá sau buổi chơi 🏸</span>
+        {/* Loading Spinner */}
+        {isLoading ? (
+          <div className="text-center py-20 bg-white rounded-3xl border border-slate-100 shadow-sm">
+            <Spin size="large" tip="Đang tải lịch trình kèo đấu của bạn..." />
           </div>
-        }
-        open={ratingModalOpen}
-        onOk={handleSubmitRating}
-        onCancel={() => setRatingModalOpen(false)}
-        okText="Gửi tất cả đánh giá"
-        cancelText="Đóng"
-        okButtonProps={{ 
-          className: 'bg-emerald-600 hover:bg-emerald-700 rounded-xl font-bold h-10 px-6',
-          loading: submittingRating 
-        }}
-        cancelButtonProps={{ className: 'rounded-xl font-bold h-10 px-6' }}
-        className="rounded-3xl overflow-hidden"
-        width={600}
-      >
-        <Spin spinning={loadingParticipants} indicator={<LoadingOutlined style={{ fontSize: 24, color: BRAND.primary }} spin />}>
+        ) : (
+          /* Tabs list matching Screen 3 */
+          <div className="bg-white rounded-3xl p-4 md:p-6 border border-slate-100 shadow-sm">
+            <Tabs
+              defaultActiveKey="1"
+              className="custom-tabs"
+              items={[
+                {
+                  key: '1',
+                  label: (
+                    <div className="flex items-center gap-2 font-extrabold pb-1">
+                      <span>Hôm nay</span>
+                      <Badge count={matchesToday.length} showZero={false} overflowCount={9} style={{ backgroundColor: '#ef4444' }} />
+                    </div>
+                  ),
+                  children: renderMatchList(matchesToday, 'Hôm nay'),
+                },
+                {
+                  key: '2',
+                  label: (
+                    <div className="flex items-center gap-2 font-extrabold pb-1">
+                      <span>Sắp tới</span>
+                      <Badge count={matchesUpcoming.length} showZero={false} overflowCount={99} style={{ backgroundColor: '#10b981' }} />
+                    </div>
+                  ),
+                  children: renderMatchList(matchesUpcoming, 'Sắp tới'),
+                },
+                {
+                  key: '3',
+                  label: (
+                    <div className="flex items-center gap-2 font-extrabold pb-1">
+                      <span>Cần xác nhận</span>
+                      <Badge count={matchesPending.length} showZero={false} style={{ backgroundColor: '#f59e0b' }} />
+                    </div>
+                  ),
+                  children: renderMatchList(matchesPending, 'Cần xác nhận'),
+                },
+                {
+                  key: '4',
+                  label: (
+                    <div className="flex items-center gap-2 font-extrabold pb-1">
+                      <span>Đã tham gia</span>
+                      <Badge count={matchesJoined.length} showZero={false} style={{ backgroundColor: '#3b82f6' }} />
+                    </div>
+                  ),
+                  children: renderMatchList(matchesJoined, 'Đã tham gia'),
+                },
+                {
+                  key: '5',
+                  label: (
+                    <div className="flex items-center gap-2 font-extrabold pb-1">
+                      <span>Đã bỏ chọn</span>
+                      <Badge count={matchesDeselected.length} showZero={false} style={{ backgroundColor: '#64748b' }} />
+                    </div>
+                  ),
+                  children: renderMatchList(matchesDeselected, 'Đã bỏ chọn'),
+                },
+              ]}
+            />
+          </div>
+        )}
+
+        {/* Complete Rating Modal with image upload */}
+        <Modal
+          title={
+            <div className="flex items-center gap-2 pt-2">
+              <StarOutlined style={{ color: '#f59e0b', fontSize: 20 }} />
+              <span className="font-extrabold text-slate-800 text-lg">Đánh giá sau buổi chơi 🏸</span>
+            </div>
+          }
+          open={ratingModalOpen}
+          onOk={handleSubmitRating}
+          onCancel={() => setRatingModalOpen(false)}
+          okText="Gửi tất cả đánh giá"
+          cancelText="Đóng"
+          okButtonProps={{
+            className: 'bg-emerald-600 hover:bg-emerald-700 rounded-xl font-bold h-10 px-6',
+            loading: submittingRating,
+          }}
+          cancelButtonProps={{ className: 'rounded-xl font-bold h-10 px-6' }}
+          className="rounded-3xl overflow-hidden"
+          width={600}
+        >
           <div className="py-4 space-y-6 max-h-[60vh] overflow-y-auto px-1">
             {/* 1. Venue Rating Section */}
             {selectedMatch?.venueId && (
@@ -442,14 +608,14 @@ export default function SelectedMatchesPage() {
                   <div>
                     <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider block mb-1">Đánh giá sân đấu</span>
                     <Text strong className="text-slate-800 text-sm block">
-                      {selectedMatch.venueName || selectedMatch.venueAddress || (selectedMatch as any).location || 'Sân cầu lông'}
+                      {selectedMatch.venueName || 'Sân cầu lông'}
                     </Text>
                   </div>
                   <Tag color="success" className="border-none font-bold rounded-md m-0">Địa điểm</Tag>
                 </div>
                 
                 <div className="space-y-1">
-                  <Text className="text-slate-600 text-xs block">Chất lượng sân, ánh sáng, lưới và dịch vụ:</Text>
+                  <Text className="text-slate-600 text-xs block font-semibold">Chất lượng sân, ánh sáng, lưới và dịch vụ:</Text>
                   <Rate allowHalf value={venueStars} onChange={setVenueStars} className="text-amber-500 text-xl" />
                 </div>
                 
@@ -462,24 +628,44 @@ export default function SelectedMatchesPage() {
                     className="rounded-xl border-slate-200 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 text-xs"
                   />
                 </div>
+
+                {/* Rating Images Upload */}
+                <div className="space-y-2 pt-1">
+                  <Text className="text-slate-600 text-xs block font-semibold">Hình ảnh thực tế buổi chơi (tối đa 4 ảnh):</Text>
+                  <Upload
+                    listType="picture-card"
+                    fileList={fileList}
+                    onChange={({ fileList: newFileList }) => setFileList(newFileList)}
+                    beforeUpload={() => false}
+                    accept="image/*"
+                    maxCount={4}
+                  >
+                    {fileList.length < 4 && (
+                      <div>
+                        <PlusOutlined />
+                        <div style={{ marginTop: 8, fontSize: 11 }}>Tải ảnh</div>
+                      </div>
+                    )}
+                  </Upload>
+                </div>
               </div>
             )}
 
             {/* 2. Players Rating Section */}
             <div className="space-y-4">
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                Đánh giá bạn chơi ({participants.length})
+                Đánh giá bạn chơi ({ratingParticipants.length})
               </span>
               
-              {participants.length === 0 ? (
+              {ratingParticipants.length === 0 ? (
                 <div className="text-center py-4 bg-slate-50 rounded-2xl">
                   <Text type="secondary" className="text-xs">Không có thành viên nào khác tham gia để đánh giá.</Text>
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {participants.map((player) => {
+                  {ratingParticipants.map((player) => {
                     const rating = playerRatings[player.userId] || { stars: 5, comment: '' };
-                    const playerName = player.userName || (player as any).userFullName || 'Người chơi';
+                    const playerName = player.userFullName || 'Người chơi';
                     return (
                       <div key={player.userId} className="p-4 border border-slate-100 rounded-2xl space-y-3 hover:border-slate-200 transition-all">
                         <div className="flex items-center justify-between">
@@ -489,19 +675,19 @@ export default function SelectedMatchesPage() {
                             </Avatar>
                             <div>
                               <Text strong className="text-slate-800 text-sm block">{playerName}</Text>
-                              <Text type="secondary" style={{ fontSize: '10px' }} className="block">Trình độ: {player.userLevel || 'Chưa cập nhật'}</Text>
+                              <Text type="secondary" style={{ fontSize: '10px' }} className="block">Trình độ: {player.userLevel || 'Trung bình'}</Text>
                             </div>
                           </Space>
-                          <Rate 
-                            allowHalf 
-                            value={rating.stars} 
+                          <Rate
+                            allowHalf
+                            value={rating.stars}
                             onChange={(val) => {
                               setPlayerRatings(prev => ({
                                 ...prev,
                                 [player.userId]: { ...prev[player.userId], stars: val }
                               }));
-                            }} 
-                            className="text-amber-500 text-lg" 
+                            }}
+                            className="text-amber-500 text-lg"
                           />
                         </div>
                         
@@ -524,8 +710,7 @@ export default function SelectedMatchesPage() {
               )}
             </div>
           </div>
-        </Spin>
-      </Modal>
+        </Modal>
       </div>
     </div>
   );

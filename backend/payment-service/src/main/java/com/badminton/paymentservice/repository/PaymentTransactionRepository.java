@@ -1,4 +1,4 @@
-﻿package com.badminton.paymentservice.repository;
+package com.badminton.paymentservice.repository;
 
 import com.badminton.paymentservice.entity.PaymentTransaction;
 import org.springframework.data.jpa.repository.JpaRepository;

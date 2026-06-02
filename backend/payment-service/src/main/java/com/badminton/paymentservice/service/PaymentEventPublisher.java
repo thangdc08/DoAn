@@ -1,11 +1,9 @@
-﻿package com.badminton.paymentservice.service;
+package com.badminton.paymentservice.service;
 
 import com.badminton.paymentservice.event.PaymentSucceededEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
-
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor

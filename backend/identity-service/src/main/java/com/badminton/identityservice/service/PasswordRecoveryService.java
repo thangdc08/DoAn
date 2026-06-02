@@ -19,24 +19,17 @@ public class PasswordRecoveryService {
   private final UserRepository userRepository;
   private final OtpService otpService;
   private final PasswordEncoder passwordEncoder;
-  // TODO: Inject EmailService when implemented
+  private final EmailService emailService;
 
   public void sendPasswordResetOtp(String email) {
     log.info("Processing forgot password request for email: {}", email);
 
-    // Check if user exists
     User user = userRepository.findByEmail(email)
         .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "No user found with this email"));
 
-    // Generate OTP
     String otp = otpService.generateOtp(email);
-
-    // TODO: Send OTP via email
-    // For now, just log it (in production, use email service)
-    log.info("OTP for {}: {} (THIS SHOULD BE SENT VIA EMAIL IN PRODUCTION)", email, otp);
-
-    // In development, you can return OTP in response or log it
-    // In production, NEVER expose OTP in logs or responses
+    emailService.sendOtpEmail(email, otp);
+    log.info("OTP sent to email: {}", email);
   }
 
   @Transactional

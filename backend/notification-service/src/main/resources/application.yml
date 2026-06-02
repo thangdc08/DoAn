@@ -7,6 +7,18 @@ spring:
   data:
     mongodb:
       uri: mongodb://localhost:27017/notification_db
+  mail:
+    from-address: ${SPRING_MAIL_FROM_ADDRESS:badminton.platform.noreply@gmail.com}
+    host: smtp.gmail.com
+    port: 587
+    username: ${SPRING_MAIL_USERNAME:badminton.platform.noreply@gmail.com}
+    password: ${SPRING_MAIL_PASSWORD:app_password}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
   kafka:
     bootstrap-servers: localhost:9094
     producer:

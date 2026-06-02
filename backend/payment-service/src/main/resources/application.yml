@@ -30,10 +30,11 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
 
 vnpay:
-  tmn-code: ${VNPAY_TMN_CODE:}  # Set via env var
-  hash-secret: ${VNPAY_HASH_SECRET:}  # Set via env var
+  tmn-code: ${VNPAY_TMN_CODE:JEZW89WF}
+  hash-secret: ${VNPAY_HASH_SECRET:EMJVFCWW151QYHZH76Z9H60L2HOX8V2Z}
   sandbox-url: https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
-  return-url: http://localhost:5173/payment-result
+  return-url: ${VNPAY_RETURN_URL:http://localhost:8080/payments/api/payments/vnpay/callback}
+  frontend-url: ${VNPAY_FRONTEND_URL:http://localhost:5173/payment-result}
 
 springdoc:
   api-docs:

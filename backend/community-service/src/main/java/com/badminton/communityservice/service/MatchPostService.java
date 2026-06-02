@@ -15,6 +15,7 @@ import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.Point;
 import org.locationtech.jts.geom.PrecisionModel;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
@@ -40,6 +41,9 @@ public class MatchPostService {
   private final MatchPostRepository matchPostRepository;
   private final ParticipantRepository participantRepository;
   private final CommunityEventPublisher eventPublisher;
+
+  @Value("${app.match.cancel-before-hours:2}")
+  private int cancelBeforeHours;
   private static final GeometryFactory geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
   private static final String META_PREFIX = "\n__MATCH_META__:";
   private final ObjectMapper objectMapper = new ObjectMapper();
@@ -197,6 +201,40 @@ public class MatchPostService {
     matchPost.setStatus("FINISHED");
     matchPostRepository.save(matchPost);
     log.info("Match post {} finished by host {}", matchPostId, userId);
+  }
+
+  @Transactional
+  public void cancelMatchPost(UUID matchPostId, UUID userId) {
+    MatchPost matchPost = matchPostRepository.findById(matchPostId)
+        .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy kèo đấu"));
+
+    if (!matchPost.getHostId().equals(userId)) {
+      throw new AppException(HttpStatus.FORBIDDEN, "Chỉ chủ kèo mới có quyền hủy kèo");
+    }
+
+    if ("FINISHED".equals(matchPost.getStatus()) || "CANCELLED_BY_USER".equals(matchPost.getStatus())) {
+      throw new AppException(HttpStatus.CONFLICT, "Không thể hủy kèo đấu đã kết thúc hoặc đã hủy");
+    }
+
+    LocalDateTime minCancelTime = LocalDateTime.now().plusHours(cancelBeforeHours);
+    if (matchPost.getStartTime().isBefore(minCancelTime)) {
+      throw new AppException(HttpStatus.BAD_REQUEST, 
+          String.format("Không thể hủy kèo đấu trước giờ bắt đầu dưới %d giờ", cancelBeforeHours));
+    }
+
+    matchPost.setStatus("CANCELLED_BY_USER");
+    matchPostRepository.save(matchPost);
+
+    // Cancel all participants in this match post
+    List<Participant> participants = participantRepository.findByMatchPostIdOrderByJoinedAtAsc(matchPostId);
+    for (Participant participant : participants) {
+      if ("PENDING".equals(participant.getStatus()) || "APPROVED".equals(participant.getStatus())) {
+        participant.setStatus("CANCELLED_BY_USER");
+        participantRepository.save(participant);
+      }
+    }
+
+    log.info("Match post {} cancelled by host {}", matchPostId, userId);
   }
 
   private MatchPostResponse toResponse(MatchPost matchPost) {

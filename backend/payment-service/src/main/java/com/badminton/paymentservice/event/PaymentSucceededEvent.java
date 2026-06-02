@@ -1,4 +1,4 @@
-﻿package com.badminton.paymentservice.event;
+package com.badminton.paymentservice.event;
 
 import lombok.*;
 import java.math.BigDecimal;

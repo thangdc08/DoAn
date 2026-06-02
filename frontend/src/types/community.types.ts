@@ -44,9 +44,10 @@ export interface MatchParticipant {
   matchPostId: string;
   userId: string;
   userName: string;
+  userFullName?: string;
   userAvatar?: string;
   userLevel?: string;
-  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'CANCELLED_BY_USER' | 'REMOVED_BY_HOST';
   requestedAt: string;
   respondedAt?: string;
 }

@@ -7,8 +7,14 @@ import com.badminton.paymentservice.entity.PaymentTransaction;
 import com.badminton.paymentservice.repository.PaymentTransactionRepository;
 import com.badminton.paymentservice.service.PaymentService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpHeaders;
 import org.springframework.web.bind.annotation.*;
 
+import java.lang.RuntimeException;
+import java.net.URI;
+import java.util.Map;
 import java.util.UUID;
 
 @RestController
@@ -44,7 +50,27 @@ public class PaymentController {
     }
 
     @PostMapping("/mock/callback")
-    public void mockPaymentCallback(@RequestBody MockPaymentCallbackRequest request) {
+    public void mockPaymentCallback(
+            @RequestHeader(value = "X-Mock-Secret", required = true) String mockSecret,
+            @RequestBody MockPaymentCallbackRequest request) {
+        if (!"dev-mock-secret".equals(mockSecret)) {
+            throw new RuntimeException("Invalid mock secret");
+        }
         paymentService.processMockCallback(request.getTransactionId(), request.isSuccess());
+    }
+
+    @GetMapping("/vnpay/callback")
+    public ResponseEntity<Void> vnpayCallback(@RequestParam Map<String, String> queryParams) {
+        boolean success = paymentService.processVnpayCallback(queryParams);
+        String redirectUrl = paymentService.getVnpayFrontendUrl() + "?status=" + (success ? "success" : "failed");
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setLocation(URI.create(redirectUrl));
+        return new ResponseEntity<>(headers, HttpStatus.FOUND);
+    }
+
+    @GetMapping("/vnpay/ipn")
+    public Map<String, String> vnpayIpn(@RequestParam Map<String, String> queryParams) {
+        return paymentService.processVnpayIpn(queryParams);
     }
 }
