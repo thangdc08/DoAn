@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Card, Form, Input, Select, Button, Avatar, Upload, message, Row, Col, Typography, Divider, Space } from 'antd';
-import { UserOutlined, UploadOutlined, StarFilled, PlusOutlined, MinusCircleOutlined } from '@ant-design/icons';
+import { useNavigate } from 'react-router-dom';
+import { Card, Form, Input, Select, Button, Avatar, Upload, message, Row, Col, Typography, Divider, Space, Tabs, List, Empty, Tooltip, Modal } from 'antd';
+import { UserOutlined, UploadOutlined, StarFilled, PlusOutlined, MinusCircleOutlined, MessageOutlined, CheckOutlined, CloseOutlined, UserDeleteOutlined } from '@ant-design/icons';
 import { useAuthStore } from '../../stores/authStore';
 import { authApi } from '../../services/authApi';
+import { friendApi } from '../../services/friendApi';
+import { chatApi } from '../../services/chatApi';
+import { useChatStore } from '../../stores/chatStore';
 import { LEVEL_OPTIONS } from '../../constants/levels';
 import { DAY_MAP, REVERSE_DAY_MAP, DAYS_OF_WEEK } from '../../constants/days';
 import { TIME_SLOTS, getTimeKeyByRange, getTimeRangeByKey, TIME_MAP } from '../../constants/times';
@@ -15,12 +19,79 @@ const { TextArea } = Input;
 const { Option } = Select;
 
 export default function ProfilePage() {
+  const navigate = useNavigate();
   const [form] = Form.useForm();
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const user = useAuthStore((state) => state.user);
   const updateUserStore = useAuthStore((state) => state.updateUser);
   const [loading, setLoading] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+  const [friends, setFriends] = useState<any[]>([]);
+  const [pendingRequests, setPendingRequests] = useState<any[]>([]);
+  const [loadingFriends, setLoadingFriends] = useState(false);
+
+  const loadFriendsData = async () => {
+    if (!user) return;
+    setLoadingFriends(true);
+    try {
+      const [friendsList, pendingList] = await Promise.all([
+        friendApi.getFriends(),
+        friendApi.getPendingRequests()
+      ]);
+      setFriends(friendsList || []);
+      setPendingRequests(pendingList || []);
+    } catch (error) {
+      console.error('Failed to load friends details', error);
+    } finally {
+      setLoadingFriends(false);
+    }
+  };
+
+  const handleAcceptRequest = async (friendId: string) => {
+    try {
+      await friendApi.acceptRequest(friendId);
+      message.success('Đã chấp nhận yêu cầu kết bạn');
+      loadFriendsData();
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || 'Chấp nhận kết bạn thất bại');
+    }
+  };
+
+  const handleDeclineRequest = async (friendId: string) => {
+    try {
+      await friendApi.declineRequest(friendId);
+      message.success('Đã từ chối yêu cầu kết bạn');
+      loadFriendsData();
+    } catch (err: any) {
+      message.error(err?.response?.data?.message || 'Từ chối yêu cầu kết bạn thất bại');
+    }
+  };
+
+  const handleRemoveFriend = async (friendId: string, fullName: string) => {
+    Modal.confirm({
+      title: 'Hủy kết bạn',
+      content: `Bạn có chắc chắn muốn hủy kết bạn với ${fullName}?`,
+      okText: 'Hủy kết bạn',
+      okType: 'danger',
+      cancelText: 'Hủy bỏ',
+      onOk: async () => {
+        try {
+          await friendApi.removeFriend(friendId);
+          message.success('Đã hủy kết bạn');
+          loadFriendsData();
+        } catch (err: any) {
+          message.error(err?.response?.data?.message || 'Hủy kết bạn thất bại');
+        }
+      }
+    });
+  };
+
+  useEffect(() => {
+    if (user) {
+      loadFriendsData();
+    }
+  }, [user]);
 
   useEffect(() => {
     if (user) {
@@ -101,6 +172,14 @@ export default function ProfilePage() {
               />
               <Title level={4}>{user?.fullName}</Title>
               <Text type="secondary">{user?.email}</Text>
+              {user?.id && (
+                <div style={{ marginTop: 8 }}>
+                  <Text type="secondary" style={{ fontSize: '12px' }}>ID: </Text>
+                  <Text code copyable={{ tooltips: ['Sao chép ID', 'Đã sao chép!'] }} style={{ fontSize: '13px' }}>
+                    {user.id}
+                  </Text>
+                </div>
+              )}
 
               <Divider />
               <div style={{ textAlign: 'left' }}>
@@ -167,126 +246,266 @@ export default function ProfilePage() {
         </Col>
 
         {/* Edit Form */}
+        {/* Edit Form & Friends Tabs */}
         <Col xs={24} lg={16}>
-          <Card title="Chỉnh sửa thông tin">
-            <Form
-              form={form}
-              layout="vertical"
-              onFinish={handleSubmit}
-            >
-              <Row gutter={16}>
-                <Col xs={24}>
-                  <Form.Item
-                    label="Họ và tên"
-                    name="fullName"
-                    rules={[{ required: true, message: 'Vui lòng nhập họ tên' }]}
-                  >
-                    <Input placeholder="Nhập họ và tên" />
-                  </Form.Item>
-                </Col>
+          <Card style={{ borderRadius: 20, boxShadow: '0 4px 20px rgba(0, 0, 0, 0.03)', border: '1px solid #e2e8f0' }}>
+            <Tabs
+              defaultActiveKey="edit"
+              items={[
+                {
+                  key: 'edit',
+                  label: <span style={{ fontWeight: 600, fontSize: '15px' }}>Chỉnh sửa thông tin</span>,
+                  children: (
+                    <Form
+                      form={form}
+                      layout="vertical"
+                      onFinish={handleSubmit}
+                      style={{ marginTop: 16 }}
+                    >
+                      <Row gutter={16}>
+                        <Col xs={24}>
+                          <Form.Item
+                            label="Họ và tên"
+                            name="fullName"
+                            rules={[{ required: true, message: 'Vui lòng nhập họ tên' }]}
+                          >
+                            <Input placeholder="Nhập họ và tên" style={{ borderRadius: 8 }} />
+                          </Form.Item>
+                        </Col>
 
-                <Col xs={24} md={12}>
-                  <Form.Item
-                    label="Trình độ"
-                    name="level"
-                    rules={[{ required: true, message: 'Vui lòng chọn trình độ' }]}
-                  >
-                    <Select placeholder="Chọn trình độ">
-                      {LEVEL_OPTIONS.map(opt => (
-                        <Option key={opt.value} value={opt.value}>{opt.label}</Option>
-                      ))}
-                    </Select>
-                  </Form.Item>
-                </Col>
+                        <Col xs={24} md={12}>
+                          <Form.Item
+                            label="Trình độ"
+                            name="level"
+                            rules={[{ required: true, message: 'Vui lòng chọn trình độ' }]}
+                          >
+                            <Select placeholder="Chọn trình độ" style={{ borderRadius: 8 }}>
+                              {LEVEL_OPTIONS.map(opt => (
+                                <Option key={opt.value} value={opt.value}>{opt.label}</Option>
+                              ))}
+                            </Select>
+                          </Form.Item>
+                        </Col>
 
-                <Col xs={24} md={12}>
-                  <Form.Item label="Giới tính" name="gender">
-                    <Select placeholder="Chọn giới tính">
-                      <Option value="MALE">Nam</Option>
-                      <Option value="FEMALE">Nữ</Option>
-                      <Option value="OTHER">Khác</Option>
-                    </Select>
-                  </Form.Item>
-                </Col>
+                        <Col xs={24} md={12}>
+                          <Form.Item label="Giới tính" name="gender">
+                            <Select placeholder="Chọn giới tính" style={{ borderRadius: 8 }}>
+                              <Option value="MALE">Nam</Option>
+                              <Option value="FEMALE">Nữ</Option>
+                              <Option value="OTHER">Khác</Option>
+                            </Select>
+                          </Form.Item>
+                        </Col>
 
-                <Col xs={24} md={12}>
-                  <Form.Item label="Mục tiêu" name="goal">
-                    <Input placeholder="VD: Tăng cường sức khỏe, thi đấu..." />
-                  </Form.Item>
-                </Col>
+                        <Col xs={24} md={12}>
+                          <Form.Item label="Mục tiêu" name="goal">
+                            <Input placeholder="VD: Tăng cường sức khỏe, thi đấu..." style={{ borderRadius: 8 }} />
+                          </Form.Item>
+                        </Col>
 
-                <Col xs={24} md={12}>
-                  <Form.Item label="Khu vực ưu tiên" name="preferredAreas">
-                    <Select
-                      mode="multiple"
-                      placeholder="Chọn các quận/huyện ưu tiên"
-                      style={{ width: '100%' }}
-                      options={AREA_OPTIONS}
-                      maxTagCount="responsive"
-                    />
-                  </Form.Item>
-                </Col>
+                        <Col xs={24} md={12}>
+                          <Form.Item label="Khu vực ưu tiên" name="preferredAreas">
+                            <Select
+                              mode="multiple"
+                              placeholder="Chọn các quận/huyện ưu tiên"
+                              style={{ width: '100%', borderRadius: 8 }}
+                              options={AREA_OPTIONS}
+                              maxTagCount="responsive"
+                            />
+                          </Form.Item>
+                        </Col>
 
-                <Col xs={24}>
-                  <Form.Item label="Giới thiệu bản thân" name="bio">
-                    <TextArea
-                      rows={4}
-                      placeholder="Viết vài dòng về bản thân, kinh nghiệm chơi cầu lông..."
-                      maxLength={500}
-                      showCount
-                    />
-                  </Form.Item>
-                </Col>
+                        <Col xs={24}>
+                          <Form.Item label="Giới thiệu bản thân" name="bio">
+                            <TextArea
+                              rows={4}
+                              placeholder="Viết vài dòng về bản thân, kinh nghiệm chơi cầu lông..."
+                              maxLength={500}
+                              showCount
+                              style={{ borderRadius: 8 }}
+                            />
+                          </Form.Item>
+                        </Col>
 
-                <Col xs={24}>
-                  <Divider orientation={"left" as any} orientationMargin="0">Lịch rảnh hàng tuần</Divider>
-                  <Form.List name="freeTime">
-                    {(fields, { add, remove }) => (
-                      <>
-                        {fields.map(({ key, name, ...restField }) => (
-                          <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
-                            <Form.Item
-                              {...restField}
-                              name={[name, 'day']}
-                              rules={[{ required: true, message: 'Chọn thứ' }]}
-                            >
-                              <Select placeholder="Chọn thứ" style={{ width: 120 }}>
-                                {DAYS_OF_WEEK.map(d => (
-                                  <Option key={d} value={d}>{d}</Option>
+                        <Col xs={24}>
+                          <Divider orientation={"left" as any} orientationMargin="0">Lịch rảnh hàng tuần</Divider>
+                          <Form.List name="freeTime">
+                            {(fields, { add, remove }) => (
+                              <>
+                                {fields.map(({ key, name, ...restField }) => (
+                                  <Space key={key} style={{ display: 'flex', marginBottom: 8 }} align="baseline">
+                                    <Form.Item
+                                      {...restField}
+                                      name={[name, 'day']}
+                                      rules={[{ required: true, message: 'Chọn thứ' }]}
+                                    >
+                                      <Select placeholder="Chọn thứ" style={{ width: 120, borderRadius: 8 }}>
+                                        {DAYS_OF_WEEK.map(d => (
+                                          <Option key={d} value={d}>{d}</Option>
+                                        ))}
+                                      </Select>
+                                    </Form.Item>
+                                    <Form.Item
+                                      {...restField}
+                                      name={[name, 'slots']}
+                                      rules={[{ required: true, message: 'Chọn khung giờ' }]}
+                                    >
+                                      <Select placeholder="Chọn khung giờ" style={{ width: 200, borderRadius: 8 }}>
+                                        {TIME_SLOTS.map(slot => (
+                                          <Option key={slot.value} value={slot.value}>{slot.label}</Option>
+                                        ))}
+                                      </Select>
+                                    </Form.Item>
+                                    <MinusCircleOutlined onClick={() => remove(name)} />
+                                  </Space>
                                 ))}
-                              </Select>
-                            </Form.Item>
-                            <Form.Item
-                              {...restField}
-                              name={[name, 'slots']}
-                              rules={[{ required: true, message: 'Chọn khung giờ' }]}
-                            >
-                              <Select placeholder="Chọn khung giờ" style={{ width: 200 }}>
-                                {TIME_SLOTS.map(slot => (
-                                  <Option key={slot.value} value={slot.value}>{slot.label}</Option>
-                                ))}
-                              </Select>
-                            </Form.Item>
-                            <MinusCircleOutlined onClick={() => remove(name)} />
-                          </Space>
-                        ))}
-                        <Form.Item>
-                          <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />}>
-                            Thêm khung giờ rảnh
-                          </Button>
-                        </Form.Item>
-                      </>
-                    )}
-                  </Form.List>
-                </Col>
-              </Row>
+                                <Form.Item>
+                                  <Button type="dashed" onClick={() => add()} block icon={<PlusOutlined />} style={{ borderRadius: 8 }}>
+                                    Thêm khung giờ rảnh
+                                  </Button>
+                                </Form.Item>
+                              </>
+                            )}
+                          </Form.List>
+                        </Col>
+                      </Row>
 
-              <Form.Item>
-                <Button type="primary" htmlType="submit" size="large" loading={loading}>
-                  Lưu thay đổi
-                </Button>
-              </Form.Item>
-            </Form>
+                      <Form.Item>
+                        <Button type="primary" htmlType="submit" size="large" loading={loading} style={{ borderRadius: 8 }}>
+                          Lưu thay đổi
+                        </Button>
+                      </Form.Item>
+                    </Form>
+                  )
+                },
+                {
+                  key: 'friends',
+                  label: <span style={{ fontWeight: 600, fontSize: '15px' }}>Bạn bè ({friends.length})</span>,
+                  children: (
+                    <List
+                      loading={loadingFriends}
+                      dataSource={friends}
+                      locale={{ emptyText: <Empty description="Bạn chưa kết bạn với ai" /> }}
+                      style={{ marginTop: 16 }}
+                      renderItem={(f) => (
+                        <List.Item
+                          actions={[
+                            <Tooltip title="Nhắn tin" key="chat">
+                              <Button
+                                type="text"
+                                shape="circle"
+                                icon={<MessageOutlined style={{ color: BRAND.primary, fontSize: 18 }} />}
+                                onClick={async () => {
+                                  try {
+                                    const allConvs = await chatApi.getConversations();
+                                    const existingPrivate = (allConvs || []).find((c: any) =>
+                                      c.type === 'PRIVATE' && Array.isArray(c.participants) &&
+                                      c.participants.some((part: any) => part?.id === f.id || part?.userId === f.id)
+                                    );
+                                    
+                                    let conv = existingPrivate;
+                                    if (!conv) {
+                                      conv = await chatApi.createPrivateConversation(f.id);
+                                    }
+                                    const convId = conv?.id || conv?._id;
+                                    if (convId) {
+                                      useChatStore.getState().setActiveConversation(convId);
+                                      navigate('/chat');
+                                    }
+                                  } catch (err) {
+                                    message.error('Không thể bắt đầu chat với bạn bè');
+                                  }
+                                }}
+                              />
+                            </Tooltip>,
+                            <Tooltip title="Hủy kết bạn" key="unfriend">
+                              <Button
+                                type="text"
+                                danger
+                                shape="circle"
+                                icon={<UserDeleteOutlined style={{ fontSize: 18 }} />}
+                                onClick={() => handleRemoveFriend(f.id, f.fullName)}
+                              />
+                            </Tooltip>
+                          ]}
+                        >
+                          <List.Item.Meta
+                            avatar={<Avatar src={f.avatarUrl} icon={<UserOutlined />} style={{ background: '#16a34a' }} />}
+                            title={<span style={{ fontWeight: 600, color: '#1e293b' }}>{f.fullName}</span>}
+                            description={
+                              <Space size={8} style={{ marginTop: 4 }}>
+                                {f.level && (
+                                  <span style={{ fontSize: '11px', background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>
+                                    {LEVEL_OPTIONS.find(opt => opt.value === f.level)?.label || f.level}
+                                  </span>
+                                )}
+                                {f.gender && (
+                                  <span style={{ fontSize: '11px', background: '#fff7ed', color: '#c2410c', padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>
+                                    {f.gender === 'MALE' ? 'Nam' : f.gender === 'FEMALE' ? 'Nữ' : 'Khác'}
+                                  </span>
+                                )}
+                              </Space>
+                            }
+                          />
+                        </List.Item>
+                      )}
+                    />
+                  )
+                },
+                {
+                  key: 'requests',
+                  label: <span style={{ fontWeight: 600, fontSize: '15px' }}>Yêu cầu kết bạn ({pendingRequests.length})</span>,
+                  children: (
+                    <List
+                      loading={loadingFriends}
+                      dataSource={pendingRequests}
+                      locale={{ emptyText: <Empty description="Không có yêu cầu kết bạn nào" /> }}
+                      style={{ marginTop: 16 }}
+                      renderItem={(r) => (
+                        <List.Item
+                          actions={[
+                            <Button
+                              type="primary"
+                              size="small"
+                              icon={<CheckOutlined />}
+                              onClick={() => handleAcceptRequest(r.id)}
+                              style={{ borderRadius: 8, fontWeight: 600 }}
+                              key="accept"
+                            >
+                              Đồng ý
+                            </Button>,
+                            <Button
+                              danger
+                              size="small"
+                              icon={<CloseOutlined />}
+                              onClick={() => handleDeclineRequest(r.id)}
+                              style={{ borderRadius: 8, fontWeight: 600 }}
+                              key="decline"
+                            >
+                              Từ chối
+                            </Button>
+                          ]}
+                        >
+                          <List.Item.Meta
+                            avatar={<Avatar src={r.avatarUrl} icon={<UserOutlined />} style={{ background: '#16a34a' }} />}
+                            title={<span style={{ fontWeight: 600, color: '#1e293b' }}>{r.fullName}</span>}
+                            description={
+                              <Space size={8} style={{ marginTop: 4 }}>
+                                {r.level && (
+                                  <span style={{ fontSize: '11px', background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 6, fontWeight: 600 }}>
+                                    {LEVEL_OPTIONS.find(opt => opt.value === r.level)?.label || r.level}
+                                  </span>
+                                )}
+                              </Space>
+                            }
+                          />
+                        </List.Item>
+                      )}
+                    />
+                  )
+                }
+              ]}
+            />
           </Card>
         </Col>
       </Row>

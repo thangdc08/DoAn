@@ -29,6 +29,12 @@ export const authApi = {
     return unwrapResult<LoginResponse>(response);
   },
 
+  // Login with Google
+  loginWithGoogle: async (idToken: string): Promise<LoginResponse> => {
+    const response = await apiClient.post('/identity/api/v1/auth/google', { idToken });
+    return unwrapResult<LoginResponse>(response);
+  },
+
   // Refresh access token
   refreshToken: async (data: RefreshTokenRequest): Promise<RefreshTokenResponse> => {
     const response = await apiClient.post('/identity/api/v1/auth/refresh', data);

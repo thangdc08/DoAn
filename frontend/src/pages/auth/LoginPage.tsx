@@ -11,6 +11,7 @@ import { useNotify } from '../../hooks/useNotify';
 import { BRAND } from '../../theme/antdTheme';
 import { authApi } from '../../services/authApi';
 import { useAuthStore } from '../../stores/authStore';
+import { GoogleLogin } from '@react-oauth/google';
 
 const { Title, Text } = Typography;
 
@@ -73,6 +74,43 @@ const LoginPage: React.FC = () => {
 
       hide();
       success('Đăng nhập thành công! Chào mừng trở lại 🏸');
+      
+      // Điều hướng dựa trên Role
+      if (user.roles?.includes('ADMIN')) {
+        navigate('/admin/dashboard');
+      } else if (user.roles?.includes('OWNER')) {
+        navigate('/owner/dashboard');
+      } else {
+        navigate('/venues');
+      }
+    } catch (err: any) {
+      hide();
+      error(getErrorMessage(err));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse: any) => {
+    if (!credentialResponse.credential) {
+      error('Xác thực tài khoản Google thất bại.');
+      return;
+    }
+    
+    setSubmitting(true);
+    const hide = loading('Đang đăng nhập bằng Google...');
+    
+    try {
+      const loginRes = await authApi.loginWithGoogle(credentialResponse.credential);
+      const { access_token, refresh_token } = loginRes;
+      
+      useAuthStore.getState().setAccessToken(access_token);
+      
+      const user = await authApi.getMe();
+      useAuthStore.getState().setAuth(user, access_token, refresh_token);
+      
+      hide();
+      success('Đăng nhập bằng Google thành công! 🏸');
       
       // Điều hướng dựa trên Role
       if (user.roles?.includes('ADMIN')) {
@@ -197,14 +235,20 @@ const LoginPage: React.FC = () => {
 
       <Divider style={{ color: '#94a3b8', fontSize: 13 }}>hoặc</Divider>
 
-      <Button
-        block
-        size="large"
-        icon={<GoogleOutlined />}
-        style={{ height: 48, fontWeight: 600 }}
-      >
-        Tiếp tục với Google
-      </Button>
+      <div style={{ display: 'flex', justifyContent: 'center', width: '100%', marginTop: 8 }}>
+        <GoogleLogin
+          onSuccess={handleGoogleSuccess}
+          onError={() => {
+            error('Đăng nhập bằng Google thất bại. Vui lòng thử lại.');
+          }}
+          useOneTap
+          theme="outline"
+          size="large"
+          text="continue_with"
+          shape="rectangular"
+          width="360"
+        />
+      </div>
     </AuthLayout>
   );
 };

@@ -88,6 +88,7 @@ public class SecurityConfig {
                         ).permitAll()
                         // Public — auth endpoints (không cần token)
                         .pathMatchers(HttpMethod.POST, "/identity/api/v1/auth/login").permitAll()
+                        .pathMatchers(HttpMethod.POST, "/identity/api/v1/auth/google").permitAll()
                         .pathMatchers(HttpMethod.POST, "/identity/api/v1/auth/register").permitAll()
                         .pathMatchers(HttpMethod.POST, "/identity/api/v1/auth/register-owner").permitAll()
                         .pathMatchers(HttpMethod.POST, "/identity/api/v1/auth/refresh").permitAll()

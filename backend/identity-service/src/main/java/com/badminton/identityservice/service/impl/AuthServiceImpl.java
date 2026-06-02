@@ -2,11 +2,14 @@ package com.badminton.identityservice.service.impl;
 
 import com.badminton.common.exception.AppException;
 import com.badminton.identityservice.dto.model.UserDTO;
+import com.badminton.identityservice.dto.request.GoogleLoginRequest;
 import com.badminton.identityservice.dto.request.LoginRequest;
 import com.badminton.identityservice.dto.request.LogoutRequest;
 import com.badminton.identityservice.dto.request.RefreshTokenRequest;
 import com.badminton.identityservice.dto.request.RegisterRequest;
 import com.badminton.identityservice.dto.response.LoginResponse;
+import org.springframework.web.client.RestTemplate;
+import java.util.Map;
 import com.badminton.identityservice.entity.RefreshToken;
 import com.badminton.identityservice.entity.Role;
 import com.badminton.identityservice.entity.User;
@@ -153,6 +156,58 @@ public class AuthServiceImpl implements AuthService {
         if (!passwordEncoder.matches(request.getPassword(), user.getPasswordHash())) {
             throw new AppException(HttpStatus.UNAUTHORIZED, "Mật khẩu không chính xác");
         }
+
+        if (user.getStatus() == UserStatus.LOCKED) {
+            throw new AppException(HttpStatus.UNAUTHORIZED, "Tài khoản đã bị khóa");
+        }
+
+        String accessToken = jwtTokenProvider.generateToken(user);
+        String rawRefreshToken = issueRefreshToken(user);
+
+        return buildLoginResponse(accessToken, rawRefreshToken, user);
+    }
+
+    @Override
+    @Transactional
+    public LoginResponse googleLogin(GoogleLoginRequest request) {
+        String url = "https://oauth2.googleapis.com/tokeninfo?id_token=" + request.getIdToken();
+        RestTemplate restTemplate = new RestTemplate();
+        Map<String, Object> payload;
+        try {
+            payload = restTemplate.getForObject(url, Map.class);
+        } catch (Exception e) {
+            throw new AppException(HttpStatus.UNAUTHORIZED, "Xác thực tài khoản Google thất bại: Token không hợp lệ hoặc đã hết hạn");
+        }
+
+        if (payload == null || payload.containsKey("error")) {
+            throw new AppException(HttpStatus.UNAUTHORIZED, "Xác thực tài khoản Google thất bại: Token không hợp lệ");
+        }
+
+        String email = (String) payload.get("email");
+        String fullName = (String) payload.get("name");
+
+        if (email == null) {
+            throw new AppException(HttpStatus.BAD_REQUEST, "Không thể lấy email từ tài khoản Google");
+        }
+
+        User user = userRepository.findByEmailOrPhoneWithRoles(email)
+                .orElseGet(() -> {
+                    // Tạo tài khoản mới nếu chưa tồn tại
+                    Role userRole = roleRepository.findByCode("USER")
+                            .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy vai trò USER"));
+                    
+                    // Tạo mật khẩu ngẫu nhiên cho người dùng Google
+                    String randomPassword = Base64.getUrlEncoder().withoutPadding().encodeToString(new byte[16]);
+                    
+                    User newUser = User.builder()
+                            .email(email)
+                            .fullName(fullName != null ? fullName : email.split("@")[0])
+                            .passwordHash(passwordEncoder.encode(randomPassword))
+                            .status(UserStatus.ACTIVE)
+                            .roles(new HashSet<>(java.util.Set.of(userRole)))
+                            .build();
+                    return userRepository.save(newUser);
+                });
 
         if (user.getStatus() == UserStatus.LOCKED) {
             throw new AppException(HttpStatus.UNAUTHORIZED, "Tài khoản đã bị khóa");

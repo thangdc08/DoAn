@@ -1,5 +1,6 @@
 package com.badminton.identityservice.service;
 
+import com.badminton.identityservice.dto.request.GoogleLoginRequest;
 import com.badminton.identityservice.dto.request.LoginRequest;
 import com.badminton.identityservice.dto.request.LogoutRequest;
 import com.badminton.identityservice.dto.request.RefreshTokenRequest;
@@ -12,6 +13,7 @@ public interface AuthService {
     UserDTO register(RegisterRequest request);
     LoginResponse registerOwner(RegisterRequest request);
     LoginResponse login(LoginRequest request);
+    LoginResponse googleLogin(GoogleLoginRequest request);
 
     /**
      * Dùng refresh token để lấy access token mới + refresh token mới (rotation).

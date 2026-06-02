@@ -42,6 +42,12 @@ public class AuthController {
         return ResponseEntity.ok(authService.login(request));
     }
 
+    @ApiMessage("Đăng nhập bằng Google")
+    @PostMapping("/google")
+    public ResponseEntity<LoginResponse> googleLogin(@RequestBody @Valid GoogleLoginRequest request) {
+        return ResponseEntity.ok(authService.googleLogin(request));
+    }
+
     /**
      * Đổi refresh token lấy cặp token mới (access + refresh).
      * Refresh token cũ bị revoke ngay sau khi dùng (Token Rotation).

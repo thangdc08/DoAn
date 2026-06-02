@@ -44,13 +44,19 @@ import { useAuthStore } from '../../stores/authStore';
 import { chatApi, type ChatMessage } from '../../services/chatApi';
 import { chatSocket } from '../../services/chatSocket';
 import { authApi } from '../../services/authApi';
+import { useChatStore } from '../../stores/chatStore';
+import { friendApi } from '../../services/friendApi';
 
 const { Title, Text, Paragraph } = Typography;
 
 const levelLabel: Record<string, string> = {
-  BEGINNER: 'Mới chơi',
-  INTERMEDIATE: 'Trung bình',
-  ADVANCED: 'Nâng cao',
+  BEGINNER: 'Người mới',
+  LOW_MEDIUM: 'Trung bình yếu',
+  MEDIUM: 'Trung bình',
+  MEDIUM_STRONG: 'Trung bình khá',
+  STRONG: 'Khá',
+  EXPERT: 'Giỏi',
+  PRO: 'Chuyên nghiệp',
 };
 
 const genderLabel: Record<string, string> = {
@@ -115,6 +121,8 @@ export default function MatchDetailPage() {
   const [match, setMatch] = useState<MatchPost | null>(null);
   const [participants, setParticipants] = useState<MatchParticipant[]>([]);
   const [participantProfiles, setParticipantProfiles] = useState<Record<string, Partial<User>>>({});
+  const [hostProfile, setHostProfile] = useState<User | null>(null);
+  const [friendStatus, setFriendStatus] = useState<string>('NONE');
 
   const [joinModalOpen, setJoinModalOpen] = useState(false);
   const [messageModalOpen, setMessageModalOpen] = useState(false);
@@ -222,6 +230,20 @@ export default function MatchDetailPage() {
       const { matchData, participantData } = await fetchMatchBundle(matchId);
       setMatch(matchData);
       setParticipants(participantData || []);
+
+      if (matchData.hostId) {
+        try {
+          const profile = await authApi.getUserById(matchData.hostId);
+          setHostProfile(profile);
+          
+          if (user) {
+            const status = await friendApi.getRelationStatus(matchData.hostId);
+            setFriendStatus(status);
+          }
+        } catch (e) {
+          console.error('Failed to load host details', e);
+        }
+      }
     } catch {
       message.error('Không thể tải chi tiết kèo');
     } finally {
@@ -400,6 +422,42 @@ export default function MatchDetailPage() {
     setSelectedRequestId(null);
   };
 
+  const handleFriendAction = async () => {
+    if (!user) {
+      message.info('Vui lòng đăng nhập để kết bạn');
+      navigate('/login');
+      return;
+    }
+    if (!match?.hostId) return;
+
+    try {
+      if (friendStatus === 'NONE') {
+        await friendApi.sendRequest(match.hostId);
+        message.success('Đã gửi yêu cầu kết bạn');
+        setFriendStatus('PENDING_SENT');
+      } else if (friendStatus === 'PENDING_RECEIVED') {
+        await friendApi.acceptRequest(match.hostId);
+        message.success('Đã chấp nhận kết bạn');
+        setFriendStatus('ACCEPTED');
+      } else if (friendStatus === 'ACCEPTED') {
+        Modal.confirm({
+          title: 'Hủy kết bạn',
+          content: `Bạn có chắc chắn muốn hủy kết bạn với ${hostProfile?.fullName || match.hostName || 'chủ kèo'}?`,
+          okText: 'Hủy kết bạn',
+          okType: 'danger',
+          cancelText: 'Hủy bỏ',
+          onOk: async () => {
+            await friendApi.removeFriend(match.hostId);
+            message.success('Đã hủy kết bạn');
+            setFriendStatus('NONE');
+          }
+        });
+      }
+    } catch (error: any) {
+      message.error(error?.response?.data?.message || 'Thao tác kết bạn thất bại');
+    }
+  };
+
   const openHostChat = async () => {
     if (!user) {
       message.info('Vui lòng đăng nhập để nhắn tin');
@@ -557,7 +615,7 @@ export default function MatchDetailPage() {
                 dataSource={approvedParticipants}
                 renderItem={(p) => (
                   <List.Item style={{ borderRadius: 14, padding: 14, background: '#fafafa', marginBottom: 10, border: '1px solid #f1f5f9' }}>
-                    <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12, flexWrap: 'wrap' }}>
+                    <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
                       <div
                         style={{
                           display: 'flex',
@@ -586,7 +644,9 @@ export default function MatchDetailPage() {
                             ) : null}
                           </Space>
                           <Space size={[8, 8]} wrap>
-                            <Text type="secondary">ID: {(p as any).userId?.slice?.(0, 8) || '---'}</Text>
+                            <Text type="secondary" copyable={{ text: (p as any).userId, tooltips: ['Sao chép ID', 'Đã sao chép!'] }}>
+                              ID: {(p as any).userId?.slice?.(0, 8) || '---'}
+                            </Text>
                             <Text type="secondary">Tham gia: {dayjs(getParticipantTime(p as any)).format('DD/MM HH:mm')}</Text>
                             <Text type="secondary">Trình độ: {getParticipantProfile(p as any).level || 'Chưa cập nhật'}</Text>
                             <Text type="secondary">
@@ -601,6 +661,40 @@ export default function MatchDetailPage() {
                           </Space>
                         </div>
                       </div>
+                      
+                      {user && (p as any).userId !== user.id && (
+                        <Button 
+                          type="primary"
+                          ghost
+                          shape="round"
+                          icon={<MessageOutlined />} 
+                          style={{ borderRadius: 10, fontWeight: 700 }}
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            try {
+                              const allConvs = await chatApi.getConversations();
+                              const existingPrivate = (allConvs || []).find((c: any) =>
+                                c.type === 'PRIVATE' && Array.isArray(c.participants) &&
+                                c.participants.some((part: any) => part?.id === p.userId || part?.userId === p.userId)
+                              );
+                              
+                              let conv = existingPrivate;
+                              if (!conv) {
+                                conv = await chatApi.createPrivateConversation(p.userId);
+                              }
+                              const convId = conv?.id || conv?._id;
+                              if (convId) {
+                                useChatStore.getState().setActiveConversation(convId);
+                                navigate('/chat');
+                              }
+                            } catch (err) {
+                              message.error('Không thể nhắn tin với người chơi này');
+                            }
+                          }}
+                        >
+                          Nhắn tin
+                        </Button>
+                      )}
                     </div>
                   </List.Item>
                 )}
@@ -610,21 +704,123 @@ export default function MatchDetailPage() {
         </Col>
 
         <Col xs={24} lg={8}>
-          <Card title="Tham gia & Nhắn tin" style={{ borderRadius: 20 }}>
+          {match.hostId && (
+            <Card
+              title={<span style={{ fontSize: 18, fontWeight: 800 }}>Chủ kèo</span>}
+              style={{ borderRadius: 20, marginBottom: 16, border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0, 0, 0, 0.03)' }}
+            >
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', gap: 12 }}>
+                <Avatar 
+                  size={80} 
+                  src={hostProfile?.avatarUrl || match.hostAvatar} 
+                  icon={<UserOutlined />} 
+                  style={{ background: '#16a34a', border: '3px solid #f1f5f9', boxShadow: '0 4px 12px rgba(0,0,0,0.06)' }}
+                />
+                <div>
+                  <Title level={4} style={{ margin: 0, fontWeight: 700 }}>
+                    {hostProfile?.fullName || match.hostName || 'Chủ kèo'}
+                  </Title>
+                  {hostProfile?.email && <Text type="secondary" style={{ fontSize: 13 }}>{hostProfile.email}</Text>}
+                </div>
+
+                <Space size={6} wrap style={{ justifyContent: 'center' }}>
+                  {hostProfile?.level && (
+                    <Tag color="blue" style={{ borderRadius: 8, fontWeight: 600 }}>
+                      {levelLabel[hostProfile.level] || hostProfile.level}
+                    </Tag>
+                  )}
+                  {hostProfile?.gender && (
+                    <Tag color="orange" style={{ borderRadius: 8, fontWeight: 600 }}>
+                      {hostProfile.gender === 'MALE' ? 'Nam' : hostProfile.gender === 'FEMALE' ? 'Nữ' : 'Nam & Nữ'}
+                    </Tag>
+                  )}
+                  {hostProfile?.rating !== undefined && hostProfile.rating > 0 && (
+                    <Tag color="gold" style={{ borderRadius: 8, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                      <StarFilled /> {hostProfile.rating.toFixed(1)}
+                    </Tag>
+                  )}
+                </Space>
+
+                {hostProfile?.bio && (
+                  <Paragraph 
+                    ellipsis={{ rows: 2, expandable: true, symbol: 'Xem thêm' }} 
+                    style={{ color: '#64748b', fontSize: 13, margin: '4px 0 0 0', width: '100%' }}
+                  >
+                    {hostProfile.bio}
+                  </Paragraph>
+                )}
+
+                <div style={{ width: '100%', height: '1px', background: '#f1f5f9', margin: '4px 0' }} />
+
+                <Space direction="vertical" style={{ width: '100%' }} size={8}>
+                  {friendStatus !== 'SELF' && (
+                    <>
+                      <div style={{ width: '100%' }}>
+                        {friendStatus === 'NONE' && (
+                          <Button type="primary" block icon={<UserOutlined />} onClick={handleFriendAction} style={{ borderRadius: 10, fontWeight: 600 }}>
+                            Kết bạn
+                          </Button>
+                        )}
+                        {friendStatus === 'PENDING_SENT' && (
+                          <Button block disabled style={{ borderRadius: 10, fontWeight: 600 }}>
+                            Đã gửi yêu cầu kết bạn
+                          </Button>
+                        )}
+                        {friendStatus === 'PENDING_RECEIVED' && (
+                          <Row gutter={8}>
+                            <Col span={12}>
+                              <Button type="primary" block onClick={handleFriendAction} style={{ borderRadius: 10, fontWeight: 600 }}>
+                                Đồng ý
+                              </Button>
+                            </Col>
+                            <Col span={12}>
+                              <Button danger block onClick={async () => {
+                                try {
+                                  await friendApi.declineRequest(match.hostId!);
+                                  message.success('Đã từ chối yêu cầu kết bạn');
+                                  setFriendStatus('NONE');
+                                } catch (err: any) {
+                                  message.error(err?.response?.data?.message || 'Từ chối thất bại');
+                                }
+                              }} style={{ borderRadius: 10, fontWeight: 600 }}>
+                                Từ chối
+                              </Button>
+                            </Col>
+                          </Row>
+                        )}
+                        {friendStatus === 'ACCEPTED' && (
+                          <Button block onClick={handleFriendAction} style={{ borderRadius: 10, fontWeight: 600, borderColor: '#52c41a', color: '#52c41a' }}>
+                            ✓ Bạn bè (Hủy kết bạn)
+                          </Button>
+                        )}
+                      </div>
+                      
+                      <Button icon={<MessageOutlined />} block onClick={openHostChat} style={{ borderRadius: 10, fontWeight: 600 }}>
+                        Nhắn tin
+                      </Button>
+                    </>
+                  )}
+
+                  {friendStatus === 'SELF' && (
+                    <Alert type="success" message="Bạn là chủ kèo này" showIcon style={{ textAlign: 'left', width: '100%', borderRadius: 10 }} />
+                  )}
+                </Space>
+              </div>
+            </Card>
+          )}
+
+          <Card title="Tham gia kèo đấu" style={{ borderRadius: 20, border: '1px solid #e2e8f0', boxShadow: '0 4px 20px rgba(0, 0, 0, 0.03)' }}>
             {isOwner ? (
-              <Alert type="info" showIcon message="Bạn là chủ kèo" style={{ marginBottom: 12 }} />
+              <Alert type="info" showIcon message="Bạn là chủ kèo" style={{ marginBottom: 12, borderRadius: 10 }} />
             ) : null}
 
             <Space direction="vertical" style={{ width: '100%' }} size={10}>
-              <Button icon={<MessageOutlined />} block size="large" onClick={openHostChat}>
-                Nhắn tin với chủ kèo
-              </Button>
-
               <Button
                 type="primary"
                 icon={<TeamOutlined />}
                 block
                 size="large"
+                style={{ borderRadius: 10, fontWeight: 700 }}
                 disabled={
                   isOwner ||
                   isFull ||
