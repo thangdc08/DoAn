@@ -205,3 +205,19 @@
 .venue-popup .leaflet-popup-tip-container {
   display: none;
 }
+
+/* ── Custom overrides for category tab button icons ── */
+.category-tab-btn .anticon {
+  font-size: 18px !important;
+  width: 18px !important;
+  height: 18px !important;
+  line-height: 18px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.category-tab-btn .anticon svg {
+  display: inline-block !important;
+  width: 18px !important;
+  height: 18px !important;
+}

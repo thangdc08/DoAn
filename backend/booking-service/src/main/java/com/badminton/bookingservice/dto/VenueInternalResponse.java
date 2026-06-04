@@ -9,4 +9,5 @@ public class VenueInternalResponse {
     private UUID id;
     private UUID ownerId;
     private String name;
+    private String policy;
 }

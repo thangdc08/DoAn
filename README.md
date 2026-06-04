@@ -55,3 +55,7 @@ Ví dụ:
 
 ## Kafka UI
 Quản lý Kafka tại: `http://localhost:8090`
+
+## 🔑 Tài khoản Thử nghiệm (Test Accounts)
+Thông tin chi tiết các tài khoản quản trị (Admin), chủ sân (Owner), khách hàng (User) cùng thông tin kết nối Database được ghi đầy đủ tại file [ADMIN_README.md](ADMIN_README.md).
+

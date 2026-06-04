@@ -2,6 +2,7 @@ package com.badminton.recommendationservice.controller;
 
 import com.badminton.recommendationservice.dto.MatchRecommendationResponse;
 import com.badminton.recommendationservice.dto.VenueRecommendationResponse;
+import com.badminton.recommendationservice.dto.WeatherRecommendationResponse;
 import com.badminton.recommendationservice.service.RecommendationService;
 import com.badminton.common.dto.ApiResponse;
 import io.swagger.v3.oas.annotations.Operation;
@@ -49,6 +50,18 @@ public class RecommendationController {
         log.info("API Request: Get match recommendations for user {} at ({}, {})", userId, lat, lng);
         return ApiResponse.<List<MatchRecommendationResponse>>builder()
                 .result(recommendationService.recommendMatches(userId, lat, lng, radiusKm, limit))
+                .build();
+    }
+
+    @GetMapping("/weather")
+    @Operation(summary = "Get weather-aware play recommendation", description = "Get playability score and weather conditions based on coordinates")
+    public ApiResponse<WeatherRecommendationResponse> getWeatherRecommendation(
+            @RequestParam double lat,
+            @RequestParam double lng) {
+        
+        log.info("API Request: Get weather recommendation for ({}, {})", lat, lng);
+        return ApiResponse.<WeatherRecommendationResponse>builder()
+                .result(recommendationService.getWeatherRecommendation(lat, lng))
                 .build();
     }
 }

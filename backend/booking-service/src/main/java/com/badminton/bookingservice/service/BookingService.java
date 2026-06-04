@@ -42,6 +42,7 @@ public class BookingService {
   private final BookingMapper bookingMapper;
   private final BookingEventPublisher bookingEventPublisher;
   private final StringRedisTemplate redisTemplate;
+  private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
   @Value("${app.booking.cancel-before-hours:24}")
   private int cancelBeforeHours;
@@ -375,9 +376,24 @@ public class BookingService {
         .min(LocalDateTime::compareTo)
         .orElseThrow();
 
-    if (earliestStart.isBefore(LocalDateTime.now().plusHours(cancelBeforeHours))) {
+    int cancelHours = cancelBeforeHours;
+    try {
+      VenueInternalResponse venue = venueClient.getVenueById(booking.getVenueId());
+      if (venue != null && venue.getPolicy() != null && !venue.getPolicy().isEmpty()) {
+        com.fasterxml.jackson.databind.JsonNode rootNode = objectMapper.readTree(venue.getPolicy());
+        com.fasterxml.jackson.databind.JsonNode bookingPolicy = rootNode.get("bookingPolicy");
+        if (bookingPolicy != null && bookingPolicy.has("cancelWindow")) {
+          cancelHours = bookingPolicy.get("cancelWindow").asInt();
+          log.info("Using dynamic cancellation window from venue policy: {} hours", cancelHours);
+        }
+      }
+    } catch (Exception e) {
+      log.warn("Failed to parse venue operating policy for cancel window, using default: {}", e.getMessage());
+    }
+
+    if (earliestStart.isBefore(LocalDateTime.now().plusHours(cancelHours))) {
       throw new AppException(HttpStatus.BAD_REQUEST, 
-          String.format("Không thể hủy đặt sân trước giờ bắt đầu dưới %d giờ", cancelBeforeHours));
+          String.format("Không thể hủy đặt sân trước giờ bắt đầu dưới %d giờ", cancelHours));
     }
 
     booking.setStatus("CANCELLED_BY_USER");

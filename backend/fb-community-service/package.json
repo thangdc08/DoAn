@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "scrape": "node src/scraper.js",
+    "export-cookies": "node scripts/exportCookies.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

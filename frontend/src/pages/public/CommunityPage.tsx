@@ -18,6 +18,9 @@ import {
   Tooltip,
   Badge,
   message,
+  Popover,
+  Progress,
+  Spin,
 } from 'antd';
 import {
   EnvironmentOutlined,
@@ -35,13 +38,14 @@ import {
   FacebookFilled,
   ThunderboltFilled,
   CalendarOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import { useNavigate } from 'react-router-dom';
 import { BRAND } from '../../theme/antdTheme';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { communityApi } from '../../services/communityApi';
-import type { MatchPost } from '../../types/community.types';
+import type { MatchPost, FacebookPost } from '../../types/community.types';
 import { useCommunityStore } from '../../stores/communityStore';
 import { useAuthStore } from '../../stores/authStore';
 
@@ -51,14 +55,245 @@ const { Title, Text, Paragraph } = Typography;
 const { Option } = Select;
 
 const CATEGORIES = [
-  { icon: <UserOutlined />, label: 'Tìm kèo', id: 'matches' },
-  { icon: <ThunderboltFilled />, label: 'Pass sân', id: 'pass' },
-  { icon: <LinkOutlined />, label: 'Mua bán', id: 'shop' },
-  { icon: <CustomerServiceOutlined />, label: 'Lớp dạy', id: 'class' },
-  { icon: <TeamOutlined />, label: 'CLB', id: 'club' },
+  { icon: <UserOutlined style={{ fontSize: 18 }} />, label: 'Tìm kèo', id: 'matches' },
+  { icon: <FacebookFilled style={{ fontSize: 18 }} />, label: 'Facebook', id: 'facebook' },
+  { icon: <ThunderboltFilled style={{ fontSize: 18 }} />, label: 'Pass sân', id: 'pass' },
+  { icon: <LinkOutlined style={{ fontSize: 18 }} />, label: 'Mua bán', id: 'shop' },
+  { icon: <CustomerServiceOutlined style={{ fontSize: 18 }} />, label: 'Lớp dạy', id: 'class' },
+  { icon: <TeamOutlined style={{ fontSize: 18 }} />, label: 'CLB', id: 'club' },
 ];
 
 const LEVELS = ['Y', 'Y+', 'TBY', 'TBY+', 'TB-', 'TB', 'TB+', 'TB++', 'TBK'];
+
+interface WeatherWidgetProps {
+  latitude?: number;
+  longitude?: number;
+  locationName?: string;
+  isHeader?: boolean;
+}
+
+const WeatherWidget: React.FC<WeatherWidgetProps> = ({ latitude, longitude, locationName, isHeader }) => {
+  const [loading, setLoading] = useState(false);
+  const [data, setData] = useState<any>(null);
+  const [visible, setVisible] = useState(false);
+  
+  // Default coordinates to Hanoi if none provided
+  const lat = latitude || 21.0285;
+  const lng = longitude || 105.8542;
+  const name = locationName || (isHeader ? "Khu vực của bạn (Hà Nội)" : "Sân đấu");
+
+  const fetchWeather = async () => {
+    if (data) return;
+    setLoading(true);
+    try {
+      const res = await communityApi.getWeatherRecommendation(lat, lng);
+      setData(res);
+    } catch (err) {
+      console.error("Error fetching weather", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isHeader) {
+      fetchWeather();
+    }
+  }, [lat, lng, isHeader]);
+
+  const handleVisibleChange = (newVisible: boolean) => {
+    setVisible(newVisible);
+    if (newVisible) {
+      fetchWeather();
+    }
+  };
+
+  const getTheme = (score: number) => {
+    if (score >= 80) {
+      return {
+        color: '#22c55e', // Green
+        bg: '#f0fdf4',
+        border: '#bbf7d0',
+        text: '#15803d',
+      };
+    } else if (score >= 50) {
+      return {
+        color: '#eab308', // Yellow
+        bg: '#fef9c3',
+        border: '#fef08a',
+        text: '#a16207',
+      };
+    } else {
+      return {
+        color: '#ef4444', // Red
+        bg: '#fef2f2',
+        border: '#fecaca',
+        text: '#b91c1c',
+      };
+    }
+  };
+
+  const theme = getTheme(data?.score ?? 80);
+
+  const popoverContent = (
+    <div style={{ width: 280, padding: '4px' }} onClick={(e) => e.stopPropagation()}>
+      {loading ? (
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '24px 0' }}>
+          <Spin size="small" />
+        </div>
+      ) : data ? (
+        <div>
+          <div style={{ 
+            background: theme.bg, 
+            padding: '12px', 
+            borderRadius: 12, 
+            border: `1px solid ${theme.border}`,
+            marginBottom: 12
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+              <span style={{ fontWeight: 700, color: theme.text }}>
+                {data.status} ({data.score}/100)
+              </span>
+              <span style={{ fontSize: 11, color: '#64748b', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {name}
+              </span>
+            </div>
+            <Progress 
+              percent={data.score} 
+              showInfo={false} 
+              strokeColor={theme.color} 
+              trailColor="#e2e8f0" 
+              size="small" 
+              style={{ margin: '4px 0 8px' }}
+            />
+            <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', lineHeight: 1.4 }}>
+              {data.advice}
+            </div>
+          </div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: 6 }}>
+              <span style={{ color: '#64748b' }}>Nhiệt độ / Độ ẩm</span>
+              <span style={{ fontWeight: 600, color: '#1e293b' }}>☀️ {data.temperature}°C · 💧 {data.humidity}%</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: 6 }}>
+              <span style={{ color: '#64748b' }}>Chỉ số UV / Gió</span>
+              <span style={{ fontWeight: 600, color: '#1e293b' }}>☂️ {data.uvIndex} · 💨 {data.windSpeed} km/h</span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: 6 }}>
+              <span style={{ color: '#64748b' }}>Chất lượng AQI</span>
+              <span style={{ 
+                fontWeight: 700, 
+                color: data.aqi > 150 ? '#ef4444' : data.aqi > 100 ? '#eab308' : '#22c55e' 
+              }}>
+                😷 {data.aqi} ({data.aqi > 150 ? 'Xấu' : data.aqi > 100 ? 'Kém' : 'Tốt'})
+              </span>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: 6 }}>
+              <span style={{ color: '#64748b' }}>Bụi mịn PM2.5</span>
+              <span style={{ fontWeight: 600, color: '#1e293b' }}>🌫️ {data.pm25} µg/m³</span>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 12, borderTop: '1px solid #f1f5f9', paddingTop: 10 }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 6 }}>
+              Thử nghiệm thời tiết tại các khu vực khác:
+            </span>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {[
+                { name: 'Hà Nội', lat: 21.0285, lng: 105.8542 },
+                { name: 'TP.HCM', lat: 10.8231, lng: 106.6297 },
+                { name: 'Đà Nẵng', lat: 16.0544, lng: 108.2022 },
+                { name: 'Sân Mẫu', lat: 35.0, lng: 105.0 }
+              ].map(city => (
+                <Button 
+                  key={city.name}
+                  size="small" 
+                  type="text"
+                  style={{ 
+                    fontSize: 11, 
+                    padding: '2px 8px', 
+                    height: 'auto',
+                    borderRadius: 6, 
+                    background: '#f1f5f9',
+                    fontWeight: 600
+                  }}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    setLoading(true);
+                    try {
+                      const res = await communityApi.getWeatherRecommendation(city.lat, city.lng);
+                      setData(res);
+                    } catch (err) {
+                      console.error("Error setting preset weather", err);
+                    } finally {
+                      setLoading(false);
+                    }
+                  }}
+                >
+                  {city.name}
+                </Button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div style={{ color: '#64748b', fontSize: 13, textAlign: 'center', padding: '12px 0' }}>
+          Không thể tải dữ liệu thời tiết.
+        </div>
+      )}
+    </div>
+  );
+
+  return (
+    <Popover
+      content={popoverContent}
+      title={<div style={{ fontWeight: 800, fontSize: 14 }}>Gợi ý thời tiết chơi cầu</div>}
+      trigger="click"
+      open={visible}
+      onOpenChange={handleVisibleChange}
+      placement="bottomLeft"
+    >
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '6px 12px',
+          borderRadius: 20,
+          background: data ? theme.bg : '#f8fafc',
+          border: `1px solid ${data ? theme.border : '#e2e8f0'}`,
+          cursor: 'pointer',
+          transition: 'all 0.2s',
+          fontWeight: 600,
+          fontSize: 13,
+          color: data ? theme.text : '#475569',
+        }}
+        onClick={(e) => e.stopPropagation()}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.transform = 'translateY(-1px)';
+          e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.05)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.transform = 'none';
+          e.currentTarget.style.boxShadow = 'none';
+        }}
+      >
+        <span>☀️ {data ? `${data.temperature}°C` : '--°C'}</span>
+        <span style={{ color: data ? theme.border : '#cbd5e1' }}>|</span>
+        <span>💧 {data ? `${data.humidity}%` : '--%'}</span>
+        {data && (
+          <>
+            <span style={{ color: theme.border }}>|</span>
+            <span style={{ fontSize: 11, background: theme.color, color: '#fff', padding: '1px 6px', borderRadius: 10, fontWeight: 700 }}>
+              {data.status}
+            </span>
+          </>
+        )}
+      </div>
+    </Popover>
+  );
+};
 
 interface UiMatch {
   id: string;
@@ -77,6 +312,198 @@ interface UiMatch {
   createdAt: string;
 }
 
+function FacebookPostCard({ post }: { post: FacebookPost }) {
+  const [expanded, setExpanded] = useState(false);
+
+  // Truncate content for a cleaner collapsed preview
+  const truncatedContent = useMemo(() => {
+    if (!post.content) return '';
+    if (post.content.length <= 160) return post.content;
+    return post.content.substring(0, 160) + '...';
+  }, [post.content]);
+
+  return (
+    <Card
+      key={post._id}
+      hoverable
+      bodyStyle={{ padding: 0 }}
+      style={{
+        borderRadius: 24,
+        marginBottom: 20,
+        border: '1px solid #f1f5f9',
+        overflow: 'hidden',
+        boxShadow: '0 4px 20px -5px rgba(0,0,0,0.03)',
+      }}
+    >
+      <div style={{ display: 'flex', flexDirection: 'row', minHeight: 180 }}>
+        {/* Left blue Facebook info panel */}
+        <div
+          style={{
+            width: 140,
+            background: '#eff6ff',
+            borderRight: '1px solid #e0f2fe',
+            padding: '24px 16px',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+          }}
+        >
+          <div style={{ color: '#1877f2', marginBottom: 8 }}>
+            <FacebookFilled style={{ fontSize: 28 }} />
+          </div>
+          <Text strong style={{ fontSize: 14, color: '#1e40af', display: 'block', lineHeight: 1.2, marginBottom: 4 }}>
+            {post.time || 'Tin FB'}
+          </Text>
+          <Text type="secondary" style={{ fontSize: 11, color: '#60a5fa' }}>
+            Facebook
+          </Text>
+          {post.level && post.level !== 'Không yêu cầu' && (
+            <div style={{ marginTop: 12 }}>
+              <Badge 
+                count={post.level} 
+                style={{ 
+                  background: BRAND.warning, 
+                  color: '#fff', 
+                  fontWeight: 800, 
+                  border: 'none',
+                  borderRadius: 6,
+                  padding: '0 8px'
+                }} 
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Right content panel */}
+        <div style={{ flex: 1, padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+          <div>
+            {/* Header info */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+              <Space direction="vertical" size={2}>
+                {post.location && (
+                  <Space style={{ marginBottom: 2 }}>
+                    <EnvironmentOutlined style={{ color: BRAND.danger }} />
+                    <Text strong style={{ color: BRAND.danger, fontSize: 14 }}>
+                      {post.location}
+                    </Text>
+                  </Space>
+                )}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {post.slots && post.slots !== 'Không rõ' && (
+                    <Tag color="blue" style={{ border: 'none', borderRadius: 6, fontWeight: 600 }}>
+                      Slot: {post.slots}
+                    </Tag>
+                  )}
+                  {post.contact && post.contact !== 'Không rõ' && (
+                    <Tag color="green" style={{ border: 'none', borderRadius: 6, fontWeight: 600 }}>
+                      📞 {post.contact}
+                    </Tag>
+                  )}
+                </div>
+              </Space>
+
+              <Space>
+                <Button 
+                  shape="circle" 
+                  icon={<ShareAltOutlined />} 
+                  style={{ border: 'none', background: '#f8fafc' }} 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    navigator.clipboard.writeText(post.url);
+                    message.success('Đã sao chép link bài viết Facebook!');
+                  }}
+                />
+                <Button 
+                  shape="circle" 
+                  icon={<FacebookFilled style={{ color: '#1877f2' }} />} 
+                  style={{ border: 'none', background: '#eff6ff' }} 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.open(post.url, '_blank');
+                  }}
+                />
+              </Space>
+            </div>
+
+            {/* Title */}
+            <Title level={4} style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 800 }}>
+              {post.title || 'Tuyển giao lưu cầu lông từ Facebook'}
+            </Title>
+
+            {/* Collapsible Content */}
+            <div style={{ marginBottom: 16 }}>
+              <Paragraph 
+                style={{ 
+                  fontSize: 13, 
+                  lineHeight: 1.6, 
+                  color: '#475569', 
+                  whiteSpace: expanded ? 'pre-wrap' : 'normal',
+                  margin: 0
+                }}
+              >
+                {expanded ? post.content : truncatedContent}
+              </Paragraph>
+              {post.content && post.content.length > 160 && (
+                <Button 
+                  type="link" 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setExpanded(!expanded);
+                  }} 
+                  style={{ padding: 0, height: 'auto', fontSize: 13, fontWeight: 600, marginTop: 4 }}
+                >
+                  {expanded ? 'Thu gọn ^' : 'Xem chi tiết v'}
+                </Button>
+              )}
+            </div>
+          </div>
+
+          {/* Footer User Avatar & Direct CTA Button */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Avatar size={36} icon={<UserOutlined />} style={{ background: '#e2e8f0', color: '#475569' }} />
+              <div>
+                <Text strong style={{ display: 'block', fontSize: 14 }}>
+                  {post.userName || 'Thành viên Facebook'}
+                </Text>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  {dayjs(post.updatedAt).fromNow()}
+                </Text>
+              </div>
+            </div>
+            
+            <Button 
+              type="primary" 
+              size="large" 
+              style={{ 
+                height: 40, 
+                padding: '0 24px', 
+                borderRadius: 12, 
+                fontWeight: 800,
+                background: '#1877f2',
+                borderColor: '#1877f2',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                window.open(post.url, '_blank');
+              }}
+            >
+              <FacebookFilled />
+              Xem trên Facebook
+            </Button>
+          </div>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+
 export default function CommunityPage() {
   const navigate = useNavigate();
   const { isAuthenticated } = useAuthStore();
@@ -93,6 +520,7 @@ export default function CommunityPage() {
   const pageSize = 10;
 
   const [loading, setLoading] = useState(false);
+  const [facebookPosts, setFacebookPosts] = useState<FacebookPost[]>([]);
   const [matchData, setMatchData] = useState<{ content: MatchPost[]; totalElements: number }>({
     content: [],
     totalElements: 0,
@@ -100,6 +528,31 @@ export default function CommunityPage() {
 
   useEffect(() => {
     let ignore = false;
+
+    if (activeCategory === 'facebook') {
+      const loadFacebookPosts = async () => {
+        setLoading(true);
+        try {
+          const response = await communityApi.getFacebookPosts();
+          if (!ignore) {
+            setFacebookPosts(response || []);
+          }
+        } catch (err) {
+          console.error('Failed to load facebook posts:', err);
+          if (!ignore) {
+            setFacebookPosts([]);
+          }
+        } finally {
+          if (!ignore) {
+            setLoading(false);
+          }
+        }
+      };
+      loadFacebookPosts();
+      return () => {
+        ignore = true;
+      };
+    }
 
     const loadMatches = async () => {
       setLoading(true);
@@ -144,7 +597,27 @@ export default function CommunityPage() {
     return () => {
       ignore = true;
     };
-  }, [search, level, date, fromTime, toTime, page]);
+  }, [activeCategory, search, level, date, fromTime, toTime, page]);
+
+  const filteredFacebookPosts = useMemo(() => {
+    if (activeCategory !== 'facebook') return [];
+    return facebookPosts.filter((post) => {
+      if (search.trim()) {
+        const query = search.toLowerCase();
+        const inUser = post.userName?.toLowerCase().includes(query);
+        const inContent = post.content?.toLowerCase().includes(query);
+        const inLocation = post.location?.toLowerCase().includes(query);
+        if (!inUser && !inContent && !inLocation) return false;
+      }
+      if (level) {
+        const postLevel = post.level?.toLowerCase() || '';
+        const filterLevel = level.toLowerCase();
+        if (!postLevel.includes(filterLevel)) return false;
+      }
+      return true;
+    });
+  }, [facebookPosts, activeCategory, search, level]);
+
 
   const uiMatchData = useMemo(() => {
     const content: UiMatch[] = matchData.content.map((post) => {
@@ -443,11 +916,18 @@ export default function CommunityPage() {
           <div style={{ flex: 1, padding: '24px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
               <Space direction="vertical" size={0}>
-                <Space style={{ marginBottom: 4 }}>
-                  <EnvironmentOutlined style={{ color: BRAND.danger }} />
-                  <Text strong style={{ color: BRAND.danger, fontSize: 14 }}>
-                    {match.location}
-                  </Text>
+                <Space style={{ marginBottom: 4, display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                  <Space>
+                    <EnvironmentOutlined style={{ color: BRAND.danger }} />
+                    <Text strong style={{ color: BRAND.danger, fontSize: 14 }}>
+                      {match.location}
+                    </Text>
+                  </Space>
+                  <WeatherWidget 
+                    latitude={originalMatch.latitude} 
+                    longitude={originalMatch.longitude} 
+                    locationName={match.location} 
+                  />
                 </Space>
                 <div style={{ display: 'flex', gap: 8 }}>
                   <Tag color="blue" style={{ border: 'none', borderRadius: 6 }}>
@@ -535,13 +1015,18 @@ export default function CommunityPage() {
                 {CATEGORIES.map((cat) => (
                   <Button
                     key={cat.id}
+                    className="category-tab-btn"
                     type={activeCategory === cat.id ? 'primary' : 'default'}
-                    icon={cat.icon}
                     size="large"
-                    onClick={() => setActiveCategory(cat.id)}
+                    onClick={() => {
+                      setActiveCategory(cat.id);
+                      setPage(1);
+                    }}
                     style={{
-                      display: 'flex',
+                      display: 'inline-flex',
                       alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 8,
                       fontWeight: 700,
                       height: 52,
                       padding: '0 28px',
@@ -549,9 +1034,11 @@ export default function CommunityPage() {
                       border: activeCategory === cat.id ? 'none' : '1px solid #e2e8f0',
                       boxShadow: activeCategory === cat.id ? `0 8px 20px ${BRAND.primary}30` : 'none',
                       background: activeCategory === cat.id ? BRAND.primary : '#fff',
+                      color: activeCategory === cat.id ? '#fff' : '#1e293b',
                     }}
                   >
-                    {cat.label}
+                    {cat.icon}
+                    <span>{cat.label}</span>
                   </Button>
                 ))}
               </div>
@@ -611,21 +1098,64 @@ export default function CommunityPage() {
                 }}
               />
             </Card>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, padding: '0 8px' }}>
-              <div>
-                <Title level={3} style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>
-                  Kèo mới đăng tải
-                </Title>
-                <Text type="secondary" style={{ fontSize: 14 }}>
-                  Hiển thị {uiMatchData.content.length} trên tổng số {uiMatchData.totalElements} kết quả
-                </Text>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, padding: '0 8px', flexWrap: 'wrap', gap: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
+                <div>
+                  <Title level={3} style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>
+                    {activeCategory === 'facebook' ? 'Tin tuyển giao lưu từ Facebook' : 'Kèo mới đăng tải'}
+                  </Title>
+                  <Text type="secondary" style={{ fontSize: 14 }}>
+                    {activeCategory === 'facebook'
+                      ? `Hiển thị ${Math.min(filteredFacebookPosts.slice((page - 1) * pageSize, page * pageSize).length, pageSize)} trên tổng số ${filteredFacebookPosts.length} kết quả`
+                      : `Hiển thị ${uiMatchData.content.length} trên tổng số ${uiMatchData.totalElements} kết quả`}
+                  </Text>
+                </div>
+                <WeatherWidget isHeader={true} />
               </div>
-              <Button icon={<FilterOutlined />} shape="round" size="large" style={{ fontWeight: 600 }}>
-                Sắp xếp: Mới nhất
-              </Button>
+              <Space>
+                {activeCategory === 'facebook' && (
+                  <Tooltip title="Quét bài viết mới từ Facebook">
+                    <Button 
+                      icon={<ReloadOutlined />} 
+                      shape="round" 
+                      size="large" 
+                      style={{ fontWeight: 600, background: '#1877f2', color: '#fff', border: 'none' }} 
+                      loading={loading} 
+                      onClick={async () => { 
+                        message.loading({ content: 'Đang quét Facebook...', key: 'scrape', duration: 0 }); 
+                        try { 
+                          await communityApi.scrapeFacebookPosts(); 
+                          message.success({ content: 'Quét xong! Đang tải lại...', key: 'scrape', duration: 2 }); 
+                          const posts = await communityApi.getFacebookPosts(); 
+                          setFacebookPosts(posts || []); 
+                        } catch { 
+                          message.error({ content: 'Quét thất bại. Kiểm tra cookies FB.', key: 'scrape', duration: 3 }); 
+                        } 
+                      }}
+                    >
+                      Quét bài viết
+                    </Button>
+                  </Tooltip>
+                )}
+                <Button icon={<FilterOutlined />} shape="round" size="large" style={{ fontWeight: 600 }}>
+                  Sắp xếp: Mới nhất
+                </Button>
+              </Space>
             </div>
             {loading ? (
               <Card loading style={{ borderRadius: 16 }} />
+            ) : activeCategory === 'facebook' ? (
+              filteredFacebookPosts.length > 0 ? (
+                filteredFacebookPosts
+                  .slice((page - 1) * pageSize, page * pageSize)
+                  .map((post) => <FacebookPostCard key={post._id} post={post} />)
+              ) : (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={<Text type="secondary">Không tìm thấy bài viết Facebook phù hợp. Hãy thử thay đổi bộ lọc!</Text>}
+                  style={{ padding: '60px 0' }}
+                />
+              )
             ) : filteredPosts.length > 0 ? (
               filteredPosts.map(renderMatchCard)
             ) : (
@@ -638,7 +1168,7 @@ export default function CommunityPage() {
             <div style={{ textAlign: 'center', marginTop: 60 }}>
               <Pagination
                 current={page}
-                total={uiMatchData.totalElements}
+                total={activeCategory === 'facebook' ? filteredFacebookPosts.length : uiMatchData.totalElements}
                 pageSize={pageSize}
                 onChange={setPage}
                 showSizeChanger={false}

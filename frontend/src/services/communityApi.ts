@@ -3,9 +3,9 @@ import type {
   MatchPost,
   MatchParticipant,
   Comment,
-  Rating,
   Report,
   CreateMatchPostRequest,
+  FacebookPost,
 } from '../types/community.types';
 
 export const communityApi = {
@@ -169,5 +169,23 @@ export const communityApi = {
 
   resolveReport: async (reportId: string, action: string): Promise<void> => {
     await apiClient.patch(`/admin/reports/${reportId}/resolve`, { action });
+  },
+
+  // Facebook Scraped Posts
+  getFacebookPosts: async (): Promise<FacebookPost[]> => {
+    const response = await apiClient.get<FacebookPost[]>('/fb-community/api/community/posts');
+    return response.data;
+  },
+  scrapeFacebookPosts: async (): Promise<{ message: string }> => {
+    const response = await apiClient.post('/fb-community/api/community/scrape');
+    return response.data;
+  },
+  
+  // Weather Recommendation
+  getWeatherRecommendation: async (lat: number, lng: number): Promise<any> => {
+    const response = await apiClient.get('/recommendations/api/recommendations/weather', {
+      params: { lat, lng }
+    });
+    return communityApi.unwrapResult(response);
   },
 };

@@ -2,9 +2,11 @@ package com.badminton.recommendationservice.service;
 
 import com.badminton.recommendationservice.client.CommunityServiceClient;
 import com.badminton.recommendationservice.client.VenueServiceClient;
+import com.badminton.recommendationservice.client.WeatherServiceClient;
 import com.badminton.recommendationservice.document.UserActivity;
 import com.badminton.recommendationservice.dto.MatchRecommendationResponse;
 import com.badminton.recommendationservice.dto.VenueRecommendationResponse;
+import com.badminton.recommendationservice.dto.WeatherRecommendationResponse;
 import com.badminton.recommendationservice.repository.UserActivityRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,6 +27,7 @@ public class RecommendationService {
     private final CommunityServiceClient communityServiceClient;
     private final UserActivityRepository userActivityRepository;
     private final RedisTemplate<String, Object> redisTemplate;
+    private final WeatherServiceClient weatherServiceClient;
 
     public List<VenueRecommendationResponse> recommendVenues(UUID userId, double lat, double lng, double radiusKm, int limit) {
         log.info("Getting venue recommendations for user {} at ({}, {})", userId, lat, lng);
@@ -202,6 +205,105 @@ public class RecommendationService {
                 .distanceKm(match.getDistanceKm())
                 .score(score)
                 .reason(String.join(", ", reasons))
+                .build();
+    }
+
+    public WeatherRecommendationResponse getWeatherRecommendation(double lat, double lng) {
+        log.info("Calculating weather recommendation for ({}, {})", lat, lng);
+        
+        WeatherServiceClient.WeatherData data = weatherServiceClient.fetchWeatherData(lat, lng);
+        
+        int score = 100;
+        
+        // 1. Temperature deductions
+        if (data.getTemperature() > 38.0) {
+            score -= 35; // Nắng nóng gay gắt
+        } else if (data.getTemperature() > 35.0) {
+            score -= 20; // Nhiệt độ rất cao
+        } else if (data.getTemperature() < 15.0) {
+            score -= 15; // Trời lạnh
+        }
+        
+        // 2. Humidity deductions
+        if (data.getHumidity() > 90.0) {
+            score -= 40; // Độ ẩm cực cao
+        } else if (data.getHumidity() > 80.0) {
+            score -= 25; // Độ ẩm rất cao
+        }
+        
+        // 3. Wind Speed deductions
+        if (data.getWindSpeed() > 25.0) {
+            score -= 35; // Gió quá to
+        } else if (data.getWindSpeed() > 15.0) {
+            score -= 20; // Gió mạnh
+        }
+        
+        // 4. UV Index deductions
+        if (data.getUvIndex() > 10.0) {
+            score -= 25; // UV cực độ
+        } else if (data.getUvIndex() > 7.0) {
+            score -= 15; // UV độc hại
+        }
+        
+        // 5. AQI deductions
+        if (data.getAqi() > 200) {
+            score -= 50; // Ô nhiễm nghiêm trọng
+        } else if (data.getAqi() > 150) {
+            score -= 30; // Ô nhiễm trung bình
+        }
+        
+        // 6. PM2.5 deductions
+        if (data.getPm25() > 75.0) {
+            score -= 20; // Bụi mịn cao
+        }
+
+        // Capping scores based on severe health or safety conditions
+        if (data.getAqi() >= 180 || data.getHumidity() >= 95.0 || data.getWindSpeed() >= 30.0) {
+            score = 0;
+        } else if (data.getAqi() >= 150) {
+            score = Math.min(score, 30);
+        }
+        
+        // Clamp score between 0 and 100
+        score = Math.max(0, Math.min(100, score));
+        
+        String status;
+        String advice;
+        
+        if (score >= 80) {
+            status = "Lý tưởng";
+            advice = "Thời tiết tuyệt vời để ra sân chơi cầu ngay!";
+        } else if (score >= 50) {
+            if (data.getAqi() > 100) {
+                status = "Không khí nhạy cảm";
+                advice = "Không khí hơi kém, nhóm nhạy cảm nên cẩn trọng.";
+            } else {
+                status = "Cân nhắc kỹ";
+                advice = "Điều kiện thời tiết trung bình, chú ý bảo vệ sức khỏe.";
+            }
+        } else {
+            if (data.getAqi() >= 150 || data.getPm25() > 75.0) {
+                status = "Không khí xấu";
+                advice = "Rủi ro cao, nên nhắn chủ kèo trước khi đi.";
+            } else if (data.getHumidity() > 85.0) {
+                status = "Trời ẩm ướt";
+                advice = "Độ ẩm cao gây trơn trượt trên sân, chú ý chấn thương.";
+            } else {
+                status = "Thời tiết xấu";
+                advice = "Thời tiết xấu, khuyên bạn nên chơi trong nhà hoặc đổi ngày.";
+            }
+        }
+        
+        return WeatherRecommendationResponse.builder()
+                .temperature(data.getTemperature())
+                .humidity(data.getHumidity())
+                .windSpeed(data.getWindSpeed())
+                .uvIndex(data.getUvIndex())
+                .aqi(data.getAqi())
+                .pm25(data.getPm25())
+                .score(score)
+                .status(status)
+                .advice(advice)
                 .build();
     }
 }

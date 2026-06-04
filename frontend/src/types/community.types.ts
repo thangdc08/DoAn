@@ -104,3 +104,18 @@ export interface CreateMatchPostRequest {
   paymentType?: 'SHARE' | 'FIXED' | 'FREE';
   contactPhone?: string;
 }
+
+export interface FacebookPost {
+  _id: string;
+  userName: string;
+  title?: string;
+  content: string;
+  location: string;
+  time: string;
+  slots: string;
+  contact: string;
+  level: string;
+  url: string;
+  updatedAt: string;
+}
+
