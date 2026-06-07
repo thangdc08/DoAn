@@ -18,6 +18,8 @@ export interface CreatePaymentRequest {
   userId: string;
   amount: number;
   provider: 'MOCK' | 'VNPAY';
+  venueId?: string;
+  ownerId?: string;
 }
 
 export interface CreatePaymentResponse {

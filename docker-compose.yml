@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Infrastructure Services
   postgres:
@@ -26,7 +24,7 @@ services:
     image: mongo:7.0
     container_name: badminton-mongodb
     ports:
-      - "27017:27017"
+      - "27018:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
       MONGO_INITDB_ROOT_PASSWORD: adminpassword
@@ -76,8 +74,8 @@ services:
     networks:
       - badminton-network
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list"]
-      interval: 30s
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list"]
+      interval: 10s
       timeout: 10s
       retries: 5
 
@@ -106,65 +104,16 @@ services:
     environment:
       - EUREKA_CLIENT_REGISTER_WITH_EUREKA=false
       - EUREKA_CLIENT_FETCH_REGISTRY=false
+      - MANAGEMENT_HEALTH_MAIL_ENABLED=false
+      - JAVA_TOOL_OPTIONS=-Xmx256m -Xms256m
     networks:
       - badminton-network
     depends_on:
       - postgres
       - kafka
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8761/actuator/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-
-  # Config Server
-  config-server:
-    build:
-      context: ./backend
-      dockerfile: serviceRegistry/Dockerfile
-    container_name: badminton-config-server
-    ports:
-      - "8888:8888"
-    volumes:
-      - ./backend/configServer/src/main/resources/configurations:/config
-    environment:
-      - SPRING_PROFILES_ACTIVE=docker
-    networks:
-      - badminton-network
-    depends_on:
-      - kafka
-      - service-registry
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8888/actuator/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 60s
-
-  # API Gateway
-  api-gateway:
-    build:
-      context: ./backend
-      dockerfile: serviceRegistry/Dockerfile
-    container_name: badminton-api-gateway
-    ports:
-      - "8080:8080"
-    networks:
-      - badminton-network
-    depends_on:
-      - service-registry
-      - config-server
-      - identity-service
-      - venue-service
-      - booking-service
-      - community-service
-      - notification-service
-      - payment-service
-      - recommendation-service
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
-      interval: 30s
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8761/actuator/health || exit 1"]
+      interval: 10s
       timeout: 10s
       retries: 5
       start_period: 60s
@@ -173,20 +122,31 @@ services:
   identity-service:
     build:
       context: ./backend
-      dockerfile: serviceRegistry/Dockerfile
+      dockerfile: identity-service/Dockerfile
     container_name: badminton-identity-service
     ports:
       - "8081:8081"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/badminton_db?currentSchema=identity
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SPRING_DATA_REDIS_HOST=redis
+      - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-registry:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=identity-service
+      - MANAGEMENT_HEALTH_MAIL_ENABLED=false
+      - JAVA_TOOL_OPTIONS=-Xmx256m -Xms256m
     networks:
       - badminton-network
     depends_on:
-      - postgres
-      - kafka
-      - service-registry
-      - config-server
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
-      interval: 30s
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8081/actuator/health || exit 1"]
+      interval: 10s
       timeout: 10s
       retries: 5
       start_period: 60s
@@ -195,20 +155,30 @@ services:
   venue-service:
     build:
       context: ./backend
-      dockerfile: serviceRegistry/Dockerfile
+      dockerfile: venue-service/Dockerfile
     container_name: badminton-venue-service
     ports:
       - "8082:8082"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/badminton_db?currentSchema=venue,public
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-registry:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=venue-service
+      - MANAGEMENT_HEALTH_MAIL_ENABLED=false
+      - JAVA_TOOL_OPTIONS=-Xmx256m -Xms256m
     networks:
       - badminton-network
     depends_on:
-      - postgres
-      - kafka
-      - service-registry
-      - config-server
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8082/actuator/health || exit 1"]
-      interval: 30s
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8082/api-docs || exit 1"]
+      interval: 10s
       timeout: 10s
       retries: 5
       start_period: 60s
@@ -217,21 +187,32 @@ services:
   booking-service:
     build:
       context: ./backend
-      dockerfile: serviceRegistry/Dockerfile
+      dockerfile: booking-service/Dockerfile
     container_name: badminton-booking-service
     ports:
       - "8083:8083"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/badminton_db?currentSchema=booking
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-registry:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=booking-service
+      - MANAGEMENT_HEALTH_MAIL_ENABLED=false
+      - JAVA_TOOL_OPTIONS=-Xmx256m -Xms256m
     networks:
       - badminton-network
     depends_on:
-      - postgres
-      - kafka
-      - service-registry
-      - config-server
-      - venue-service
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
+      venue-service:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8083/actuator/health || exit 1"]
-      interval: 30s
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8083/v3/api-docs || exit 1"]
+      interval: 10s
       timeout: 10s
       retries: 5
       start_period: 60s
@@ -240,20 +221,30 @@ services:
   payment-service:
     build:
       context: ./backend
-      dockerfile: serviceRegistry/Dockerfile
+      dockerfile: payment-service/Dockerfile
     container_name: badminton-payment-service
     ports:
       - "8084:8084"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/badminton_db?currentSchema=payment
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-registry:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=payment-service
+      - MANAGEMENT_HEALTH_MAIL_ENABLED=false
+      - JAVA_TOOL_OPTIONS=-Xmx256m -Xms256m
     networks:
       - badminton-network
     depends_on:
-      - postgres
-      - kafka
-      - service-registry
-      - config-server
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8084/actuator/health || exit 1"]
-      interval: 30s
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8084/api-docs || exit 1"]
+      interval: 10s
       timeout: 10s
       retries: 5
       start_period: 60s
@@ -262,20 +253,30 @@ services:
   community-service:
     build:
       context: ./backend
-      dockerfile: serviceRegistry/Dockerfile
+      dockerfile: community-service/Dockerfile
     container_name: badminton-community-service
     ports:
       - "8085:8085"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/badminton_db?currentSchema=community
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-registry:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=community-service
+      - MANAGEMENT_HEALTH_MAIL_ENABLED=false
+      - JAVA_TOOL_OPTIONS=-Xmx256m -Xms256m
     networks:
       - badminton-network
     depends_on:
-      - postgres
-      - kafka
-      - service-registry
-      - config-server
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8085/actuator/health || exit 1"]
-      interval: 30s
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8085/api-docs || exit 1"]
+      interval: 10s
       timeout: 10s
       retries: 5
       start_period: 60s
@@ -284,20 +285,30 @@ services:
   notification-service:
     build:
       context: ./backend
-      dockerfile: serviceRegistry/Dockerfile
+      dockerfile: notification-service/Dockerfile
     container_name: badminton-notification-service
     ports:
       - "8086:8086"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_DATA_MONGODB_URI=mongodb://admin:adminpassword@mongodb:27017/notification_db?authSource=admin
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-registry:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=notification-service
+      - MANAGEMENT_HEALTH_MAIL_ENABLED=false
+      - JAVA_TOOL_OPTIONS=-Xmx256m -Xms256m
     networks:
       - badminton-network
     depends_on:
-      - mongodb
-      - kafka
-      - service-registry
-      - config-server
+      mongodb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8086/actuator/health || exit 1"]
-      interval: 30s
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8086/api-docs || exit 1"]
+      interval: 10s
       timeout: 10s
       retries: 5
       start_period: 60s
@@ -306,24 +317,143 @@ services:
   recommendation-service:
     build:
       context: ./backend
-      dockerfile: serviceRegistry/Dockerfile
+      dockerfile: recommendation-service/Dockerfile
     container_name: badminton-recommendation-service
     ports:
       - "8087:8087"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_DATA_MONGODB_URI=mongodb://admin:adminpassword@mongodb:27017/recommendation_db?authSource=admin
+      - SPRING_DATA_REDIS_HOST=redis
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-registry:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=recommendation-service
+      - MANAGEMENT_HEALTH_MAIL_ENABLED=false
+      - JAVA_TOOL_OPTIONS=-Xmx256m -Xms256m
     networks:
       - badminton-network
     depends_on:
-      - mongodb
-      - redis
-      - kafka
-      - service-registry
-      - config-server
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      service-registry:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8087/actuator/health || exit 1"]
-      interval: 30s
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8087/api-docs || exit 1"]
+      interval: 10s
       timeout: 10s
       retries: 5
       start_period: 60s
+
+  # API Gateway
+  api-gateway:
+    build:
+      context: ./backend
+      dockerfile: api-gateway/Dockerfile
+    container_name: badminton-api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=dev
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - SPRING_CLOUD_STREAM_KAFKA_BINDER_BROKERS=kafka:9092
+      - SPRING_DATA_REDIS_HOST=redis
+      - EUREKA_CLIENT_SERVICE_URL_DEFAULTZONE=http://service-registry:8761/eureka/
+      - EUREKA_INSTANCE_HOSTNAME=api-gateway
+      - SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI=http://identity-service:8081
+      - MANAGEMENT_HEALTH_MAIL_ENABLED=false
+      - JAVA_TOOL_OPTIONS=-Xmx256m -Xms256m
+    networks:
+      - badminton-network
+    depends_on:
+      service-registry:
+        condition: service_healthy
+      identity-service:
+        condition: service_healthy
+      venue-service:
+        condition: service_healthy
+      booking-service:
+        condition: service_healthy
+      community-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+      payment-service:
+        condition: service_healthy
+      recommendation-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8080/actuator/health || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # AI Service (Node.js)
+  ai-service:
+    build:
+      context: ./backend/ai-service
+    container_name: badminton-ai-service
+    ports:
+      - "8091:8091"
+    environment:
+      - PORT=8091
+      - GATEWAY_URL=http://api-gateway:8080
+      - ENABLE_EUREKA=true
+      - EUREKA_HOST=service-registry
+    networks:
+      - badminton-network
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+
+  # Chat Service (Node.js)
+  chat-service:
+    build:
+      context: ./backend/chat-service
+    container_name: badminton-chat-service
+    ports:
+      - "8686:8686"
+    environment:
+      - PORT=8686
+      - ENABLE_EUREKA=true
+      - EUREKA_HOST=service-registry
+      - HOST_NAME=chat-service
+      - IP_ADDRESS=chat-service
+      - URI_MONGODB_CHAT=mongodb://admin:adminpassword@mongodb:27017/chat_db?authSource=admin
+      - KAFKA_SERVER=kafka:9092
+    networks:
+      - badminton-network
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      api-gateway:
+        condition: service_healthy
+
+  # FB Community Service (Node.js)
+  fb-community-service:
+    build:
+      context: ./backend/fb-community-service
+    container_name: badminton-fb-community-service
+    ports:
+      - "8089:8089"
+    environment:
+      - PORT=8089
+      - MONGO_URI=mongodb://admin:adminpassword@mongodb:27017/fb_community_db?authSource=admin
+      - ENABLE_EUREKA=true
+      - EUREKA_HOST=service-registry
+    networks:
+      - badminton-network
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      api-gateway:
+        condition: service_healthy
 
   # Frontend
   frontend:
@@ -336,10 +466,11 @@ services:
     networks:
       - badminton-network
     depends_on:
-      - api-gateway
+      api-gateway:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost/ || exit 1"]
-      interval: 30s
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1/ || exit 1"]
+      interval: 10s
       timeout: 10s
       retries: 5
       start_period: 60s

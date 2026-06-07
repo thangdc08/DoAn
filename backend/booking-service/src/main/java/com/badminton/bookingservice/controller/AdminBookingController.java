@@ -12,6 +12,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.web.PageableDefault;
 import org.springframework.web.bind.annotation.*;
 
+import com.badminton.bookingservice.dto.RevenueStatsResponse;
+import org.springframework.format.annotation.DateTimeFormat;
+import java.time.LocalDate;
 import java.util.UUID;
 
 @RestController
@@ -33,6 +36,18 @@ public class AdminBookingController {
         log.info("API Request: Admin get all bookings with status={}, venueId={}, userId={}", status, venueId, userId);
         return ApiResponse.<Page<BookingResponse>>builder()
                 .result(bookingService.getAllBookingsForAdmin(status, venueId, userId, pageable))
+                .build();
+    }
+
+    @GetMapping("/revenue")
+    @Operation(summary = "Get system-wide revenue statistics", description = "Admin gets revenue statistics across all venues")
+    public ApiResponse<RevenueStatsResponse> getSystemRevenue(
+            @RequestParam(required = false) UUID venueId,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate) {
+        log.info("API Request: Admin getting system revenue stats for venueId={}, from={}, to={}", venueId, fromDate, toDate);
+        return ApiResponse.<RevenueStatsResponse>builder()
+                .result(bookingService.getAdminRevenueStats(venueId, fromDate, toDate))
                 .build();
     }
 

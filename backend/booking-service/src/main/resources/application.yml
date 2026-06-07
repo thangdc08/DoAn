@@ -37,9 +37,7 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
-        spring.json.use.type.headers: false
-        spring.json.value.default.type: com.badminton.bookingservice.event.PaymentSucceededEvent
-        spring.json.trusted.packages: com.badminton.bookingservice.event,com.badminton.paymentservice.event
+                    spring.json.trusted.packages: com.badminton.bookingservice.event,com.badminton.paymentservice.event
 
 eureka:
   instance:
@@ -70,3 +68,5 @@ management:
   endpoint:
     health:
       show-details: always
+  payment-service:
+    url: http://localhost:8084

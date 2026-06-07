@@ -13,7 +13,7 @@ spring:
     stream:
       kafka:
         binder:
-          brokers: localhost:9094
+          brokers: kafka:9092
     gateway:
       discovery:
         locator:
@@ -99,11 +99,17 @@ spring:
             redis-rate-limiter.requestedTokens: 1
             key-resolver: "#{@ipKeyResolver}"
       - id: fb-community-service
-        uri: http://localhost:8089
+        uri: lb://fb-community-service
         predicates:
         - Path=/fb-community/**
         filters:
         - RewritePath=/fb-community/(?<segment>.*), /${segment}
+      - id: ai-service
+        uri: lb://ai-service
+        predicates:
+        - Path=/ai/**
+        filters:
+        - RewritePath=/ai/(?<segment>.*), /${segment}
       - id: recommendation-service
         uri: lb://recommendation-service
         predicates:
@@ -114,9 +120,9 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          issuer-uri: http://localhost:8081
+          issuer-uri: http://identity-service:8081
   kafka:
-    bootstrap-servers: localhost:9094
+    bootstrap-servers: kafka:9092
 jwt:
   signerKey: "${JWT_SIGNER_KEY:zV9X7f6N8M2K5P4R1S3T0U9V8W7X6Y5Z4A3B2C1D0E9F8G7H6I5J4K3L2M1N0O9}"
 auth:

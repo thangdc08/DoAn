@@ -45,6 +45,7 @@ const VenueManagementPage = lazy(() => import('../pages/owner/VenueManagementPag
 const CourtManagementPage = lazy(() => import('../pages/owner/CourtManagementPage'));
 const OwnerBookingPage = lazy(() => import('../pages/owner/OwnerBookingPage'));
 const OwnerRevenuePage = lazy(() => import('../pages/owner/OwnerRevenuePage'));
+const OwnerPayoutPage = lazy(() => import('../pages/owner/OwnerPayoutPage'));
 const OwnerSettingsPage = lazy(() => import('../pages/owner/OwnerSettingsPage'));
 const OwnerSupportPage = lazy(() => import('../pages/owner/OwnerSupportPage'));
 
@@ -53,6 +54,7 @@ const AdminDashboardPage = lazy(() => import('../pages/admin/AdminDashboardPage'
 const UserManagementPage = lazy(() => import('../pages/admin/UserManagementPage'));
 const VenueApprovalPage = lazy(() => import('../pages/admin/VenueApprovalPage'));
 const AdminReportPage = lazy(() => import('../pages/admin/AdminReportPage'));
+const AdminPayoutPage = lazy(() => import('../pages/admin/AdminPayoutPage'));
 const AdminSettingsPage = lazy(() => import('../pages/admin/AdminSettingsPage'));
 const AdminSupportPage = lazy(() => import('../pages/admin/AdminSupportPage'));
 
@@ -130,6 +132,7 @@ export const router = createBrowserRouter([
       { path: 'bookings', element: <Suspense fallback={<PageLoader />}><OwnerBookingPage /></Suspense> },
       { path: 'chat', element: <Suspense fallback={<PageLoader />}><ChatPage /></Suspense> },
       { path: 'revenue', element: <Suspense fallback={<PageLoader />}><OwnerRevenuePage /></Suspense> },
+      { path: 'payouts', element: <Suspense fallback={<PageLoader />}><OwnerPayoutPage /></Suspense> },
       { path: 'settings', element: <Suspense fallback={<PageLoader />}><OwnerSettingsPage /></Suspense> },
       { path: 'support', element: <Suspense fallback={<PageLoader />}><OwnerSupportPage /></Suspense> },
       { path: 'profile', element: <Suspense fallback={<PageLoader />}><ProfilePage /></Suspense> },
@@ -146,6 +149,7 @@ export const router = createBrowserRouter([
       { path: 'users', element: <Suspense fallback={<PageLoader />}><UserManagementPage /></Suspense> },
       { path: 'venues', element: <Suspense fallback={<PageLoader />}><VenueApprovalPage /></Suspense> },
       { path: 'reports', element: <Suspense fallback={<PageLoader />}><AdminReportPage /></Suspense> },
+      { path: 'payouts', element: <Suspense fallback={<PageLoader />}><AdminPayoutPage /></Suspense> },
       { path: 'settings', element: <Suspense fallback={<PageLoader />}><AdminSettingsPage /></Suspense> },
       { path: 'support', element: <Suspense fallback={<PageLoader />}><AdminSupportPage /></Suspense> },
       { path: 'profile', element: <Suspense fallback={<PageLoader />}><ProfilePage /></Suspense> },

@@ -40,7 +40,7 @@ import {
   CalendarOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { BRAND } from '../../theme/antdTheme';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -83,7 +83,6 @@ const WeatherWidget: React.FC<WeatherWidgetProps> = ({ latitude, longitude, loca
   const name = locationName || (isHeader ? "Khu vực của bạn (Hà Nội)" : "Sân đấu");
 
   const fetchWeather = async () => {
-    if (data) return;
     setLoading(true);
     try {
       const res = await communityApi.getWeatherRecommendation(lat, lng);
@@ -96,16 +95,11 @@ const WeatherWidget: React.FC<WeatherWidgetProps> = ({ latitude, longitude, loca
   };
 
   useEffect(() => {
-    if (isHeader) {
-      fetchWeather();
-    }
-  }, [lat, lng, isHeader]);
+    fetchWeather();
+  }, [lat, lng]);
 
   const handleVisibleChange = (newVisible: boolean) => {
     setVisible(newVisible);
-    if (newVisible) {
-      fetchWeather();
-    }
   };
 
   const getTheme = (score: number) => {
@@ -143,6 +137,17 @@ const WeatherWidget: React.FC<WeatherWidgetProps> = ({ latitude, longitude, loca
         </div>
       ) : data ? (
         <div>
+          {/* Active Area Info */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#64748b', fontWeight: 600 }}>
+              <EnvironmentOutlined style={{ color: theme.color }} />
+              <span>Khu vực đang xem:</span>
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#1e293b', background: '#f8fafc', padding: '6px 10px', borderRadius: 8, border: '1px solid #f1f5f9' }}>
+              {name}
+            </div>
+          </div>
+
           <div style={{ 
             background: theme.bg, 
             padding: '12px', 
@@ -153,9 +158,6 @@ const WeatherWidget: React.FC<WeatherWidgetProps> = ({ latitude, longitude, loca
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
               <span style={{ fontWeight: 700, color: theme.text }}>
                 {data.status} ({data.score}/100)
-              </span>
-              <span style={{ fontSize: 11, color: '#64748b', maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {name}
               </span>
             </div>
             <Progress 
@@ -192,48 +194,6 @@ const WeatherWidget: React.FC<WeatherWidgetProps> = ({ latitude, longitude, loca
             <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: 6 }}>
               <span style={{ color: '#64748b' }}>Bụi mịn PM2.5</span>
               <span style={{ fontWeight: 600, color: '#1e293b' }}>🌫️ {data.pm25} µg/m³</span>
-            </div>
-          </div>
-
-          <div style={{ marginTop: 12, borderTop: '1px solid #f1f5f9', paddingTop: 10 }}>
-            <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b', display: 'block', marginBottom: 6 }}>
-              Thử nghiệm thời tiết tại các khu vực khác:
-            </span>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {[
-                { name: 'Hà Nội', lat: 21.0285, lng: 105.8542 },
-                { name: 'TP.HCM', lat: 10.8231, lng: 106.6297 },
-                { name: 'Đà Nẵng', lat: 16.0544, lng: 108.2022 },
-                { name: 'Sân Mẫu', lat: 35.0, lng: 105.0 }
-              ].map(city => (
-                <Button 
-                  key={city.name}
-                  size="small" 
-                  type="text"
-                  style={{ 
-                    fontSize: 11, 
-                    padding: '2px 8px', 
-                    height: 'auto',
-                    borderRadius: 6, 
-                    background: '#f1f5f9',
-                    fontWeight: 600
-                  }}
-                  onClick={async (e) => {
-                    e.stopPropagation();
-                    setLoading(true);
-                    try {
-                      const res = await communityApi.getWeatherRecommendation(city.lat, city.lng);
-                      setData(res);
-                    } catch (err) {
-                      console.error("Error setting preset weather", err);
-                    } finally {
-                      setLoading(false);
-                    }
-                  }}
-                >
-                  {city.name}
-                </Button>
-              ))}
             </div>
           </div>
         </div>
@@ -279,15 +239,24 @@ const WeatherWidget: React.FC<WeatherWidgetProps> = ({ latitude, longitude, loca
           e.currentTarget.style.boxShadow = 'none';
         }}
       >
-        <span>☀️ {data ? `${data.temperature}°C` : '--°C'}</span>
-        <span style={{ color: data ? theme.border : '#cbd5e1' }}>|</span>
-        <span>💧 {data ? `${data.humidity}%` : '--%'}</span>
-        {data && (
+        {loading ? (
+          <Space size={4}>
+            <Spin size="small" />
+            <span style={{ fontSize: 12, color: '#64748b' }}>Đang tải thời tiết...</span>
+          </Space>
+        ) : (
           <>
-            <span style={{ color: theme.border }}>|</span>
-            <span style={{ fontSize: 11, background: theme.color, color: '#fff', padding: '1px 6px', borderRadius: 10, fontWeight: 700 }}>
-              {data.status}
-            </span>
+            <span>☀️ {data ? `${data.temperature}°C` : '--°C'}</span>
+            <span style={{ color: data ? theme.border : '#cbd5e1' }}>|</span>
+            <span>💧 {data ? `${data.humidity}%` : '--%'}</span>
+            {data && (
+              <>
+                <span style={{ color: theme.border }}>|</span>
+                <span style={{ fontSize: 11, background: theme.color, color: '#fff', padding: '1px 6px', borderRadius: 10, fontWeight: 700 }}>
+                  {data.status}
+                </span>
+              </>
+            )}
           </>
         )}
       </div>
@@ -315,189 +284,142 @@ interface UiMatch {
 function FacebookPostCard({ post }: { post: FacebookPost }) {
   const [expanded, setExpanded] = useState(false);
 
-  // Truncate content for a cleaner collapsed preview
-  const truncatedContent = useMemo(() => {
-    if (!post.content) return '';
-    if (post.content.length <= 160) return post.content;
-    return post.content.substring(0, 160) + '...';
-  }, [post.content]);
+  const displayLevel = post.level && post.level !== 'Không yêu cầu'
+    ? post.level
+    : null;
+  const hasPriceBreakdown = post.priceBreakdown?.male || post.priceBreakdown?.female;
 
   return (
     <Card
-      key={post._id}
       hoverable
-      bodyStyle={{ padding: 0 }}
       style={{
-        borderRadius: 24,
-        marginBottom: 20,
+        borderRadius: 16,
+        marginBottom: 16,
         border: '1px solid #f1f5f9',
         overflow: 'hidden',
-        boxShadow: '0 4px 20px -5px rgba(0,0,0,0.03)',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
       }}
     >
-      <div style={{ display: 'flex', flexDirection: 'row', minHeight: 180 }}>
-        {/* Left blue Facebook info panel */}
-        <div
-          style={{
-            width: 140,
-            background: '#eff6ff',
-            borderRight: '1px solid #e0f2fe',
-            padding: '24px 16px',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            textAlign: 'center',
-          }}
-        >
-          <div style={{ color: '#1877f2', marginBottom: 8 }}>
-            <FacebookFilled style={{ fontSize: 28 }} />
-          </div>
-          <Text strong style={{ fontSize: 14, color: '#1e40af', display: 'block', lineHeight: 1.2, marginBottom: 4 }}>
-            {post.time || 'Tin FB'}
-          </Text>
-          <Text type="secondary" style={{ fontSize: 11, color: '#60a5fa' }}>
-            Facebook
-          </Text>
-          {post.level && post.level !== 'Không yêu cầu' && (
-            <div style={{ marginTop: 12 }}>
-              <Badge 
-                count={post.level} 
-                style={{ 
-                  background: BRAND.warning, 
-                  color: '#fff', 
-                  fontWeight: 800, 
-                  border: 'none',
-                  borderRadius: 6,
-                  padding: '0 8px'
-                }} 
-              />
-            </div>
+      {/* Top info badge bar */}
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '10px 16px',
+        background: '#f8fafc',
+        borderBottom: '1px solid #f1f5f9',
+        flexWrap: 'wrap',
+      }}>
+        <Space size={4} style={{ marginRight: 2 }}>
+          <ClockCircleOutlined style={{ color: '#6366f1', fontSize: 13 }} />
+          <Text strong style={{ color: '#6366f1', fontSize: 13 }}>{post.time || '--:--'}</Text>
+          {post.date && (
+            <Text type="secondary" style={{ fontSize: 12 }}>({post.date})</Text>
           )}
-        </div>
+        </Space>
 
-        {/* Right content panel */}
-        <div style={{ flex: 1, padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+        <Space size={4} style={{ marginRight: 2 }}>
+          <EnvironmentOutlined style={{ color: BRAND.danger, fontSize: 13 }} />
+          <Text strong style={{ color: BRAND.danger, fontSize: 13 }}>{post.location}</Text>
+        </Space>
+
+        {post.gender && (
+          <Tag color={post.gender === 'Nữ' ? 'magenta' : post.gender === 'Nam/Nữ' ? 'cyan' : 'blue'}
+               style={{ margin: 0, borderRadius: 6, fontWeight: 600, fontSize: 12 }}>
+            <TeamOutlined style={{ marginRight: 3 }} />{post.gender}
+          </Tag>
+        )}
+
+        {hasPriceBreakdown ? (
+          <Space size={4}>
+            <Text style={{ fontSize: 12, color: '#16a34a', fontWeight: 600 }}>
+              Nam: {post.priceBreakdown?.male || '--'}
+            </Text>
+            <Text style={{ fontSize: 12, color: '#ec4899', fontWeight: 600 }}>
+              Nữ: {post.priceBreakdown?.female || '--'}
+            </Text>
+          </Space>
+        ) : post.price ? (
+          <Tag color="green" style={{ margin: 0, borderRadius: 6, fontWeight: 700, fontSize: 12 }}>
+            {post.price}
+          </Tag>
+        ) : null}
+
+        {displayLevel && (
+          <Tag color="orange" style={{ margin: 0, borderRadius: 6, fontWeight: 700, fontSize: 12 }}>
+            {displayLevel}
+          </Tag>
+        )}
+
+        {post.playType && (
+          <Tag style={{ margin: 0, borderRadius: 6, fontSize: 12, border: '1px solid #e2e8f0' }}>
+            {post.playType === 'doi' ? 'Doi' : 'Don'}
+          </Tag>
+        )}
+
+        <div style={{ flex: 1 }} />
+
+        <Space size={4}>
+          <Button shape="circle" size="small" icon={<ShareAltOutlined />}
+            style={{ border: 'none', background: '#fff' }}
+            onClick={(e) => { e.stopPropagation();
+              navigator.clipboard.writeText(post.url);
+              message.success('Da sao chep link!');
+            }}
+          />
+          <Button shape="circle" size="small"
+            icon={<FacebookFilled style={{ color: '#1877f2' }} />}
+            style={{ border: 'none', background: '#eff6ff' }}
+            onClick={(e) => { e.stopPropagation(); window.open(post.url, '_blank'); }}
+          />
+        </Space>
+      </div>
+
+      {/* Title */}
+      <div style={{ padding: '12px 16px 0' }}>
+        <Title level={5} style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#1e293b' }}>
+          {post.title || 'Tuyen giao luu cau long tu Facebook'}
+        </Title>
+      </div>
+
+      {/* Collapsible content */}
+      <div style={{ padding: '6px 16px 0' }}>
+        <Paragraph style={{
+          fontSize: 13, lineHeight: 1.6, color: '#475569',
+          whiteSpace: expanded ? 'pre-wrap' : 'normal', margin: 0,
+        }}>
+          {expanded
+            ? post.content
+            : (post.content && post.content.length > 160 ? post.content.substring(0, 160) + '...' : post.content)}
+        </Paragraph>
+        {post.content && post.content.length > 160 && (
+          <Button type="link" onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+            style={{ padding: 0, height: 'auto', fontSize: 12, fontWeight: 600, marginTop: 2 }}>
+            {expanded ? 'Thu gon' : 'Xem chi tiet'}
+          </Button>
+        )}
+      </div>
+
+      {/* Footer */}
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '10px 16px', borderTop: '1px solid #f1f5f9', marginTop: 10,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <Avatar size={30} icon={<UserOutlined />} style={{ background: '#e2e8f0', color: '#475569' }} />
           <div>
-            {/* Header info */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
-              <Space direction="vertical" size={2}>
-                {post.location && (
-                  <Space style={{ marginBottom: 2 }}>
-                    <EnvironmentOutlined style={{ color: BRAND.danger }} />
-                    <Text strong style={{ color: BRAND.danger, fontSize: 14 }}>
-                      {post.location}
-                    </Text>
-                  </Space>
-                )}
-                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {post.slots && post.slots !== 'Không rõ' && (
-                    <Tag color="blue" style={{ border: 'none', borderRadius: 6, fontWeight: 600 }}>
-                      Slot: {post.slots}
-                    </Tag>
-                  )}
-                  {post.contact && post.contact !== 'Không rõ' && (
-                    <Tag color="green" style={{ border: 'none', borderRadius: 6, fontWeight: 600 }}>
-                      📞 {post.contact}
-                    </Tag>
-                  )}
-                </div>
-              </Space>
-
-              <Space>
-                <Button 
-                  shape="circle" 
-                  icon={<ShareAltOutlined />} 
-                  style={{ border: 'none', background: '#f8fafc' }} 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    navigator.clipboard.writeText(post.url);
-                    message.success('Đã sao chép link bài viết Facebook!');
-                  }}
-                />
-                <Button 
-                  shape="circle" 
-                  icon={<FacebookFilled style={{ color: '#1877f2' }} />} 
-                  style={{ border: 'none', background: '#eff6ff' }} 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    window.open(post.url, '_blank');
-                  }}
-                />
-              </Space>
-            </div>
-
-            {/* Title */}
-            <Title level={4} style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 800 }}>
-              {post.title || 'Tuyển giao lưu cầu lông từ Facebook'}
-            </Title>
-
-            {/* Collapsible Content */}
-            <div style={{ marginBottom: 16 }}>
-              <Paragraph 
-                style={{ 
-                  fontSize: 13, 
-                  lineHeight: 1.6, 
-                  color: '#475569', 
-                  whiteSpace: expanded ? 'pre-wrap' : 'normal',
-                  margin: 0
-                }}
-              >
-                {expanded ? post.content : truncatedContent}
-              </Paragraph>
-              {post.content && post.content.length > 160 && (
-                <Button 
-                  type="link" 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setExpanded(!expanded);
-                  }} 
-                  style={{ padding: 0, height: 'auto', fontSize: 13, fontWeight: 600, marginTop: 4 }}
-                >
-                  {expanded ? 'Thu gọn ^' : 'Xem chi tiết v'}
-                </Button>
-              )}
-            </div>
-          </div>
-
-          {/* Footer User Avatar & Direct CTA Button */}
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid #f1f5f9', paddingTop: 16 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <Avatar size={36} icon={<UserOutlined />} style={{ background: '#e2e8f0', color: '#475569' }} />
-              <div>
-                <Text strong style={{ display: 'block', fontSize: 14 }}>
-                  {post.userName || 'Thành viên Facebook'}
-                </Text>
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {dayjs(post.updatedAt).fromNow()}
-                </Text>
-              </div>
-            </div>
-            
-            <Button 
-              type="primary" 
-              size="large" 
-              style={{ 
-                height: 40, 
-                padding: '0 24px', 
-                borderRadius: 12, 
-                fontWeight: 800,
-                background: '#1877f2',
-                borderColor: '#1877f2',
-                display: 'flex',
-                alignItems: 'center',
-                gap: 8
-              }}
-              onClick={(e) => {
-                e.stopPropagation();
-                window.open(post.url, '_blank');
-              }}
-            >
-              <FacebookFilled />
-              Xem trên Facebook
-            </Button>
+            <Text strong style={{ fontSize: 13, display: 'block' }}>{post.userName || 'Thanh vien FB'}</Text>
+            <Text type="secondary" style={{ fontSize: 11 }}>{dayjs(post.updatedAt).fromNow()}</Text>
           </div>
         </div>
+        <Button type="primary" size="middle" style={{
+          height: 32, borderRadius: 10, fontWeight: 700,
+          background: '#1877f2', borderColor: '#1877f2', fontSize: 13,
+        }}
+          onClick={(e) => { e.stopPropagation(); window.open(post.url, '_blank'); }}
+        >
+          <FacebookFilled /> Xem tren FB
+        </Button>
       </div>
     </Card>
   );
@@ -506,6 +428,7 @@ function FacebookPostCard({ post }: { post: FacebookPost }) {
 
 export default function CommunityPage() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { isAuthenticated } = useAuthStore();
   const { toggleFavorite, isFavorite, joinMatch, selectedMatches } = useCommunityStore();
 
@@ -515,6 +438,22 @@ export default function CommunityPage() {
   const [date, setDate] = useState<dayjs.Dayjs | null>(dayjs());
   const [fromTime, setFromTime] = useState<dayjs.Dayjs | null>(null);
   const [toTime, setToTime] = useState<dayjs.Dayjs | null>(null);
+
+  useEffect(() => {
+    const q = searchParams.get('q') || searchParams.get('search');
+    const lvl = searchParams.get('level');
+    const cat = searchParams.get('category');
+    const dt = searchParams.get('date');
+    if (q !== null) setSearch(q);
+    if (lvl !== null) setLevel(lvl);
+    if (cat !== null) setActiveCategory(cat);
+    if (dt) {
+      const parsedDate = dayjs(dt);
+      if (parsedDate.isValid()) {
+        setDate(parsedDate);
+      }
+    }
+  }, [searchParams]);
 
   const [page, setPage] = useState(1);
   const pageSize = 10;

@@ -11,4 +11,6 @@ public class CreatePaymentRequest {
     private UUID userId;
     private BigDecimal amount;
     private String provider;
+    private UUID venueId;
+    private UUID ownerId;
 }

@@ -43,6 +43,7 @@ export interface Venue {
   priceMin?: number;
   priceMax?: number;
   distance?: number;
+  policy?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -134,6 +135,7 @@ export interface UpdateVenueRequest {
   closeTime?: string;
   utilities?: string[];
   status?: string;
+  policy?: string;
 }
 
 export interface UpdateCourtAvailabilityRequest {

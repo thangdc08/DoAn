@@ -44,9 +44,8 @@ springdoc:
 
 eureka:
   instance:
-    hostname: localhost
-    ip-address: 127.0.0.1
-    prefer-ip-address: true
+    hostname: ${EUREKA_INSTANCE_HOSTNAME:localhost}
+    prefer-ip-address: false
     non-secure-port: ${server.port}
     instance-id: ${spring.application.name}:${server.port}
   client:

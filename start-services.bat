@@ -92,7 +92,16 @@ start "Notification Service" cmd /c "cd backend\notification-service && mvnw spr
 timeout /t 3 /nobreak > nul
 
 start "Recommendation Service" cmd /c "cd backend\recommendation-service && mvnw spring-boot:run -Dspring-boot.run.profiles=dev"
-timeout /t 10 /nobreak > nul
+timeout /t 5 /nobreak > nul
+
+start "AI Service" cmd /c "cd backend\ai-service && npm start"
+timeout /t 3 /nobreak > nul
+
+start "Chat Service" cmd /c "cd backend\chat-service && npm start"
+timeout /t 3 /nobreak > nul
+
+start "FB Community" cmd /c "cd backend\fb-community-service && npm start"
+timeout /t 3 /nobreak > nul
 
 start "API Gateway" cmd /c "cd backend\api-gateway && mvnw spring-boot:run -Dspring-boot.run.profiles=dev"
 
@@ -102,15 +111,18 @@ echo All services started!
 echo ========================================
 echo.
 echo Service URLs:
-echo   API Gateway:        http://localhost:8080
-echo   Service Registry:   http://localhost:8761
-echo   Identity Service:   http://localhost:8081
-echo   Venue Service:      http://localhost:8082
-echo   Booking Service:    http://localhost:8083
-echo   Payment Service:    http://localhost:8084
-echo   Community Service:  http://localhost:8085
-echo   Notification Service: http://localhost:8086
+echo   API Gateway:           http://localhost:8080
+echo   Service Registry:      http://localhost:8761
+echo   Identity Service:      http://localhost:8081
+echo   Venue Service:         http://localhost:8082
+echo   Booking Service:       http://localhost:8083
+echo   Payment Service:       http://localhost:8084
+echo   Community Service:     http://localhost:8085
+echo   Notification Service:  http://localhost:8086
 echo   Recommendation Service: http://localhost:8087
+echo   AI Service:            http://localhost:8091
+echo   Chat Service:          http://localhost:8686
+echo   FB Community Service:  http://localhost:8089
 echo.
 echo All services are running in separate windows.
 echo Check each window for logs.

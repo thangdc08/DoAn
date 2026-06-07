@@ -112,9 +112,14 @@ export interface FacebookPost {
   content: string;
   location: string;
   time: string;
+  date?: string | null;
   slots: string;
   contact: string;
   level: string;
+  price?: string | null;
+  priceBreakdown?: { male?: string; female?: string };
+  gender?: string | null;
+  playType?: string | null;
   url: string;
   updatedAt: string;
 }

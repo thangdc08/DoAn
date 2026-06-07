@@ -32,6 +32,10 @@ public class BookingEventPublisher {
         saveToOutbox(event.getBookingId(), "Booking", "BookingExpired", event);
     }
 
+    public void publishBookingCancelledByAdmin(BookingCancelledByAdminEvent event) {
+        saveToOutbox(event.getBookingId(), "Booking", "BookingCancelledByAdmin", event);
+    }
+
     private void saveToOutbox(UUID aggregateId, String aggregateType, String eventType, Object payloadObj) {
         try {
             String payload = objectMapper.writeValueAsString(payloadObj);
@@ -79,4 +83,15 @@ public class BookingEventPublisher {
         private String venueName;
         private LocalDateTime expiredAt;
     }
+
+    @Data
+    @Builder
+    public static class BookingCancelledByAdminEvent {
+        private UUID bookingId;
+        private UUID userId;
+        private UUID adminId;
+        private String reason;
+        private LocalDateTime cancelledAt;
+    }
+
 }

@@ -19,6 +19,7 @@ import { chatApi } from '../services/chatApi';
 import { authApi } from '../services/authApi';
 import { Avatar, Divider, Button, Typography, Dropdown, Badge, type MenuProps, notification } from 'antd';
 import { LogoutOutlined, UserOutlined, SettingOutlined, CalendarOutlined, ShopOutlined, DashboardOutlined } from '@ant-design/icons';
+import { SmashMateChatbot } from '../components/layout/SmashMateChatbot';
 
 const { Text } = Typography;
 
@@ -449,6 +450,9 @@ export const PublicLayout: React.FC = () => {
       <main className="flex-1">
         <Outlet />
       </main>
+
+      {/* ══ SmashMate AI Chatbot ══════════════════════════════════ */}
+      <SmashMateChatbot />
 
       {/* ══ Footer Professional ═════════════════════════════════ */}
       {!['/chat', '/map'].includes(location.pathname) && (

@@ -1,103 +1,364 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Row, Col, Card, Statistic, Typography, Space, Button, Progress, message, Spin } from 'antd';
-import { UserOutlined, HomeOutlined, TrophyOutlined, LineChartOutlined, GlobalOutlined, DownloadOutlined } from '@ant-design/icons';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Row, Col, Card, Statistic, Typography, Space, Button, Table, Tag, Select, Spin, Empty, message } from 'antd';
+import { useQuery } from '@tanstack/react-query';
+import dayjs from 'dayjs';
+import { 
+  UserOutlined, 
+  HomeOutlined, 
+  TrophyOutlined, 
+  LineChartOutlined, 
+  GlobalOutlined, 
+  DownloadOutlined,
+  CalendarOutlined,
+  CheckCircleOutlined,
+  DollarOutlined
+} from '@ant-design/icons';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, LineChart, Line } from 'recharts';
 import { BRAND } from '../../theme/antdTheme';
 import { adminApi } from '../../services/adminApi';
 import { venueApi } from '../../services/venueApi';
+import { bookingApi } from '../../services/bookingApi';
 
 const { Title, Text } = Typography;
+const { Option } = Select;
 
 export default function AdminReportPage() {
-  const [loading, setLoading] = useState(false);
-  const [users, setUsers] = useState(0);
-  const [venues, setVenues] = useState(0);
-  const [reports] = useState(0);
-  const [revenue] = useState(0);
-  const [growthData, setGrowthData] = useState<Array<{ name: string; users: number; venues: number }>>([]);
+  const [selectedVenueId, setSelectedVenueId] = useState<string>('ALL');
+  const [timeRange, setTimeRange] = useState<string>('30-days');
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        const [u, v] = await Promise.allSettled([
-          adminApi.getUsers({ page: 0, size: 1 }),
-          venueApi.getVenues({ page: 0, size: 200 }),
-        ]);
-
-        if (u.status === 'fulfilled') setUsers(u.value.totalElements || 0);
-        if (v.status === 'fulfilled') setVenues((v.value || []).length);
-      } catch (error) {
-        console.error(error);
-        message.error('Không tải được báo cáo hệ thống');
-      } finally {
-        setLoading(false);
-      }
+  // Compute dates based on time range
+  const { startDate, endDate } = useMemo(() => {
+    const today = dayjs();
+    let start = today.subtract(30, 'day');
+    
+    if (timeRange === '7-days') {
+      start = today.subtract(7, 'day');
+    } else if (timeRange === 'this-month') {
+      start = today.startOf('month');
+    } else if (timeRange === 'this-year') {
+      start = today.startOf('year');
+    }
+    
+    return {
+      startDate: start.format('YYYY-MM-DD'),
+      endDate: today.format('YYYY-MM-DD')
     };
-    load();
-  }, []);
+  }, [timeRange]);
 
-  useEffect(() => {
-    const baseUsers = Math.max(users - 500, 0);
-    const baseVenues = Math.max(venues - 40, 0);
-    setGrowthData([
-      { name: 'T-5', users: Math.max(baseUsers, 0), venues: Math.max(baseVenues, 0) },
-      { name: 'T-4', users: Math.max(baseUsers + 100, 0), venues: Math.max(baseVenues + 8, 0) },
-      { name: 'T-3', users: Math.max(baseUsers + 200, 0), venues: Math.max(baseVenues + 15, 0) },
-      { name: 'T-2', users: Math.max(baseUsers + 300, 0), venues: Math.max(baseVenues + 22, 0) },
-      { name: 'T-1', users: Math.max(baseUsers + 400, 0), venues: Math.max(baseVenues + 30, 0) },
-      { name: 'Now', users, venues },
-    ]);
-  }, [users, venues]);
+  // Fetch all venues in system for the filter dropdown
+  const { data: systemVenues = [], isLoading: isLoadingVenues } = useQuery({
+    queryKey: ['systemVenues'],
+    queryFn: () => venueApi.getVenues({ size: 1000 })
+  });
 
-  const resolvedRate = useMemo(() => {
-    if (!reports) return 100;
-    return Math.max(20, Math.min(100, Math.round((reports - Math.floor(reports * 0.2)) / reports * 100)));
-  }, [reports]);
+  // Fetch admin revenue stats
+  const { data: revenueData, isLoading: isLoadingRevenue } = useQuery({
+    queryKey: ['adminRevenue', selectedVenueId, startDate, endDate],
+    queryFn: () => bookingApi.getAdminRevenue({
+      venueId: selectedVenueId === 'ALL' ? undefined : selectedVenueId,
+      startDate,
+      endDate
+    })
+  });
+
+  // Fetch total users for top cards
+  const { data: usersData, isLoading: isLoadingUsers } = useQuery({
+    queryKey: ['adminUsersCount'],
+    queryFn: () => adminApi.getUsers({ page: 0, size: 1 })
+  });
+
+  const totalUsers = usersData?.totalElements || 0;
+  const totalVenuesCount = systemVenues.length;
+
+  const isLoading = isLoadingVenues || isLoadingRevenue || isLoadingUsers;
+
+  // Format daily data for Recharts
+  const chartData = useMemo(() => {
+    if (!revenueData?.dailyBreakdown || revenueData.dailyBreakdown.length === 0) {
+      return [];
+    }
+    return revenueData.dailyBreakdown.map(item => ({
+      date: dayjs(item.date).format('DD/MM'),
+      revenue: item.revenue,
+      bookings: item.bookingCount
+    }));
+  }, [revenueData]);
+
+  // Table columns
+  const tableColumns = useMemo(() => {
+    if (selectedVenueId === 'ALL') {
+      // Show breakdown by venue
+      return [
+        { 
+          title: 'Tên sân / Cơ sở', 
+          dataIndex: 'venueName', 
+          key: 'venueName', 
+          render: (text: string) => <Text strong>{text || 'Không xác định'}</Text> 
+        },
+        { 
+          title: 'Số lượng Booking', 
+          dataIndex: 'bookingCount', 
+          key: 'bookingCount', 
+          align: 'center' as const 
+        },
+        { 
+          title: 'Tổng doanh thu', 
+          dataIndex: 'revenue', 
+          key: 'revenue', 
+          align: 'right' as const,
+          render: (val: number) => <Text strong style={{ color: BRAND.primary }}>{Number(val).toLocaleString()}đ</Text> 
+        },
+        { 
+          title: 'Đóng đóng góp', 
+          key: 'ratio', 
+          align: 'center' as const,
+          render: (_: any, record: any) => {
+            const total = revenueData?.totalRevenue || 1;
+            const percentage = Math.round((record.revenue / total) * 100);
+            return (
+              <Tag color={percentage > 25 ? 'success' : 'processing'} style={{ borderRadius: 4 }}>
+                {percentage}%
+              </Tag>
+            );
+          } 
+        },
+      ];
+    } else {
+      // Show breakdown by day
+      return [
+        { 
+          title: 'Ngày', 
+          dataIndex: 'date', 
+          key: 'date', 
+          render: (text: string) => <Text strong>{dayjs(text).format('DD/MM/YYYY')}</Text> 
+        },
+        { 
+          title: 'Số lượng Booking', 
+          dataIndex: 'bookingCount', 
+          key: 'bookingCount', 
+          align: 'center' as const 
+        },
+        { 
+          title: 'Doanh thu trong ngày', 
+          dataIndex: 'revenue', 
+          key: 'revenue', 
+          align: 'right' as const,
+          render: (val: number) => <Text strong style={{ color: BRAND.primary }}>{Number(val).toLocaleString()}đ</Text> 
+        }
+      ];
+    }
+  }, [selectedVenueId, revenueData]);
+
+  // Export CSV helper
+  const handleExport = () => {
+    if (!revenueData) return;
+    
+    let csvContent = "data:text/csv;charset=utf-8,\uFEFF";
+    
+    if (selectedVenueId === 'ALL') {
+      csvContent += "Ten San,So Luong Booking,Doanh Thu\n";
+      revenueData.venueBreakdown.forEach(row => {
+        csvContent += `"${row.venueName}",${row.bookingCount},${row.revenue}\n`;
+      });
+    } else {
+      csvContent += "Ngay,So Luong Booking,Doanh Thu\n";
+      revenueData.dailyBreakdown.forEach(row => {
+        csvContent += `"${row.date}",${row.bookingCount},${row.revenue}\n`;
+      });
+    }
+    
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `Bao_cao_doanh_thu_he_thong_${dayjs().format('YYYYMMDD')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
-    <Spin spinning={loading}>
+    <Spin spinning={isLoading} tip="Đang tải báo cáo hệ thống...">
       <div style={{ padding: '24px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, flexWrap: 'wrap', gap: '12px' }}>
           <div>
-            <Title level={2} style={{ margin: 0 }}>Báo cáo Hệ thống</Title>
-            <Text type="secondary">Phân tích tăng trưởng và hiệu suất toàn bộ nền tảng.</Text>
+            <Title level={2} style={{ margin: 0 }}>Báo cáo Hệ thống & Doanh thu</Title>
+            <Text type="secondary">Phân tích tăng trưởng, hiệu suất toàn bộ nền tảng và doanh thu của từng sân.</Text>
           </div>
-          <Button icon={<DownloadOutlined />} type="primary" style={{ background: BRAND.primary }}>Xuất báo cáo</Button>
+          <Space wrap>
+            <Select 
+              value={selectedVenueId} 
+              onChange={setSelectedVenueId} 
+              style={{ width: 220 }}
+              placeholder="Lọc theo sân"
+            >
+              <Option value="ALL">Tất cả các cơ sở</Option>
+              {systemVenues.map(v => (
+                <Option key={v.id} value={v.id}>{v.name}</Option>
+              ))}
+            </Select>
+
+            <Select value={timeRange} onChange={setTimeRange} style={{ width: 150 }}>
+              <Option value="7-days">7 ngày qua</Option>
+              <Option value="30-days">30 ngày qua</Option>
+              <Option value="this-month">Tháng này</Option>
+              <Option value="this-year">Năm nay</Option>
+            </Select>
+
+            <Button 
+              icon={<DownloadOutlined />} 
+              type="primary" 
+              style={{ background: BRAND.primary }}
+              onClick={handleExport}
+              disabled={!revenueData}
+            >
+              Xuất báo cáo
+            </Button>
+          </Space>
         </div>
 
+        {/* Top Stats */}
         <Row gutter={[20, 20]} style={{ marginBottom: 24 }}>
-          <Col xs={24} sm={12} lg={6}><Card style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}><Statistic title="Tổng người dùng" value={users} prefix={<UserOutlined />} valueStyle={{ fontWeight: 800 }} /></Card></Col>
-          <Col xs={24} sm={12} lg={6}><Card style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}><Statistic title="Tổng sân đấu" value={venues} prefix={<HomeOutlined />} valueStyle={{ fontWeight: 800 }} /></Card></Col>
-          <Col xs={24} sm={12} lg={6}><Card style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}><Statistic title="Tổng báo cáo" value={reports} prefix={<TrophyOutlined />} valueStyle={{ fontWeight: 800 }} /></Card></Col>
-          <Col xs={24} sm={12} lg={6}><Card style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}><Statistic title="Doanh thu hệ thống" value={revenue} suffix="VND" prefix={<GlobalOutlined />} valueStyle={{ fontWeight: 800 }} /></Card></Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+              <Statistic 
+                title="Tổng doanh thu" 
+                value={Number(revenueData?.totalRevenue || 0)} 
+                suffix="đ" 
+                prefix={<GlobalOutlined style={{ color: BRAND.primary }} />} 
+                valueStyle={{ fontWeight: 800, color: BRAND.primary }} 
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+              <Statistic 
+                title="Tổng lượt đặt (Bookings)" 
+                value={revenueData?.totalBookings || 0} 
+                prefix={<HomeOutlined style={{ color: BRAND.sky }} />} 
+                valueStyle={{ fontWeight: 800 }} 
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+              <Statistic 
+                title="Đặt sân thành công" 
+                value={revenueData?.paidBookings || 0} 
+                prefix={<CheckCircleOutlined style={{ color: '#52c41a' }} />} 
+                valueStyle={{ fontWeight: 800, color: '#52c41a' }} 
+              />
+            </Card>
+          </Col>
+          <Col xs={24} sm={12} lg={6}>
+            <Card style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+              <Statistic 
+                title="Tổng người dùng" 
+                value={totalUsers} 
+                prefix={<UserOutlined style={{ color: '#722ed1' }} />} 
+                valueStyle={{ fontWeight: 800 }} 
+              />
+            </Card>
+          </Col>
         </Row>
 
         <Row gutter={[20, 20]}>
+          {/* Trend Line Chart */}
           <Col xs={24} lg={16}>
-            <Card title="Tăng trưởng người dùng và sân" style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-              <div style={{ height: 400, width: '100%', marginTop: 20 }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={growthData}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
-                    <Tooltip />
-                    <Bar dataKey="users" name="Người dùng" fill={BRAND.primary} radius={[6, 6, 0, 0]} barSize={28} />
-                    <Bar dataKey="venues" name="Sân" fill={BRAND.sky} radius={[6, 6, 0, 0]} barSize={28} />
-                  </BarChart>
-                </ResponsiveContainer>
+            <Card 
+              title={
+                <Space>
+                  <LineChartOutlined style={{ color: BRAND.primary }} />
+                  <span>Biểu đồ doanh thu hệ thống</span>
+                </Space>
+              }
+              style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}
+            >
+              {chartData.length === 0 ? (
+                <Empty description="Không có dữ liệu doanh thu trong khoảng thời gian này" style={{ padding: '60px 0' }} />
+              ) : (
+                <div style={{ height: 350, width: '100%', marginTop: 20 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={chartData}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} dy={10} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} tickFormatter={(val) => `${val >= 1000000 ? `${val/1000000}M` : `${val/1000}K`}`} />
+                      <RechartsTooltip 
+                        contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}
+                        formatter={(val: any) => [`${Number(val).toLocaleString()}đ`, 'Doanh thu']}
+                      />
+                      <Line 
+                        type="monotone" 
+                        dataKey="revenue" 
+                        stroke={BRAND.primary} 
+                        strokeWidth={4} 
+                        dot={{ r: 4, fill: BRAND.primary, strokeWidth: 2, stroke: '#fff' }} 
+                        activeDot={{ r: 6, strokeWidth: 0 }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </Card>
+          </Col>
+
+          {/* Platforms Overview stats */}
+          <Col xs={24} lg={8}>
+            <Card title="Phân bố trạng thái đặt sân" style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
+              <div style={{ padding: '20px 0' }}>
+                <Space direction="vertical" style={{ width: '100%' }} size={24}>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <Text>Thành công (PAID)</Text>
+                      <Text strong>{revenueData?.paidBookings || 0} ({revenueData?.totalBookings ? Math.round((revenueData.paidBookings / revenueData.totalBookings) * 100) : 0}%)</Text>
+                    </div>
+                    <div style={{ height: 8, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
+                      <div style={{ width: `${revenueData?.totalBookings ? (revenueData.paidBookings / revenueData.totalBookings) * 100 : 0}%`, height: '100%', background: '#52c41a' }} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <Text>Chờ thanh toán (PENDING)</Text>
+                      <Text strong>{revenueData?.pendingBookings || 0} ({revenueData?.totalBookings ? Math.round((revenueData.pendingBookings / revenueData.totalBookings) * 100) : 0}%)</Text>
+                    </div>
+                    <div style={{ height: 8, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
+                      <div style={{ width: `${revenueData?.totalBookings ? (revenueData.pendingBookings / revenueData.totalBookings) * 100 : 0}%`, height: '100%', background: '#fa8c16' }} />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <Text>Thất bại/Hủy (FAILED)</Text>
+                      <Text strong>{revenueData?.failedBookings || 0} ({revenueData?.totalBookings ? Math.round((revenueData.failedBookings / revenueData.totalBookings) * 100) : 0}%)</Text>
+                    </div>
+                    <div style={{ height: 8, background: '#f1f5f9', borderRadius: 4, overflow: 'hidden' }}>
+                      <div style={{ width: `${revenueData?.totalBookings ? (revenueData.failedBookings / revenueData.totalBookings) * 100 : 0}%`, height: '100%', background: '#f5222d' }} />
+                    </div>
+                  </div>
+                </Space>
               </div>
             </Card>
           </Col>
-          <Col xs={24} lg={8}>
-            <Card title="Chỉ số xử lý" style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-              <Space direction="vertical" style={{ width: '100%' }} size={20}>
-                <div><Text>Tỉ lệ xử lý báo cáo</Text><Progress percent={resolvedRate} strokeColor={BRAND.primary} /></div>
-                <div><Text>Tỉ lệ sân được duyệt</Text><Progress percent={Math.max(10, 100 - Math.min(90, venues))} strokeColor={BRAND.sky} /></div>
-                <div><Text>Độ ổn định hệ thống</Text><Progress percent={95} strokeColor="#52c41a" /></div>
-                <div><Text type="secondary"><LineChartOutlined /> Số liệu tự động cập nhật từ API hệ thống.</Text></div>
-              </Space>
+
+          {/* Detailed Data Table */}
+          <Col span={24}>
+            <Card 
+              title={
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+                  <span>Chi tiết doanh thu của từng sân đấu</span>
+                  <Tag color="cyan"><CalendarOutlined /> {startDate} đến {endDate}</Tag>
+                </div>
+              }
+              style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}
+            >
+              <Table
+                dataSource={selectedVenueId === 'ALL' ? (revenueData?.venueBreakdown || []) : (revenueData?.dailyBreakdown || [])}
+                rowKey={selectedVenueId === 'ALL' ? 'venueId' : 'date'}
+                columns={tableColumns}
+                pagination={{ pageSize: 10, showSizeChanger: false }}
+                locale={{ emptyText: <Empty description="Không có số liệu giao dịch nào" /> }}
+              />
             </Card>
           </Col>
         </Row>

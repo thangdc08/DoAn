@@ -97,10 +97,35 @@ export const bookingApi = {
     endDate?: string;
   }): Promise<{
     totalRevenue: number;
-    bookingCount: number;
-    chartData: Array<{ date: string; revenue: number; count: number }>;
+    totalBookings: number;
+    paidBookings: number;
+    pendingBookings: number;
+    failedBookings: number;
+    fromDate: string;
+    toDate: string;
+    venueBreakdown: Array<{ venueId: string; venueName: string; revenue: number; bookingCount: number }>;
+    dailyBreakdown: Array<{ date: string; revenue: number; bookingCount: number }>;
   }> => {
-    const response = await apiClient.get('/bookings/api/owner/revenue', { params });
+    const response = await apiClient.get('/bookings/api/owner/bookings/revenue', { params });
+    return unwrapResult(response);
+  },
+
+  getAdminRevenue: async (params?: {
+    venueId?: string;
+    startDate?: string;
+    endDate?: string;
+  }): Promise<{
+    totalRevenue: number;
+    totalBookings: number;
+    paidBookings: number;
+    pendingBookings: number;
+    failedBookings: number;
+    fromDate: string;
+    toDate: string;
+    venueBreakdown: Array<{ venueId: string; venueName: string; revenue: number; bookingCount: number }>;
+    dailyBreakdown: Array<{ date: string; revenue: number; bookingCount: number }>;
+  }> => {
+    const response = await apiClient.get('/bookings/api/admin/bookings/revenue', { params });
     return unwrapResult(response);
   },
 

@@ -16,7 +16,7 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class PaymentEventConsumer {
+public class BookingEventConsumer {
 
     private final NotificationRepository notificationRepository;
     private final IdentityServiceClient identityServiceClient;

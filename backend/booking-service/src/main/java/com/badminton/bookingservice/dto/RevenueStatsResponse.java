@@ -22,6 +22,7 @@ public class RevenueStatsResponse {
     private LocalDate fromDate;
     private LocalDate toDate;
     private List<VenueRevenue> venueBreakdown;
+    private List<DailyRevenue> dailyBreakdown;
 
     @Data
     @Builder
@@ -30,6 +31,16 @@ public class RevenueStatsResponse {
     public static class VenueRevenue {
         private java.util.UUID venueId;
         private String venueName;
+        private BigDecimal revenue;
+        private Integer bookingCount;
+    }
+
+    @Data
+    @Builder
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class DailyRevenue {
+        private String date;
         private BigDecimal revenue;
         private Integer bookingCount;
     }

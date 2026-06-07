@@ -31,7 +31,10 @@
       "Bash(ls \"C:/Users/lonovo/AppData/Local/ms-playwright/\" 2>/dev/null)",
       "Bash(node -e \"console.log\\('node available'\\)\")",
       "Bash(where mvn *)",
-      "Bash(./mvnw compile *)"
+      "Bash(./mvnw compile *)",
+      "Bash(python \"C:\\\\Users\\\\lonovo\\\\AppData\\\\Local\\\\Temp\\\\replace_cancel_method.py\")",
+      "Bash(mvn compile *)",
+      "Bash(mvn -pl payment-service -am compile -q)"
     ]
   }
 }

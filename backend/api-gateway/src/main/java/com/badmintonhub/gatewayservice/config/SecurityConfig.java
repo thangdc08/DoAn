@@ -109,6 +109,7 @@ public class SecurityConfig {
                         .pathMatchers(HttpMethod.GET, "/fb-community/**").permitAll()
                         .pathMatchers(HttpMethod.POST, "/fb-community/api/community/scrape").permitAll()
                         .pathMatchers(HttpMethod.GET, "/recommendations/**").permitAll()
+                        .pathMatchers("/ai/**").permitAll()
                         .pathMatchers(HttpMethod.GET, "/payments/api/payments/vnpay/callback").permitAll()
                         .pathMatchers(HttpMethod.GET, "/payments/api/payments/vnpay/ipn").permitAll()
                         // Admin only

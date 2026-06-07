@@ -11,6 +11,7 @@ import {
 function createEurekaClient(port) {
   return new Eureka({
     instance: {
+      instanceId: `chat-service:${port}`,
       app: "chat-service",
       hostName: hostName,
       ipAddr: ipAddress,

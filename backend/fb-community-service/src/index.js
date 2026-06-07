@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { runScraper } from './scraper.js';
 import { connectDB, getDB } from './db.js';
+import { initEureka } from './eureka-client.js';
 
 dotenv.config();
 const app = express();
@@ -10,6 +11,10 @@ const app = express();
 app.use(express.json());
 
 const PORT = process.env.PORT || 8089;
+
+if (process.env.ENABLE_EUREKA !== 'false') {
+  initEureka('fb-community-service', PORT);
+}
 
 app.get('/api/community/posts', async (req, res) => {
   try {

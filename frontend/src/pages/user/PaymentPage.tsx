@@ -5,6 +5,7 @@ import { Card, Row, Col, Button, Typography, Radio, Space, message, Spin, Alert,
 import { CreditCardOutlined, WalletOutlined, CheckCircleOutlined } from '@ant-design/icons';
 import { paymentApi } from '../../services/paymentApi';
 import { bookingApi } from '../../services/bookingApi';
+import { venueApi } from '../../services/venueApi';
 import { useAuthStore } from '../../stores/authStore';
 
 const { Title, Text } = Typography;
@@ -21,6 +22,14 @@ export default function PaymentPage() {
     queryKey: ['booking', bookingId],
     queryFn: () => bookingApi.getBookingById(bookingId!),
     enabled: !!bookingId,
+    retry: false,
+  });
+
+  // Get venue details to obtain ownerId
+  const { data: venue } = useQuery({
+    queryKey: ['venue', booking?.venueId],
+    queryFn: () => venueApi.getVenueById(booking!.venueId),
+    enabled: !!booking?.venueId,
     retry: false,
   });
 
@@ -72,6 +81,8 @@ export default function PaymentPage() {
       userId: booking.userId,
       amount: booking.totalAmount,
       provider: paymentMethod,
+      venueId: booking.venueId,
+      ownerId: venue?.ownerId,
     });
   };
 

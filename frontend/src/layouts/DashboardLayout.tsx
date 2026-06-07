@@ -7,7 +7,7 @@ import {
   LayoutDashboard, CalendarDays, Users, BarChart3,
   Building2, Settings, Bell, ChevronLeft, ChevronRight,
   LogOut, HelpCircle, FileCheck, Swords, MessageSquare,
-  Heart, CalendarCheck,
+  Heart, CalendarCheck, Coins,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { useCommunityStore } from '../stores/communityStore';
@@ -49,6 +49,7 @@ const OWNER_MENU: MenuItem[] = [
   { to: '/owner/bookings',   label: 'Booking',         icon: <CalendarDays    size={18} /> },
   { to: '/chat',             label: 'Tin nhắn',        icon: <MessageSquare    size={18} /> },
   { to: '/owner/revenue',    label: 'Doanh thu',       icon: <BarChart3       size={18} /> },
+  { to: '/owner/payouts',    label: 'Rút tiền',       icon: <Coins           size={18} /> },
   { to: '/owner/settings',   label: 'Cấu hình',        icon: <Settings        size={18} /> },
   { to: '/owner/support',    label: 'Hỗ trợ',          icon: <HelpCircle      size={18} /> },
 ];
@@ -58,6 +59,7 @@ const ADMIN_MENU: MenuItem[] = [
   { to: '/admin/users',      label: 'Người dùng',     icon: <Users           size={18} /> },
   { to: '/admin/venues',     label: 'Duyệt sân',      icon: <FileCheck       size={18} /> },
   { to: '/admin/reports',    label: 'Báo cáo',         icon: <BarChart3       size={18} /> },
+  { to: '/admin/payouts',    label: 'Yêu cầu rút tiền', icon: <Coins           size={18} /> },
   { to: '/admin/settings',   label: 'Cấu hình',        icon: <Settings        size={18} /> },
   { to: '/admin/support',    label: 'Hỗ trợ',          icon: <HelpCircle      size={18} /> },
 ];

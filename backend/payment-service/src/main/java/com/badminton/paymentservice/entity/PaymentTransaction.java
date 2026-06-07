@@ -26,6 +26,10 @@ public class PaymentTransaction {
     @Column(nullable = false)
     private BigDecimal amount;
 
+    private UUID venueId;
+
+    private UUID ownerId;
+
     @Column(name = "amount_vnd")
     private BigDecimal amountVnd;
 
@@ -44,6 +48,11 @@ public class PaymentTransaction {
     private String paymentUrl;
 
     private LocalDateTime paidAt;
+
+@Builder.Default
+private Boolean refunded = false;
+
+private LocalDateTime refundedAt;
 
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)

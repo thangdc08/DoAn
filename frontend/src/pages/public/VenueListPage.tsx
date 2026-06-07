@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Row, Col, Input, Select, Button, Card, Pagination, Empty, Space, Typography, Spin, Tag } from 'antd';
 import { SearchOutlined, EnvironmentOutlined, StarFilled, ClockCircleOutlined, DoubleRightOutlined } from '@ant-design/icons';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -57,6 +57,13 @@ export default function VenueListPage() {
   const [city, setCity] = useState(searchParams.get('city') || '');
   const [ward, setWard] = useState(searchParams.get('ward') || '');
   const [page, setPage] = useState(1);
+
+  useEffect(() => {
+    setSearch(searchParams.get('search') || '');
+    setCity(searchParams.get('city') || '');
+    setWard(searchParams.get('ward') || '');
+    setPage(1);
+  }, [searchParams]);
   const pageSize = 8; // Change to 8 to show pagination control on mock datasets
 
   // Fetch actual venues from database

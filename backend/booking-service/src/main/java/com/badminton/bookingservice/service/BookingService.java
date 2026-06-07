@@ -1,6 +1,7 @@
 package com.badminton.bookingservice.service;
 
 import com.badminton.bookingservice.client.VenueClient;
+import com.badminton.bookingservice.client.PaymentClient;
 import com.badminton.bookingservice.dto.ActiveSlotLockResponse;
 import com.badminton.bookingservice.dto.BookingResponse;
 import com.badminton.bookingservice.dto.CreateBookingResponse;
@@ -39,6 +40,7 @@ public class BookingService {
   private final BookingRepository bookingRepository;
   private final BookingItemRepository bookingItemRepository;
   private final VenueClient venueClient;
+    private final PaymentClient paymentClient;
   private final BookingMapper bookingMapper;
   private final BookingEventPublisher bookingEventPublisher;
   private final StringRedisTemplate redisTemplate;
@@ -318,32 +320,54 @@ public class BookingService {
     return new PageImpl<>(pageContent, pageable, bookings.size());
   }
 
-  @Transactional
-  public BookingResponse cancelBookingByAdmin(UUID bookingId, UUID adminId, String reason) {
-    log.info("Admin {} cancelling booking {} with reason: {}", adminId, bookingId, reason);
+    @Transactional
+    public BookingResponse cancelBookingByAdmin(UUID bookingId, UUID adminId, String reason) {
+        log.info("Admin {} cancelling booking {} with reason: {}", adminId, bookingId, reason);
 
-    Booking booking = bookingRepository.findById(bookingId)
-        .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Booking not found"));
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Booking not found"));
 
-    if ("CANCELLED_BY_ADMIN".equals(booking.getStatus())) {
-      throw new AppException(HttpStatus.CONFLICT, "Booking is already cancelled");
+        if ("CANCELLED_BY_ADMIN".equals(booking.getStatus())) {
+            throw new AppException(HttpStatus.CONFLICT, "Booking is already cancelled");
+        }
+
+        // If booking was already paid, trigger refund before cancelling
+        if ("PAID".equals(booking.getStatus()) || "SUCCESS".equals(booking.getPaymentStatus())) {
+            log.info("Booking {} was paid (paymentStatus={}), triggering refund", bookingId, booking.getPaymentStatus());
+            try {
+                paymentClient.refundPayment(bookingId);
+                log.info("Refund initiated successfully for booking {}", bookingId);
+            } catch (Exception e) {
+                log.error("Refund failed for booking {}: {}", bookingId, e.getMessage());
+                throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR,
+                        "Không thể hoàn tiền: " + e.getMessage());
+            }
+        }
+
+        booking.setStatus("CANCELLED_BY_ADMIN");
+
+        // Update booking items
+        List<BookingItem> items = bookingItemRepository.findByBookingId(bookingId);
+        items.forEach(item -> item.setStatus("CANCELLED"));
+        bookingItemRepository.saveAll(items);
+
+        Booking savedBooking = bookingRepository.save(booking);
+
+        // Publish BookingCancelledByAdmin event via outbox
+        BookingEventPublisher.BookingCancelledByAdminEvent cancelEvent =
+                BookingEventPublisher.BookingCancelledByAdminEvent.builder()
+                        .bookingId(bookingId)
+                        .userId(booking.getUserId())
+                        .adminId(adminId)
+                        .reason(reason)
+                        .cancelledAt(java.time.LocalDateTime.now())
+                        .build();
+        bookingEventPublisher.publishBookingCancelledByAdmin(cancelEvent);
+
+        log.info("Booking {} cancelled by admin {}", bookingId, adminId);
+        return bookingMapper.toBookingResponse(savedBooking);
     }
 
-    booking.setStatus("CANCELLED_BY_ADMIN");
-
-    // Update booking items
-    List<BookingItem> items = bookingItemRepository.findByBookingId(bookingId);
-    items.forEach(item -> item.setStatus("CANCELLED"));
-    bookingItemRepository.saveAll(items);
-
-    Booking savedBooking = bookingRepository.save(booking);
-
-    // TODO: Refund payment if already paid
-    // TODO: Publish BookingCancelledByAdmin event
-
-    log.info("Booking {} cancelled by admin {}", bookingId, adminId);
-    return bookingMapper.toBookingResponse(savedBooking);
-  }
 
   @Transactional
   public BookingResponse cancelBookingByUser(UUID bookingId, UUID userId) {
@@ -394,6 +418,19 @@ public class BookingService {
     if (earliestStart.isBefore(LocalDateTime.now().plusHours(cancelHours))) {
       throw new AppException(HttpStatus.BAD_REQUEST, 
           String.format("Không thể hủy đặt sân trước giờ bắt đầu dưới %d giờ", cancelHours));
+    }
+
+     // If booking was already paid, trigger refund before cancelling
+    if ("PAID".equals(booking.getStatus()) || "SUCCESS".equals(booking.getPaymentStatus())) {
+    log.info("Booking {} was paid, triggering refund on user cancel", bookingId);
+    try {
+      paymentClient.refundPayment(bookingId);
+      log.info("Refund initiated for booking {} by user {}", bookingId, userId);
+    } catch (Exception e) {
+      log.error("Refund failed for booking {}: {}", bookingId, e.getMessage());
+      throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR,
+          "Không thể hoàn tiền: " + e.getMessage());
+    }
     }
 
     booking.setStatus("CANCELLED_BY_USER");
@@ -541,6 +578,30 @@ public class BookingService {
         })
         .collect(Collectors.toList());
 
+    // Daily breakdown
+    java.util.Map<String, List<Booking>> bookingsByDate = bookings.stream()
+        .collect(Collectors.groupingBy(b -> b.getCreatedAt().toLocalDate().toString()));
+
+    List<com.badminton.bookingservice.dto.RevenueStatsResponse.DailyRevenue> dailyBreakdown = bookingsByDate.entrySet()
+        .stream()
+        .map(entry -> {
+          String dateStr = entry.getKey();
+          List<Booking> dateBookings = entry.getValue();
+
+          BigDecimal dateRevenue = dateBookings.stream()
+              .filter(b -> "PAID".equals(b.getStatus()))
+              .map(Booking::getTotalAmount)
+              .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+          return com.badminton.bookingservice.dto.RevenueStatsResponse.DailyRevenue.builder()
+              .date(dateStr)
+              .revenue(dateRevenue)
+              .bookingCount(dateBookings.size())
+              .build();
+        })
+        .sorted(java.util.Comparator.comparing(com.badminton.bookingservice.dto.RevenueStatsResponse.DailyRevenue::getDate))
+        .collect(Collectors.toList());
+
     return com.badminton.bookingservice.dto.RevenueStatsResponse.builder()
         .totalRevenue(totalRevenue)
         .totalBookings(totalBookings)
@@ -550,6 +611,107 @@ public class BookingService {
         .fromDate(fromDate)
         .toDate(toDate)
         .venueBreakdown(venueBreakdown)
+        .dailyBreakdown(dailyBreakdown)
+        .build();
+  }
+
+  public com.badminton.bookingservice.dto.RevenueStatsResponse getAdminRevenueStats(
+      UUID venueId, java.time.LocalDate fromDate, java.time.LocalDate toDate) {
+    log.info("Admin getting revenue stats for venueId={}, from={}, to={}", venueId, fromDate, toDate);
+
+    List<Booking> bookings = bookingRepository.findAll();
+
+    if (venueId != null) {
+      bookings = bookings.stream()
+          .filter(b -> b.getVenueId().equals(venueId))
+          .collect(Collectors.toList());
+    }
+
+    if (fromDate != null) {
+      LocalDateTime fromDateTime = fromDate.atStartOfDay();
+      bookings = bookings.stream()
+          .filter(b -> b.getCreatedAt().isAfter(fromDateTime) ||
+              b.getCreatedAt().isEqual(fromDateTime))
+          .collect(Collectors.toList());
+    }
+
+    if (toDate != null) {
+      LocalDateTime toDateTime = toDate.atTime(23, 59, 59);
+      bookings = bookings.stream()
+          .filter(b -> b.getCreatedAt().isBefore(toDateTime) ||
+              b.getCreatedAt().isEqual(toDateTime))
+          .collect(Collectors.toList());
+    }
+
+    BigDecimal totalRevenue = bookings.stream()
+        .filter(b -> "PAID".equals(b.getStatus()))
+        .map(Booking::getTotalAmount)
+        .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+    int totalBookings = bookings.size();
+    int paidBookings = (int) bookings.stream().filter(b -> "PAID".equals(b.getStatus())).count();
+    int pendingBookings = (int) bookings.stream().filter(b -> "PENDING".equals(b.getStatus())).count();
+    int failedBookings = (int) bookings.stream().filter(b -> "FAILED".equals(b.getStatus())).count();
+
+    java.util.Map<UUID, List<Booking>> bookingsByVenue = bookings.stream()
+        .collect(Collectors.groupingBy(Booking::getVenueId));
+
+    List<com.badminton.bookingservice.dto.RevenueStatsResponse.VenueRevenue> venueBreakdown = bookingsByVenue.entrySet()
+        .stream()
+        .map(entry -> {
+          UUID vId = entry.getKey();
+          List<Booking> venueBookings = entry.getValue();
+
+          BigDecimal venueRevenue = venueBookings.stream()
+              .filter(b -> "PAID".equals(b.getStatus()))
+              .map(Booking::getTotalAmount)
+              .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+          String venueName = venueBookings.isEmpty() ? "Unknown" : venueBookings.get(0).getVenueNameSnapshot();
+
+          return com.badminton.bookingservice.dto.RevenueStatsResponse.VenueRevenue.builder()
+              .venueId(vId)
+              .venueName(venueName)
+              .revenue(venueRevenue)
+              .bookingCount(venueBookings.size())
+              .build();
+        })
+        .collect(Collectors.toList());
+
+    // Daily breakdown
+    java.util.Map<String, List<Booking>> bookingsByDate = bookings.stream()
+        .collect(Collectors.groupingBy(b -> b.getCreatedAt().toLocalDate().toString()));
+
+    List<com.badminton.bookingservice.dto.RevenueStatsResponse.DailyRevenue> dailyBreakdown = bookingsByDate.entrySet()
+        .stream()
+        .map(entry -> {
+          String dateStr = entry.getKey();
+          List<Booking> dateBookings = entry.getValue();
+
+          BigDecimal dateRevenue = dateBookings.stream()
+              .filter(b -> "PAID".equals(b.getStatus()))
+              .map(Booking::getTotalAmount)
+              .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+          return com.badminton.bookingservice.dto.RevenueStatsResponse.DailyRevenue.builder()
+              .date(dateStr)
+              .revenue(dateRevenue)
+              .bookingCount(dateBookings.size())
+              .build();
+        })
+        .sorted(java.util.Comparator.comparing(com.badminton.bookingservice.dto.RevenueStatsResponse.DailyRevenue::getDate))
+        .collect(Collectors.toList());
+
+    return com.badminton.bookingservice.dto.RevenueStatsResponse.builder()
+        .totalRevenue(totalRevenue)
+        .totalBookings(totalBookings)
+        .paidBookings(paidBookings)
+        .pendingBookings(pendingBookings)
+        .failedBookings(failedBookings)
+        .fromDate(fromDate)
+        .toDate(toDate)
+        .venueBreakdown(venueBreakdown)
+        .dailyBreakdown(dailyBreakdown)
         .build();
   }
 
