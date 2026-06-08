@@ -9,6 +9,10 @@ import com.badminton.paymentservice.service.PaymentService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.HttpHeaders;
@@ -26,6 +30,20 @@ import java.util.UUID;
 public class PaymentController {
  private final PaymentService paymentService;
  private final PaymentTransactionRepository transactionRepository;
+
+ @GetMapping
+ public Page<PaymentTransaction> getAllPayments(
+   @RequestParam(required = false) String status,
+   @RequestParam(defaultValue = "0") int page,
+   @RequestParam(defaultValue = "10") int size) {
+  log.info("Fetching all payment transactions, status={}, page={}, size={}", status, page, size);
+  Pageable pageable = PageRequest.of(page, size, Sort.by("createdAt").descending());
+  if (status != null && !status.isBlank()) {
+   return transactionRepository.findByStatus(status, pageable);
+  }
+  return transactionRepository.findAll(pageable);
+ }
+
 
  @PostMapping("/create")
  public CreatePaymentResponse createPayment(@RequestBody CreatePaymentRequest request) {

@@ -64,6 +64,12 @@ export const authApi = {
     return unwrapResult<User>(response);
   },
 
+  // Update user location (GPS coordinates)
+  updateLocation: async (latitude: number, longitude: number): Promise<User> => {
+    const response = await apiClient.patch('/identity/api/v1/users/me/location', { latitude, longitude });
+    return unwrapResult<User>(response);
+  },
+
   // Upload avatar
   uploadAvatar: async (file: File): Promise<string> => {
     const formData = new FormData();
@@ -74,5 +80,16 @@ export const authApi = {
       },
     });
     return response.data; // The raw string URL
+  },
+
+  // Search users by query (email or full name)
+  searchUsers: async (queryStr: string): Promise<User[]> => {
+    const params: Record<string, any> = { size: 50 };
+    if (queryStr && queryStr.trim()) {
+      params.filter = `email ~ '*${queryStr}*' or fullName ~ '*${queryStr}*'`;
+    }
+    const response = await apiClient.get('/identity/api/v1/users', { params });
+    const data = unwrapResult<any>(response);
+    return data?.result || [];
   },
 };

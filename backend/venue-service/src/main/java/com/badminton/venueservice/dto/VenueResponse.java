@@ -28,5 +28,8 @@ public class VenueResponse {
     private String closeTime;
     private String policy;
     private Integer courtCount;
+    private java.math.BigDecimal priceMin;
+    private java.math.BigDecimal priceMax;
     private java.util.List<VenueImageResponse> images;
+    private String currentUserRole;
 }

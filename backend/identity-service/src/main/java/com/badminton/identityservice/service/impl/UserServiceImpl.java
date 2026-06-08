@@ -163,6 +163,16 @@ public class UserServiceImpl implements UserService {
   }
 
   @Override
+  @Transactional
+  public UserDTO updateLocation(UUID id, com.badminton.identityservice.dto.request.UpdateLocationRequest request) {
+    User user = userRepository.findById(id)
+        .orElseThrow(() -> new AppException(HttpStatus.BAD_REQUEST, "Người dùng không tồn tại"));
+    user.setLatitude(request.getLatitude());
+    user.setLongitude(request.getLongitude());
+    return userMapper.mapToDto(userRepository.save(user));
+  }
+
+  @Override
   public void deleteUser(UUID id) {
     User user = userRepository.findById(id)
         .orElseThrow(() -> new AppException(HttpStatus.BAD_REQUEST, "Người dùng không tồn tại"));
@@ -197,7 +207,10 @@ public class UserServiceImpl implements UserService {
     }
 
     if (role != null && !role.isEmpty()) {
-      spec = spec.and((root, query, cb) -> cb.isMember(role, root.join("roles").get("code")));
+      spec = spec.and((root, query, cb) -> {
+        query.distinct(true);
+        return cb.equal(root.join("roles").get("code"), role);
+      });
     }
 
     if (search != null && !search.isEmpty()) {

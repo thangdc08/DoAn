@@ -13,4 +13,6 @@ public interface BookingItemRepository extends JpaRepository<BookingItem, UUID> 
             List<String> statuses,
             LocalDateTime startOfDay,
             LocalDateTime endOfDay);
+            
+    List<BookingItem> findByVenueIdAndStatusAndStartTimeGreaterThanEqual(UUID venueId, String status, LocalDateTime startTime);
 }

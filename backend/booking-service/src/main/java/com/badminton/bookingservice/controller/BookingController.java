@@ -153,6 +153,17 @@ public class BookingController {
                 .build();
     }
 
+    @PostMapping("/internal/check-conflicts")
+    @Operation(summary = "Check booking conflicts with proposed business hours", description = "Internal/public check for conflicts")
+    public ApiResponse<List<com.badminton.bookingservice.dto.ConflictBookingInfo>> checkConflicts(
+            @RequestParam UUID venueId,
+            @RequestBody String policyJson) {
+        log.info("API Request: Check conflicts for venueId={}", venueId);
+        return ApiResponse.<List<com.badminton.bookingservice.dto.ConflictBookingInfo>>builder()
+                .result(bookingService.checkBusinessHoursConflicts(venueId, policyJson))
+                .build();
+    }
+
     @GetMapping("/internal/has-paid")
     @Operation(summary = "Check if user has paid booking at venue", description = "Internal API for venue-service to verify rating eligibility")
     public boolean hasPaidBooking(

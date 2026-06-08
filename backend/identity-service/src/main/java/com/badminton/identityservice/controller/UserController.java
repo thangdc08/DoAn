@@ -4,6 +4,7 @@ import com.badminton.common.annotation.ApiMessage;
 import com.badminton.identityservice.dto.message.ObjectResponse;
 import com.badminton.identityservice.dto.model.UserDTO;
 import com.badminton.identityservice.dto.model.UserUpdateDTO;
+import com.badminton.identityservice.dto.request.UpdateLocationRequest;
 import com.badminton.identityservice.entity.User;
 import com.badminton.identityservice.service.UserService;
 import com.badminton.identityservice.utils.CustomHeaders;
@@ -88,6 +89,14 @@ public class UserController {
             @RequestHeader(CustomHeaders.X_AUTH_USER_ID) UUID id,
             @RequestBody @Valid com.badminton.identityservice.dto.request.UserProfileUpdateRequest request) {
         return ResponseEntity.ok(this.userService.updateProfile(id, request));
+    }
+
+    @PatchMapping("/me/location")
+    @ApiMessage("Cập nhật vị trí người dùng")
+    public ResponseEntity<UserDTO> updateLocation(
+            @RequestHeader(CustomHeaders.X_AUTH_USER_ID) UUID id,
+            @RequestBody @Valid UpdateLocationRequest request) {
+        return ResponseEntity.ok(this.userService.updateLocation(id, request));
     }
 
     @GetMapping("/username/{username}")

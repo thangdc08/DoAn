@@ -429,8 +429,12 @@ function FacebookPostCard({ post }: { post: FacebookPost }) {
 export default function CommunityPage() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { isAuthenticated } = useAuthStore();
-  const { toggleFavorite, isFavorite, joinMatch, selectedMatches } = useCommunityStore();
+  const { isAuthenticated, user } = useAuthStore();
+  const { toggleFavorite, isFavorite, joinMatch, selectedMatches, syncSelectedMatches } = useCommunityStore();
+
+  const [joinedStatuses, setJoinedStatuses] = useState<Record<string, 'PENDING' | 'APPROVED' | 'HOST' | 'NONE'>>({});
+  const [joiningMap, setJoiningMap] = useState<Record<string, boolean>>({});
+  const [refreshCounter, setRefreshCounter] = useState(0);
 
   const [activeCategory, setActiveCategory] = useState('matches');
   const [level, setLevel] = useState<string>('');
@@ -536,7 +540,55 @@ export default function CommunityPage() {
     return () => {
       ignore = true;
     };
-  }, [activeCategory, search, level, date, fromTime, toTime, page]);
+  }, [activeCategory, search, level, date, fromTime, toTime, page, refreshCounter]);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user || matchData.content.length === 0) {
+      setJoinedStatuses({});
+      return;
+    }
+
+    let isSubscribed = true;
+    const fetchStatuses = async () => {
+      const statusesMap: Record<string, 'PENDING' | 'APPROVED' | 'HOST' | 'NONE'> = {};
+      
+      await Promise.all(
+        matchData.content.map(async (m) => {
+          if (m.hostId === user.id) {
+            statusesMap[m.id] = 'HOST';
+            return;
+          }
+          try {
+            const participants = await communityApi.getMatchParticipants(m.id);
+            const myPart = participants.find(p => p.userId === user.id);
+            if (myPart) {
+              if (myPart.status === 'PENDING') {
+                statusesMap[m.id] = 'PENDING';
+              } else if (myPart.status === 'APPROVED') {
+                statusesMap[m.id] = 'APPROVED';
+              } else {
+                statusesMap[m.id] = 'NONE';
+              }
+            } else {
+              statusesMap[m.id] = 'NONE';
+            }
+          } catch (err) {
+            console.error(`Error loading participants for match ${m.id}`, err);
+            statusesMap[m.id] = 'NONE';
+          }
+        })
+      );
+
+      if (isSubscribed) {
+        setJoinedStatuses(statusesMap);
+      }
+    };
+
+    fetchStatuses();
+    return () => {
+      isSubscribed = false;
+    };
+  }, [matchData.content, isAuthenticated, user]);
 
   const filteredFacebookPosts = useMemo(() => {
     if (activeCategory !== 'facebook') return [];
@@ -782,7 +834,10 @@ export default function CommunityPage() {
     } as MatchPost);
 
     const favorited = isFavorite(match.id);
-    const joined = selectedMatches.some(sm => sm.match.id === match.id && sm.selectedStatus !== 'deselected');
+    const joinedStatus = joinedStatuses[match.id] || 'NONE';
+    const isOwner = originalMatch.hostId === user?.id;
+    const isFull = originalMatch.currentParticipants >= originalMatch.maxParticipants;
+    const isJoining = joiningMap[match.id] || false;
 
     const handleHeartClick = (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -799,15 +854,35 @@ export default function CommunityPage() {
       }
     };
 
-    const handleJoinClick = (e: React.MouseEvent) => {
+    const handleJoinClick = async (e: React.MouseEvent) => {
       e.stopPropagation();
       if (!isAuthenticated) {
         message.warning('Vui lòng đăng nhập để đăng ký tham gia kèo!');
         navigate('/login');
         return;
       }
-      joinMatch(originalMatch);
-      message.success('Đăng ký tham gia kèo thành công! Hãy theo dõi tại mục "Kèo đã chọn".');
+
+      setJoiningMap(prev => ({ ...prev, [match.id]: true }));
+      try {
+        await communityApi.joinMatch(match.id);
+        
+        if (originalMatch.joinMode === 'APPROVAL') {
+          message.info('Yêu cầu tham gia kèo thành công! Vui lòng chờ chủ kèo duyệt.');
+        } else {
+          message.success('Đăng ký tham gia kèo thành công!');
+        }
+
+        // Sync local selected matches store to update counts
+        await syncSelectedMatches();
+
+        // Trigger reload of matches to update participant counts
+        setRefreshCounter(prev => prev + 1);
+      } catch (err: any) {
+        console.error('Failed to join match:', err);
+        message.error(err?.message || 'Có lỗi xảy ra khi tham gia kèo. Vui lòng thử lại.');
+      } finally {
+        setJoiningMap(prev => ({ ...prev, [match.id]: false }));
+      }
     };
 
     return (
@@ -920,14 +995,27 @@ export default function CommunityPage() {
                   </Text>
                 </div>
               </div>
-              {joined ? (
+              {isOwner ? (
                 <Button disabled style={{ height: 44, padding: '0 32px', borderRadius: 12, fontWeight: 800 }}>
-                  Đã đăng ký
+                  Kèo của bạn
+                </Button>
+              ) : joinedStatus === 'PENDING' ? (
+                <Button disabled style={{ height: 44, padding: '0 32px', borderRadius: 12, fontWeight: 800, backgroundColor: '#fef3c7', color: '#d97706', borderColor: '#fde68a' }}>
+                  Chờ duyệt
+                </Button>
+              ) : joinedStatus === 'APPROVED' ? (
+                <Button disabled style={{ height: 44, padding: '0 32px', borderRadius: 12, fontWeight: 800, backgroundColor: '#ecfdf5', color: '#059669', borderColor: '#a7f3d0' }}>
+                  Đã tham gia
+                </Button>
+              ) : isFull ? (
+                <Button disabled style={{ height: 44, padding: '0 32px', borderRadius: 12, fontWeight: 800 }}>
+                  Hết chỗ
                 </Button>
               ) : (
                 <Button 
                   type="primary" 
                   size="large" 
+                  loading={isJoining}
                   style={{ height: 44, padding: '0 32px', borderRadius: 12, fontWeight: 800 }}
                   onClick={handleJoinClick}
                 >

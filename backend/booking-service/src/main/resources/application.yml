@@ -59,6 +59,8 @@ app:
   services:
     venue-service:
       url: http://localhost:8082
+  config:
+    url: http://localhost:8080/identity/api/v1/config/public
 
 management:
   endpoints:

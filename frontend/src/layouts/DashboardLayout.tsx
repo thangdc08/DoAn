@@ -10,11 +10,13 @@ import {
   Heart, CalendarCheck, Coins,
 } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
+import { venueApi } from '../services/venueApi';
 import { useCommunityStore } from '../stores/communityStore';
 import { useChatStore } from '../stores/chatStore';
 import { chatSocket } from '../services/chatSocket';
 import { chatApi } from '../services/chatApi';
 import { BRAND } from '../theme/antdTheme';
+import { useGeoLocation } from '../hooks/useGeoLocation';
 
 const { Text } = Typography;
 
@@ -122,14 +124,32 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const userName = user?.fullName || 'Người dùng';
   const userAvatar = user?.avatarUrl;
   const [collapsed, setCollapsed] = useState(false);
+  const [hasManagedVenues, setHasManagedVenues] = useState(false);
   const menu = MENUS[role];
   const sidebarW = collapsed ? 'w-16' : 'w-60';
+
+  // Tự động xin quyền GPS và đồng bộ tọa độ lên backend
+  useGeoLocation();
 
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/login', { replace: true });
     }
   }, [isAuthenticated, navigate]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      venueApi.getMyVenues()
+        .then((resp) => {
+          if (resp && resp.length > 0) {
+            setHasManagedVenues(true);
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to check managed venues", err);
+        });
+    }
+  }, [isAuthenticated]);
 
   // Connect STOMP socket when logged in
   useEffect(() => {
@@ -186,7 +206,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     },
     
     // Links to other dashboard layouts if user has authority
-    ...(role !== 'OWNER' && user?.roles?.includes('OWNER') ? [
+    ...(role !== 'OWNER' && (user?.roles?.includes('OWNER') || hasManagedVenues) ? [
       {
         key: 'owner-dashboard',
         label: 'Trang quản lý chủ sân',
@@ -223,7 +243,7 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
     },
   ];
 
-  const { favorites, selectedMatches, notifications, markNotificationAsRead, markAllNotificationsAsRead, fetchNotifications } = useCommunityStore();
+  const { favorites, selectedMatches, notifications, markNotificationAsRead, markAllNotificationsAsRead, fetchNotifications, syncSelectedMatches } = useCommunityStore();
   const conversations = useChatStore((s) => s.conversations);
 
   const favoriteCount = favorites.length;
@@ -231,40 +251,52 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
   const unreadNotifCount = notifications.filter(n => !n.readAt).length;
   const unreadChatCount = conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0);
 
-  // Fetch real notifications when logged in
+  // Fetch real notifications and sync selected matches when logged in
   useEffect(() => {
     if (isAuthenticated) {
       fetchNotifications().catch(console.error);
+      syncSelectedMatches().catch(console.error);
       const interval = setInterval(() => {
         fetchNotifications().catch(console.error);
+        syncSelectedMatches().catch(console.error);
       }, 10000);
       return () => clearInterval(interval);
     }
-  }, [isAuthenticated, fetchNotifications]);
+  }, [isAuthenticated, fetchNotifications, syncSelectedMatches]);
 
   const handleNotificationClick = (notif: any) => {
     markNotificationAsRead(notif.id);
+    const matchId = notif.data?.matchPostId || notif.data?.matchId;
     switch (notif.type) {
       case 'BOOKING_PAID':
       case 'BOOKING_EXPIRED':
         navigate('/user/bookings');
         break;
       case 'MATCH_JOIN_REQUESTED':
-        if (notif.data?.matchId) {
-          const query = notif.data.userId ? `?userId=${notif.data.userId}` : '';
-          navigate(`/community/matches/${notif.data.matchId}${query}`);
+        if (matchId) {
+          const query = notif.data?.userId ? `?userId=${notif.data.userId}` : '';
+          navigate(`/community/matches/${matchId}${query}`);
         } else {
           navigate('/user/challenges');
         }
         break;
       case 'MATCH_APPROVED':
       case 'MATCH_REJECTED':
-        if (notif.data?.matchId) {
-          navigate(`/community/matches/${notif.data.matchId}`);
+        if (matchId) {
+          navigate(`/community/matches/${matchId}`);
         } else {
           navigate('/selected-matches');
         }
         break;
+      case 'MATCH_POST_CREATED':
+      case 'MATCH_PARTICIPANT_JOINED':
+        if (matchId) {
+          navigate(`/community/matches/${matchId}`);
+        } else {
+          navigate('/user/challenges');
+        }
+        break;
+      case 'PLAYER_RATED':
       case 'RATING_CREATED':
         navigate('/user/profile');
         break;

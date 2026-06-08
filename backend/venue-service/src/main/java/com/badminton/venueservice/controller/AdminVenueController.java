@@ -56,6 +56,17 @@ public class AdminVenueController {
                 .build();
     }
 
+    @PatchMapping("/{venueId}/suspend")
+    @Operation(summary = "Suspend venue", description = "Admin suspends an approved venue")
+    public ApiResponse<VenueResponse> suspendVenue(
+            @PathVariable UUID venueId,
+            @RequestHeader("X-Auth-User-Id") UUID adminId) {
+        log.info("API Request: Admin {} suspending venue {}", adminId, venueId);
+        return ApiResponse.<VenueResponse>builder()
+                .result(venueService.suspendVenue(venueId, adminId))
+                .build();
+    }
+
     @PatchMapping("/{venueId}/reject")
     @Operation(summary = "Reject venue", description = "Admin rejects a pending venue")
     public ApiResponse<VenueResponse> rejectVenue(

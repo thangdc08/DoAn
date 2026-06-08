@@ -187,6 +187,9 @@ public class ParticipantService {
     participant.setStatus("REJECTED");
     participant = participantRepository.save(participant);
 
+    // Publish event
+    eventPublisher.publishMatchRejected(matchPostId, participant.getUserId(), hostId, matchPost.getTitle());
+
     log.info("Participant {} rejected for match {}", participantId, matchPostId);
     return toResponse(participant);
   }

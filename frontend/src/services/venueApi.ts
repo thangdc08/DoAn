@@ -163,6 +163,14 @@ export const venueApi = {
     });
   },
 
+  suspendVenue: async (venueId: string): Promise<void> => {
+    await apiClient.patch(`/venues/api/admin/venues/${venueId}/suspend`);
+  },
+
+  deleteVenueByAdmin: async (venueId: string): Promise<void> => {
+    await apiClient.delete(`/venues/api/admin/venues/${venueId}`);
+  },
+
   rateVenue: async (venueId: string, data: { stars: number; comment?: string; images?: string[] }): Promise<any> => {
     const response = await apiClient.post(`/venues/api/venues/${venueId}/ratings`, data);
     return response.data.result !== undefined ? response.data.result : response.data;

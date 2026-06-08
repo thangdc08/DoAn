@@ -15,6 +15,8 @@ import java.util.UUID;
 public interface MatchPostRepository extends JpaRepository<MatchPost, UUID>, JpaSpecificationExecutor<MatchPost> {
     List<MatchPost> findByHostIdOrderByCreatedAtDesc(UUID hostId);
     
+    long countByHostIdAndStatusIn(UUID hostId, List<String> statuses);
+    
     List<MatchPost> findByStatusAndStartTimeBefore(String status, LocalDateTime time);
     
     List<MatchPost> findByStatusInAndEndTimeBefore(List<String> statuses, LocalDateTime time);

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import {
   Input,
   Avatar,
@@ -38,9 +38,10 @@ import type { ChatMessage } from '../../services/chatApi';
 import { chatSocket } from '../../services/chatSocket';
 import { useChatStore } from '../../stores/chatStore';
 import { useAuthStore } from '../../stores/authStore';
+import { authApi } from '../../services/authApi';
 import { BRAND } from '../../theme/antdTheme';
 
-const SUGGESTED_PLAYERS = [
+const SUGGESTED_PLAYERS: Array<{ id: string; name: string; level: string; avatarUrl: string; distance?: number }> = [
   { id: 'usr-1', name: 'Nguyễn Tiến Minh', level: 'Chuyên nghiệp', avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop' },
   { id: 'usr-2', name: 'Nguyễn Thùy Linh', level: 'Chuyên nghiệp', avatarUrl: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop' },
   { id: 'usr-3', name: 'Lê Đức Phát', level: 'Bán chuyên', avatarUrl: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop' },
@@ -77,6 +78,87 @@ export default function ChatPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(null);
+
+  useEffect(() => {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          setMyLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        },
+        () => {
+          // Default location: Hanoi center (Hoàn Kiếm Lake)
+          setMyLocation({ lat: 21.0285, lng: 105.8542 });
+        }
+      );
+    } else {
+      setMyLocation({ lat: 21.0285, lng: 105.8542 });
+    }
+  }, []);
+
+  const { data: allUsers, isLoading: loadingUsers } = useQuery({
+    queryKey: ['suggested-players-list'],
+    queryFn: () => authApi.searchUsers(''),
+    enabled: isModalOpen,
+  });
+
+  const getStableCoordinates = (userId: string, baseLat: number, baseLng: number) => {
+    let hash = 0;
+    for (let i = 0; i < userId.length; i++) {
+      hash = userId.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const latOffset = ((Math.abs(hash) % 1000) / 1000 - 0.5) * 0.1;
+    const lngOffset = ((Math.abs(hash >> 3) % 1000) / 1000 - 0.5) * 0.1;
+    return {
+      latitude: baseLat + latOffset,
+      longitude: baseLng + lngOffset,
+    };
+  };
+
+  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+    const toRad = (v: number) => (v * Math.PI) / 180;
+    const R = 6371;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
+      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  const levelMap: Record<string, string> = {
+    'BEGINNER': 'Mới chơi',
+    'INTERMEDIATE': 'Trung bình',
+    'ADVANCED': 'Khá/Giỏi',
+    'PROFESSIONAL': 'Chuyên nghiệp',
+  };
+
+  const suggestedPlayers = useMemo(() => {
+    if (!allUsers || !myLocation) return [];
+
+    return allUsers
+      .filter((u: any) => u.id !== user?.id)
+      .map((u: any) => {
+        // Dùng tọa độ thực nếu có, ngược lại xét là không xác định
+        const hasLocation = u.latitude != null && u.longitude != null;
+        const dist = hasLocation
+          ? calculateDistance(myLocation.lat, myLocation.lng, u.latitude, u.longitude)
+          : Infinity;
+        return {
+          id: u.id,
+          name: u.fullName,
+          level: levelMap[u.level] || u.level || 'Chưa cập nhật',
+          avatarUrl: u.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop',
+          distance: dist,
+          hasLocation,
+        };
+      })
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, 5);
+  }, [allUsers, myLocation, user]);
 
   const { data: convsData, isLoading: loadingConvs } = useQuery({
     queryKey: ['chat-conversations'],
@@ -169,7 +251,7 @@ export default function ChatPage() {
       setCustomUserId('');
     } catch (error: any) {
       // Fallback offline mode if user doesn't exist in DB to ensure prototype functionality
-      const selectedPlayer = SUGGESTED_PLAYERS.find((p) => p.id === userId);
+      const selectedPlayer = suggestedPlayers.find((p) => p.id === userId) || SUGGESTED_PLAYERS.find((p) => p.id === userId);
       const mockId = 'mock-' + userId;
       
       const isAlreadyExists = conversations.some((c) => c.id === mockId);
@@ -291,6 +373,30 @@ export default function ChatPage() {
   };
 
   const activeConv = conversations.find((c: any) => c.id === activeConversationId);
+
+  const participantIds = useMemo(() => {
+    return activeConv?.participants?.map((p: any) => p.id) || [];
+  }, [activeConv]);
+
+  const { data: participantProfilesMap } = useQuery({
+    queryKey: ['chat-participant-profiles', participantIds],
+    queryFn: async () => {
+      if (participantIds.length === 0) return {};
+      const profiles: Record<string, any> = {};
+      await Promise.all(
+        participantIds.map(async (id: string) => {
+          try {
+            const profile = await authApi.getUserById(id);
+            profiles[id] = profile;
+          } catch (e) {
+            console.error('Failed to fetch profile for user', id, e);
+          }
+        })
+      );
+      return profiles;
+    },
+    enabled: participantIds.length > 0,
+  });
 
   const sharedMedia = (messages[activeConversationId || ''] || [])
     .filter((msg) => msg.type === 'IMAGE')
@@ -802,9 +908,43 @@ export default function ChatPage() {
                     <h4 className="font-black text-slate-800 text-base leading-snug">
                       {activeConv?.name || 'Cuộc trò chuyện'}
                     </h4>
-                    <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider">
+                    <span className="text-[11px] text-slate-400 font-bold uppercase tracking-wider block mb-1">
                       {activeConv?.type === 'GROUP' ? 'Nhóm kèo đấu' : 'Trò chuyện cá nhân'}
                     </span>
+                    
+                    {/* For private chat, show partner's details */}
+                    {activeConv?.type !== 'GROUP' && (() => {
+                      const partner = activeConv?.participants?.find((p: any) => p.id !== user?.id);
+                      const partnerProfile = partner ? participantProfilesMap?.[partner.id] : null;
+                      if (!partnerProfile) return null;
+                      const levelText = levelMap[partnerProfile.level] || partnerProfile.level;
+                      return (
+                        <div className="flex flex-col items-center gap-1 mt-2">
+                          <div className="flex items-center gap-1.5 justify-center">
+                            {levelText && (
+                              <Tag color="emerald" style={{ fontSize: 10, borderRadius: 4, fontWeight: 600, border: 'none', margin: 0 }}>
+                                {levelText}
+                              </Tag>
+                            )}
+                            {partnerProfile.rating !== undefined && partnerProfile.rating > 0 && (
+                              <span className="text-xs text-amber-500 font-bold flex items-center gap-0.5">
+                                ⭐ {partnerProfile.rating.toFixed(1)}
+                              </span>
+                            )}
+                          </div>
+                          {partnerProfile.bio && (
+                            <p className="text-xs text-slate-500 max-w-[200px] line-clamp-2 italic m-0 mt-1">
+                              "{partnerProfile.bio}"
+                            </p>
+                          )}
+                          {partnerProfile.phone && (
+                            <span className="text-[10px] text-slate-400 font-semibold block mt-1">
+                              📞 {partnerProfile.phone}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
 
@@ -831,20 +971,38 @@ export default function ChatPage() {
                             <p className="text-xs text-slate-400 text-center py-2 italic">Không có thông tin thành viên</p>
                           ) : (
                             members.map((member: any, idx: number) => {
-                              const name = member.fullName || member.name || member.userName || 'Thành viên';
+                              const profile = participantProfilesMap?.[member.id] || {};
+                              const name = profile.fullName || member.fullName || member.name || member.userName || 'Thành viên';
                               const isMe = member.id === user?.id;
+                              const levelText = levelMap[profile.level] || profile.level;
+                              const ratingVal = profile.rating;
+
                               return (
                                 <div key={member.id || idx} className="flex items-center gap-2.5 p-2 rounded-xl hover:bg-slate-50 transition-colors group/member">
-                                  {member.avatarUrl ? (
-                                    <Avatar size={32} src={member.avatarUrl} className="rounded-lg border border-slate-100 shadow-sm flex-shrink-0" />
+                                  {member.avatarUrl || profile.avatarUrl ? (
+                                    <Avatar size={32} src={member.avatarUrl || profile.avatarUrl} className="rounded-lg border border-slate-100 shadow-sm flex-shrink-0" />
                                   ) : (
                                     <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-teal-600 text-white flex items-center justify-center text-[10px] font-extrabold flex-shrink-0 shadow-sm">
                                       {name.charAt(0).toUpperCase()}
                                     </div>
                                   )}
                                   <div className="flex-1 min-w-0">
-                                    <span className="text-[13px] font-bold text-slate-800 truncate block">{name}</span>
-                                    {isMe && <span className="text-[10px] text-emerald-600 font-semibold">Bạn</span>}
+                                    <span className="text-[13px] font-bold text-slate-800 truncate block">
+                                      {name}
+                                      {isMe && <span className="text-[10px] text-emerald-600 font-semibold ml-1.5">(Bạn)</span>}
+                                    </span>
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                      {levelText && (
+                                        <Tag color="emerald" style={{ fontSize: 9, lineHeight: '14px', height: '16px', padding: '0 4px', borderRadius: 4, fontWeight: 600, border: 'none', margin: 0 }}>
+                                          {levelText}
+                                        </Tag>
+                                      )}
+                                      {ratingVal !== undefined && ratingVal > 0 && (
+                                        <span className="text-[10px] text-amber-500 font-extrabold flex items-center">
+                                          ⭐ {ratingVal.toFixed(1)}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                               );
@@ -1037,26 +1195,45 @@ export default function ChatPage() {
           </div>
 
           <div className="space-y-3 max-h-[300px] overflow-y-auto pr-1">
-            {SUGGESTED_PLAYERS.map((player) => (
-              <div
-                key={player.id}
-                className="flex items-center justify-between p-3 rounded-2xl border border-slate-100 hover:border-emerald-100 hover:bg-emerald-50/20 transition-all group"
-              >
-                <div className="flex items-center gap-3">
-                  <Avatar src={player.avatarUrl} size={40} className="border border-slate-100 shadow-sm rounded-xl" />
-                  <div>
-                    <h5 className="font-bold text-slate-800 text-[14px] leading-tight m-0">{player.name}</h5>
-                    <Tag color="emerald" style={{ fontSize: 10, marginTop: 4, borderRadius: 4, fontWeight: 600 }}>{player.level}</Tag>
-                  </div>
-                </div>
-                <button
-                  onClick={() => handleStartConversation(player.id)}
-                  className="px-3.5 py-1.5 bg-slate-50 hover:bg-brand-green border border-slate-200 hover:border-brand-green text-slate-600 hover:text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
-                >
-                  Nhắn tin
-                </button>
+            {loadingUsers ? (
+              <div className="flex justify-center items-center py-8">
+                <Spin size="small" />
               </div>
-            ))}
+            ) : suggestedPlayers.length === 0 ? (
+              <p className="text-xs text-slate-400 text-center py-4 italic">
+                Không tìm thấy tuyển thủ gợi ý
+              </p>
+            ) : (
+              suggestedPlayers.map((player) => (
+                <div
+                  key={player.id}
+                  className="flex items-center justify-between p-3 rounded-2xl border border-slate-100 hover:border-emerald-100 hover:bg-emerald-50/20 transition-all group"
+                >
+                  <div className="flex items-center gap-3">
+                    <Avatar src={player.avatarUrl} size={40} className="border border-slate-100 shadow-sm rounded-xl" />
+                    <div>
+                      <h5 className="font-bold text-slate-800 text-[14px] leading-tight m-0">{player.name}</h5>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <Tag color="emerald" style={{ fontSize: 9, lineHeight: '14px', height: '16px', padding: '0 4px', borderRadius: 4, fontWeight: 600, border: 'none', margin: 0 }}>
+                          {player.level}
+                        </Tag>
+                        <span className="text-[10px] text-slate-400 font-semibold">
+                          {player.hasLocation
+                            ? `📍 ${player.distance.toFixed(1)} km`
+                            : '📍 Chưa biết'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleStartConversation(player.id)}
+                    className="px-3.5 py-1.5 bg-slate-50 hover:bg-brand-green border border-slate-200 hover:border-brand-green text-slate-600 hover:text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  >
+                    Nhắn tin
+                  </button>
+                </div>
+              ))
+            )}
           </div>
         </div>
       </Modal>

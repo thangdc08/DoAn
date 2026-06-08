@@ -84,3 +84,15 @@ app:
     cloud-name: drq5f0hg2
     api-key: "318313767569946"
     api-secret: "Bvsb_Fx01DWD5qFC82Zf8IU-Uig"
+
+management:
+  health:
+    mail:
+      enabled: false
+  endpoint:
+    health:
+      show-details: always
+  endpoints:
+    web:
+      exposure:
+        include: health,info

@@ -78,6 +78,14 @@ export const bookingApi = {
     return unwrapResult(response);
   },
 
+  // Create owner support ticket
+  createOwnerSupportTicket: async (
+    data: { subject: string; description: string }
+  ): Promise<SupportTicket> => {
+    const response = await apiClient.post('/bookings/api/owner/support-tickets', data);
+    return unwrapResult(response);
+  },
+
   // Owner APIs
   getOwnerBookings: async (params?: {
     venueId?: string;
@@ -138,8 +146,44 @@ export const bookingApi = {
     return unwrapResult(response);
   },
 
+
   replySupportTicket: async (ticketId: string, reply: string): Promise<SupportTicket> => {
     const response = await apiClient.patch(`/bookings/api/owner/support-tickets/${ticketId}/reply`, { reply });
+    return unwrapResult(response);
+  },
+
+  // Admin support ticket APIs
+  getAdminSupportTickets: async (params?: {
+    status?: string;
+    search?: string;
+    page?: number;
+    size?: number;
+  }): Promise<{ content: SupportTicket[]; totalElements: number; totalPages: number }> => {
+    const response = await apiClient.get('/bookings/api/admin/support-tickets', { params });
+    return unwrapResult(response);
+  },
+
+  replyAdminSupportTicket: async (ticketId: string, reply: string): Promise<SupportTicket> => {
+    const response = await apiClient.patch(`/bookings/api/admin/support-tickets/${ticketId}/reply`, { reply });
+    return unwrapResult(response);
+  },
+
+  updateTicketStatus: async (ticketId: string, status: string): Promise<SupportTicket> => {
+    const response = await apiClient.patch(`/bookings/api/admin/support-tickets/${ticketId}/status`, { status });
+    return unwrapResult(response);
+  },
+
+  checkConflicts: async (venueId: string, policyJson: string): Promise<Array<{
+    bookingId: string;
+    courtName: string;
+    startTime: string;
+    endTime: string;
+  }>> => {
+    const response = await apiClient.post(`/bookings/api/bookings/internal/check-conflicts?venueId=${venueId}`, policyJson, {
+      headers: {
+        'Content-Type': 'text/plain'
+      }
+    });
     return unwrapResult(response);
   },
 };

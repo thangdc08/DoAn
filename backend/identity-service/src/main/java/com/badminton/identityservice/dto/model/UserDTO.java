@@ -29,6 +29,8 @@ public class UserDTO {
     private String bio;
     private Double rating;
     private Integer reviewCount;
+    private Double latitude;
+    private Double longitude;
     private UserStatus status;
     private Set<String> roles;
 

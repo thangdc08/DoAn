@@ -54,6 +54,12 @@ public class User {
     @Column(name = "review_count")
     private Integer reviewCount = 0;
 
+    @Column(name = "latitude")
+    private Double latitude;
+
+    @Column(name = "longitude")
+    private Double longitude;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private UserStatus status = UserStatus.ACTIVE;

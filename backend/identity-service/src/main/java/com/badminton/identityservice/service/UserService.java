@@ -24,6 +24,8 @@ public interface UserService {
 
     UserDTO updateProfile(UUID id, UserProfileUpdateRequest request);
 
+    UserDTO updateLocation(UUID id, com.badminton.identityservice.dto.request.UpdateLocationRequest request);
+
     void deleteUser(UUID id);
 
     UserDTO getUserProfile(UUID id);

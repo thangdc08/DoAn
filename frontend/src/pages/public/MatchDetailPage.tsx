@@ -41,6 +41,7 @@ import { communityApi } from '../../services/communityApi';
 import type { MatchParticipant, MatchPost } from '../../types/community.types';
 import type { User } from '../../types/auth.types';
 import { useAuthStore } from '../../stores/authStore';
+import { useCommunityStore } from '../../stores/communityStore';
 import { chatApi, type ChatMessage } from '../../services/chatApi';
 import { chatSocket } from '../../services/chatSocket';
 import { authApi } from '../../services/authApi';
@@ -113,6 +114,7 @@ export default function MatchDetailPage() {
   const { matchId } = useParams<{ matchId: string }>();
   const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
+  const { syncSelectedMatches } = useCommunityStore();
 
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState(false);
@@ -137,6 +139,11 @@ export default function MatchDetailPage() {
   const selectedPlayerProfile = useMemo(() => {
     if (!selectedRequest?.userId) return null;
     return participantProfiles[selectedRequest.userId] || null;
+  }, [participantProfiles, selectedRequest]);
+
+  const isProfileLoading = useMemo(() => {
+    if (!selectedRequest?.userId) return false;
+    return !participantProfiles[selectedRequest.userId];
   }, [participantProfiles, selectedRequest]);
 
   const [quickMessage, setQuickMessage] = useState('');
@@ -176,7 +183,10 @@ export default function MatchDetailPage() {
     [participants],
   );
 
-  const getParticipantName = (p: any) => p?.userFullName || p?.userName || 'Người chơi';
+  const getParticipantName = (p: any) => {
+    const profile = participantProfiles[p?.userId || ''];
+    return profile?.fullName || p?.userFullName || p?.userName || 'Người chơi';
+  };
   const getParticipantTime = (p: any) => p?.joinedAt || p?.requestedAt;
   const getParticipantStatus = (p: any) => participantStatusMeta[p?.status] || { text: p?.status || 'Không rõ', color: 'default' as const };
   const getParticipantProfile = (p: any) => participantProfiles[p?.userId || ''] || {};
@@ -376,6 +386,7 @@ export default function MatchDetailPage() {
       if (match?.joinMode !== 'APPROVAL') {
         setGroupModalOpen(true);
       }
+      await syncSelectedMatches();
       await loadData();
     } catch (error: any) {
       message.error(error?.response?.data?.message || 'Không thể tham gia kèo');
@@ -1129,7 +1140,9 @@ export default function MatchDetailPage() {
                 <Text copyable type="secondary">{selectedRequest.userId}</Text>
               </Descriptions.Item>
               <Descriptions.Item label="Số điện thoại">
-                {selectedPlayerProfile?.phone ? (
+                {isProfileLoading ? (
+                  <Spin size="small" />
+                ) : selectedPlayerProfile?.phone ? (
                   <Space>
                     <PhoneOutlined style={{ color: '#16a34a' }} />
                     <Text strong>{selectedPlayerProfile.phone}</Text>
@@ -1139,13 +1152,39 @@ export default function MatchDetailPage() {
                 )}
               </Descriptions.Item>
               <Descriptions.Item label="Email">
-                {selectedPlayerProfile?.email ? (
+                {isProfileLoading ? (
+                  <Spin size="small" />
+                ) : selectedPlayerProfile?.email ? (
                   <Space>
                     <MailOutlined style={{ color: '#0284c7' }} />
                     <Text>{selectedPlayerProfile.email}</Text>
                   </Space>
                 ) : (
                   <Text type="secondary">Chưa cung cấp</Text>
+                )}
+              </Descriptions.Item>
+              <Descriptions.Item label="Trình độ">
+                {isProfileLoading ? (
+                  <Spin size="small" />
+                ) : selectedPlayerProfile?.level ? (
+                  <Tag color="blue" style={{ borderRadius: 999 }}>
+                    {levelLabel[selectedPlayerProfile.level] || selectedPlayerProfile.level}
+                  </Tag>
+                ) : (
+                  <Text type="secondary">Chưa cập nhật</Text>
+                )}
+              </Descriptions.Item>
+              <Descriptions.Item label="Đánh giá">
+                {isProfileLoading ? (
+                  <Spin size="small" />
+                ) : selectedPlayerProfile?.rating != null && selectedPlayerProfile.rating > 0 ? (
+                  <Space>
+                    <Rate disabled allowHalf defaultValue={selectedPlayerProfile.rating} style={{ fontSize: 14 }} />
+                    <Text strong>{Number(selectedPlayerProfile.rating).toFixed(1)}</Text>
+                    <Text type="secondary">({selectedPlayerProfile.reviewCount || 0} đánh giá)</Text>
+                  </Space>
+                ) : (
+                  <Text type="secondary">Chưa có đánh giá</Text>
                 )}
               </Descriptions.Item>
               <Descriptions.Item label="Thời gian yêu cầu">

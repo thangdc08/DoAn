@@ -71,6 +71,23 @@ public class CommunityEventPublisher {
         log.info("Published MatchApproved event for match {} user {}", matchPostId, userId);
     }
 
+    public void publishMatchRejected(UUID matchPostId, UUID userId, UUID hostId, String title) {
+        MatchRejectedEvent event = MatchRejectedEvent.builder()
+                .eventId(UUID.randomUUID())
+                .eventType("MatchRejected")
+                .occurredAt(LocalDateTime.now())
+                .producer("community-service")
+                .version(1)
+                .matchPostId(matchPostId)
+                .userId(userId)
+                .hostId(hostId)
+                .title(title)
+                .build();
+
+        kafkaTemplate.send(TOPIC, matchPostId.toString(), event);
+        log.info("Published MatchRejected event for match {} user {}", matchPostId, userId);
+    }
+
     public void publishRatingCreated(UUID matchPostId, UUID raterId, UUID rateeId, Integer stars) {
         RatingCreatedEvent event = RatingCreatedEvent.builder()
                 .eventId(UUID.randomUUID())
@@ -146,5 +163,20 @@ public class CommunityEventPublisher {
         private UUID raterId;
         private UUID rateeUserId;
         private Integer stars;
+    }
+
+    @Data
+    @Builder
+    @AllArgsConstructor
+    public static class MatchRejectedEvent {
+        private UUID eventId;
+        private String eventType;
+        private LocalDateTime occurredAt;
+        private String producer;
+        private Integer version;
+        private UUID matchPostId;
+        private UUID userId;
+        private UUID hostId;
+        private String title;
     }
 }

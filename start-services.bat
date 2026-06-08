@@ -16,7 +16,7 @@ echo.
 REM Check PostgreSQL
 netstat -an | findstr :5432 > nul
 if errorlevel 1 (
-    echo [ERROR] PostgreSQL (port 5432) is not running!
+    echo [ERROR] PostgreSQL on port 5432 is not running!
     echo Please start PostgreSQL first:
     echo   - Docker: docker start badminton-postgres
     echo   - Or start PostgreSQL service
@@ -29,7 +29,7 @@ echo [OK] PostgreSQL is running
 REM Check MongoDB
 netstat -an | findstr :27017 > nul
 if errorlevel 1 (
-    echo [ERROR] MongoDB (port 27017) is not running!
+    echo [ERROR] MongoDB on port 27017 is not running!
     echo Please start MongoDB
     echo.
     pause
@@ -40,7 +40,7 @@ echo [OK] MongoDB is running
 REM Check Redis
 netstat -an | findstr :6379 > nul
 if errorlevel 1 (
-    echo [ERROR] Redis (port 6379) is not running!
+    echo [ERROR] Redis on port 6379 is not running!
     echo Please start Redis
     echo.
     pause
@@ -51,7 +51,7 @@ echo [OK] Redis is running
 REM Check Kafka
 netstat -an | findstr :9094 > nul
 if errorlevel 1 (
-    echo [ERROR] Kafka (port 9094) is not running!
+    echo [ERROR] Kafka on port 9094 is not running!
     echo Please start Kafka
     echo.
     pause
@@ -67,41 +67,41 @@ echo Starting microservices...
 echo.
 
 start "Service Registry" cmd /c "cd backend\serviceRegistry && mvnw spring-boot:run -Dspring-boot.run.profiles=default"
-timeout /t 5 /nobreak > nul
+ping 127.0.0.1 -n 6 > nul
 
 REM Config Server is disabled - removed from startup
 echo Config Server is disabled (removed from project)
 echo.
 
 start "Identity Service" cmd /c "cd backend\identity-service && mvnw spring-boot:run -Dspring-boot.run.profiles=dev"
-timeout /t 3 /nobreak > nul
+ping 127.0.0.1 -n 4 > nul
 
 start "Venue Service" cmd /c "cd backend\venue-service && mvnw spring-boot:run -Dspring-boot.run.profiles=dev"
-timeout /t 3 /nobreak > nul
+ping 127.0.0.1 -n 4 > nul
 
 start "Booking Service" cmd /c "cd backend\booking-service && mvnw spring-boot:run -Dspring-boot.run.profiles=dev"
-timeout /t 3 /nobreak > nul
+ping 127.0.0.1 -n 4 > nul
 
-start "Payment Service" cmd /c "cd backend\payment-service && mvnw spring-boot:run -Dspring-boot.run.profiles=dev"
-timeout /t 3 /nobreak > nul
+start "Payment Service" cmd /c "cd backend\payment-service && ..\mvnw spring-boot:run -Dspring-boot.run.profiles=dev"
+ping 127.0.0.1 -n 4 > nul
 
-start "Community Service" cmd /c "cd backend\community-service && mvnw spring-boot:run -Dspring-boot.run.profiles=dev"
-timeout /t 3 /nobreak > nul
+start "Community Service" cmd /c "cd backend\community-service && ..\mvnw spring-boot:run -Dspring-boot.run.profiles=dev"
+ping 127.0.0.1 -n 4 > nul
 
 start "Notification Service" cmd /c "cd backend\notification-service && mvnw spring-boot:run -Dspring-boot.run.profiles=dev"
-timeout /t 3 /nobreak > nul
+ping 127.0.0.1 -n 4 > nul
 
 start "Recommendation Service" cmd /c "cd backend\recommendation-service && mvnw spring-boot:run -Dspring-boot.run.profiles=dev"
-timeout /t 5 /nobreak > nul
+ping 127.0.0.1 -n 6 > nul
 
 start "AI Service" cmd /c "cd backend\ai-service && npm start"
-timeout /t 3 /nobreak > nul
+ping 127.0.0.1 -n 4 > nul
 
 start "Chat Service" cmd /c "cd backend\chat-service && npm start"
-timeout /t 3 /nobreak > nul
+ping 127.0.0.1 -n 4 > nul
 
 start "FB Community" cmd /c "cd backend\fb-community-service && npm start"
-timeout /t 3 /nobreak > nul
+ping 127.0.0.1 -n 4 > nul
 
 start "API Gateway" cmd /c "cd backend\api-gateway && mvnw spring-boot:run -Dspring-boot.run.profiles=dev"
 

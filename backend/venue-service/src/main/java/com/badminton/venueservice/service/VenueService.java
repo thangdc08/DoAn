@@ -40,6 +40,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
+import com.badminton.venueservice.client.SystemConfigClient;
 
 import com.badminton.venueservice.repository.*;
 
@@ -57,10 +58,14 @@ public class VenueService {
   private final com.cloudinary.Cloudinary cloudinary;
   private final RestTemplate restTemplate;
   private final VenueRatingRepository venueRatingRepository;
+  private final SystemConfigClient systemConfigClient;
   private final GeometryFactory geometryFactory = new GeometryFactory(new PrecisionModel(), 4326);
 
   @Value("${app.services.booking-service.url:http://localhost:8083}")
   private String bookingServiceUrl;
+
+  @Value("${app.services.identity-service.url:http://localhost:8081}")
+  private String identityServiceUrl;
 
   private String generateSlug(String name) {
     return name.toLowerCase()
@@ -76,16 +81,108 @@ public class VenueService {
         .collect(Collectors.toList());
   }
 
+  private String getUserEmailById(UUID userId) {
+    if (userId == null) return null;
+    try {
+      String url = identityServiceUrl + "/api/v1/users/" + userId.toString();
+      log.info("Calling identity-service to get email: {}", url);
+      Map<?, ?> userMap = restTemplate.getForObject(url, Map.class);
+      if (userMap != null && userMap.containsKey("email")) {
+        return (String) userMap.get("email");
+      }
+    } catch (Exception e) {
+      log.error("Failed to fetch user email for user {}: {}", userId, e.getMessage());
+    }
+    return null;
+  }
+
+  private boolean isUserActiveStaff(String policyJson, String userEmail) {
+    if (policyJson == null || policyJson.trim().isEmpty() || userEmail == null) {
+      return false;
+    }
+    try {
+      com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+      com.fasterxml.jackson.databind.JsonNode rootNode = mapper.readTree(policyJson);
+      com.fasterxml.jackson.databind.JsonNode staffNode = rootNode.get("staff");
+      if (staffNode != null && staffNode.isArray()) {
+        for (com.fasterxml.jackson.databind.JsonNode s : staffNode) {
+          String email = s.path("email").asText();
+          String status = s.path("status").asText();
+          if (userEmail.equalsIgnoreCase(email) && "Active".equalsIgnoreCase(status)) {
+            return true;
+          }
+        }
+      }
+    } catch (Exception e) {
+      log.error("Failed to parse policy JSON to check staff: {}", e.getMessage());
+    }
+    return false;
+  }
+
+  private String determineUserRole(Venue venue, UUID userId) {
+    if (userId == null) {
+      return null;
+    }
+    if (userId.equals(venue.getOwnerId())) {
+      return "Owner";
+    }
+    String userEmail = getUserEmailById(userId);
+    if (userEmail == null) {
+      return null;
+    }
+    if (venue.getPolicy() != null && !venue.getPolicy().trim().isEmpty()) {
+      try {
+        com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+        com.fasterxml.jackson.databind.JsonNode rootNode = mapper.readTree(venue.getPolicy());
+        com.fasterxml.jackson.databind.JsonNode staffNode = rootNode.get("staff");
+        if (staffNode != null && staffNode.isArray()) {
+          for (com.fasterxml.jackson.databind.JsonNode s : staffNode) {
+            String email = s.path("email").asText();
+            String status = s.path("status").asText();
+            String role = s.path("role").asText("Nhân viên Check-in");
+            if (userEmail.equalsIgnoreCase(email) && "Active".equalsIgnoreCase(status)) {
+              return role;
+            }
+          }
+        }
+      } catch (Exception e) {
+        log.error("Failed to parse policy JSON for role determination: {}", e.getMessage());
+      }
+    }
+    return null;
+  }
+
   public List<VenueResponse> findVenuesByOwnerId(UUID ownerId) {
-    log.info("Fetching venues for owner: {}", ownerId);
-    return venueRepository.findByOwnerId(ownerId).stream()
-        .map(this::toVenueResponse)
+    log.info("Fetching venues for owner or staff: {}", ownerId);
+    String userEmail = getUserEmailById(ownerId);
+    
+    List<Venue> allVenues = venueRepository.findAll();
+    return allVenues.stream()
+        .filter(v -> v.getOwnerId().equals(ownerId) || isUserActiveStaff(v.getPolicy(), userEmail))
+        .map(v -> {
+          VenueResponse resp = toVenueResponse(v);
+          if (v.getOwnerId().equals(ownerId)) {
+            resp.setCurrentUserRole("Owner");
+          } else {
+            resp.setCurrentUserRole(determineUserRole(v, ownerId));
+          }
+          return resp;
+        })
         .collect(Collectors.toList());
   }
 
   public VenueResponse findVenueResponseById(UUID id) {
-    log.info("Fetching venue response by id: {}", id);
-    return toVenueResponse(findById(id));
+    return findVenueResponseById(id, null);
+  }
+
+  public VenueResponse findVenueResponseById(UUID id, UUID userId) {
+    log.info("Fetching venue response by id {} for user {}", id, userId);
+    Venue venue = findById(id);
+    VenueResponse resp = toVenueResponse(venue);
+    if (userId != null) {
+      resp.setCurrentUserRole(determineUserRole(venue, userId));
+    }
+    return resp;
   }
 
   public Venue findById(UUID id) {
@@ -119,7 +216,7 @@ public class VenueService {
         .closeTime(request.getCloseTime() != null ? LocalTime.parse(request.getCloseTime()) : null)
         .policy(request.getPolicy())
         .courtCount(request.getCourtCount() != null ? request.getCourtCount() : 0)
-        .status(VenueStatus.PENDING_APPROVAL)
+        .status(systemConfigClient.getBool("venue_require_approval", true) ? VenueStatus.PENDING_APPROVAL : VenueStatus.APPROVED)
         .build();
 
     Venue savedVenue = venueRepository.save(venue);
@@ -246,6 +343,40 @@ public class VenueService {
     response.setCourtCount(venue.getCourtCount());
     log.info("Response courtCount set to: {}", response.getCourtCount());
 
+    // Map priceMin & priceMax
+    List<Court> courts = courtRepository.findByVenueIdOrderByDisplayOrderAsc(venue.getId());
+    java.math.BigDecimal minPrice = null;
+    java.math.BigDecimal maxPrice = null;
+
+    for (Court c : courts) {
+      if (c.getDefaultPrice() != null) {
+        if (minPrice == null || c.getDefaultPrice().compareTo(minPrice) < 0) {
+          minPrice = c.getDefaultPrice();
+        }
+        if (maxPrice == null || c.getDefaultPrice().compareTo(maxPrice) > 0) {
+          maxPrice = c.getDefaultPrice();
+        }
+      }
+    }
+
+    List<PriceRule> rules = priceRuleRepository.findByVenueId(venue.getId());
+    for (PriceRule r : rules) {
+      if (r.getPricePerHour() != null) {
+        if (minPrice == null || r.getPricePerHour().compareTo(minPrice) < 0) {
+          minPrice = r.getPricePerHour();
+        }
+        if (maxPrice == null || r.getPricePerHour().compareTo(maxPrice) > 0) {
+          maxPrice = r.getPricePerHour();
+        }
+      }
+    }
+
+    if (minPrice == null) minPrice = java.math.BigDecimal.valueOf(80000);
+    if (maxPrice == null) maxPrice = java.math.BigDecimal.valueOf(80000);
+
+    response.setPriceMin(minPrice);
+    response.setPriceMax(maxPrice);
+
     return response;
   }
 
@@ -325,7 +456,7 @@ public class VenueService {
         .openTime(request.getOpenTime())
         .closeTime(request.getCloseTime())
         .courtCount(request.getCourtCount()) // Set courtCount here
-        .status(VenueStatus.PENDING_APPROVAL)
+        .status(systemConfigClient.getBool("venue_require_approval", true) ? VenueStatus.PENDING_APPROVAL : VenueStatus.APPROVED)
         .build();
 
     Venue savedVenue = venueRepository.save(venue);
@@ -398,12 +529,23 @@ public class VenueService {
   public CourtResponse createCourt(UUID venueId, CreateCourtRequest request) {
     log.info("Creating court {} for venue {}", request.getName(), venueId);
     Venue venue = findById(venueId);
-
-    // Increment courtCount
-    venue.setCourtCount((venue.getCourtCount() != null ? venue.getCourtCount() : 0) + 1);
-    venueRepository.save(venue);
+    int maxCourts = systemConfigClient.getInt("max_courts_per_venue", 20);
+    int currentCourtsCount = venue.getCourtCount() != null ? venue.getCourtCount() : 0;
+    if (currentCourtsCount >= maxCourts) {
+      throw new AppException(HttpStatus.BAD_REQUEST, "Số lượng sân lẻ vượt quá giới hạn hệ thống cho phép (" + maxCourts + " sân)");
+    }
 
     BigDecimal defaultPrice = request.getDefaultPrice() != null ? request.getDefaultPrice() : BigDecimal.valueOf(80000);
+    double minPrice = systemConfigClient.getDouble("min_court_price", 50000.0);
+    double maxPrice = systemConfigClient.getDouble("max_court_price", 500000.0);
+    if (defaultPrice.doubleValue() < minPrice || defaultPrice.doubleValue() > maxPrice) {
+      throw new AppException(HttpStatus.BAD_REQUEST, String.format("Giá sân phải nằm trong khoảng từ %,.0f đ đến %,.0f đ/giờ", minPrice, maxPrice));
+    }
+
+    // Increment courtCount
+    venue.setCourtCount(currentCourtsCount + 1);
+    venueRepository.save(venue);
+
     Court court = Court.builder()
         .venue(venue)
         .name(request.getName())
@@ -632,8 +774,14 @@ public class VenueService {
       court.setDescription(request.getDescription());
     if (request.getStatus() != null)
       court.setStatus(request.getStatus());
-    if (request.getDefaultPrice() != null)
+    if (request.getDefaultPrice() != null) {
+      double minPrice = systemConfigClient.getDouble("min_court_price", 50000.0);
+      double maxPrice = systemConfigClient.getDouble("max_court_price", 500000.0);
+      if (request.getDefaultPrice().doubleValue() < minPrice || request.getDefaultPrice().doubleValue() > maxPrice) {
+        throw new AppException(HttpStatus.BAD_REQUEST, String.format("Giá sân phải nằm trong khoảng từ %,.0f đ đến %,.0f đ/giờ", minPrice, maxPrice));
+      }
       court.setDefaultPrice(request.getDefaultPrice());
+    }
 
     return venueMapper.toCourtResponse(courtRepository.save(court));
   }
@@ -752,6 +900,14 @@ public class VenueService {
     LocalTime startTime = LocalTime.parse(request.getStartTime());
     LocalTime endTime = LocalTime.parse(request.getEndTime());
     validatePriceRuleRequest(venueId, request, startTime, endTime);
+
+    if (request.getPricePerHour() != null) {
+      double minPrice = systemConfigClient.getDouble("min_court_price", 50000.0);
+      double maxPrice = systemConfigClient.getDouble("max_court_price", 500000.0);
+      if (request.getPricePerHour().doubleValue() < minPrice || request.getPricePerHour().doubleValue() > maxPrice) {
+        throw new AppException(HttpStatus.BAD_REQUEST, String.format("Giá giờ cao điểm/khung giờ đặc biệt phải nằm trong khoảng từ %,.0f đ đến %,.0f đ/giờ", minPrice, maxPrice));
+      }
+    }
 
     PriceRule rule = PriceRule.builder()
         .venueId(venueId)
@@ -1015,7 +1171,7 @@ public class VenueService {
   public Page<VenueResponse> findAllVenuesForAdmin(String status, String search, Pageable pageable) {
     log.info("Admin finding all venues with status={}, search={}", status, search);
 
-    List<Venue> venues = venueRepository.findAll();
+    List<Venue> venues = new ArrayList<>(venueRepository.findAll());
 
     // Filter by status
     if (status != null && !status.isEmpty()) {
@@ -1040,6 +1196,21 @@ public class VenueService {
           .collect(Collectors.toList());
     }
 
+    // Sort: PENDING_APPROVAL first, then createdAt descending
+    venues.sort((v1, v2) -> {
+      boolean p1 = v1.getStatus() == VenueStatus.PENDING_APPROVAL;
+      boolean p2 = v2.getStatus() == VenueStatus.PENDING_APPROVAL;
+      if (p1 && !p2) return -1;
+      if (!p1 && p2) return 1;
+
+      LocalDateTime c1 = v1.getCreatedAt();
+      LocalDateTime c2 = v2.getCreatedAt();
+      if (c1 == null && c2 == null) return 0;
+      if (c1 == null) return 1;
+      if (c2 == null) return -1;
+      return c2.compareTo(c1);
+    });
+
     // Manual pagination
     int start = (int) pageable.getOffset();
     if (start >= venues.size()) {
@@ -1059,15 +1230,32 @@ public class VenueService {
 
     Venue venue = findById(venueId);
 
-    if (venue.getStatus() != VenueStatus.PENDING_APPROVAL) {
-      throw new AppException(HttpStatus.CONFLICT, "Venue is not pending approval");
+    if (venue.getStatus() != VenueStatus.PENDING_APPROVAL && venue.getStatus() != VenueStatus.SUSPENDED) {
+      throw new AppException(HttpStatus.CONFLICT, "Cơ sở không ở trạng thái chờ duyệt hoặc tạm dừng");
     }
 
     venue.setStatus(VenueStatus.APPROVED);
     Venue savedVenue = venueRepository.save(venue);
 
-    // TODO: Publish VenueApproved event
-    log.info("Venue {} approved by admin {}", venueId, adminId);
+    log.info("Venue {} approved/activated by admin {}", venueId, adminId);
+
+    return toVenueResponse(savedVenue);
+  }
+
+  @Transactional
+  public VenueResponse suspendVenue(UUID venueId, UUID adminId) {
+    log.info("Admin {} suspending venue {}", adminId, venueId);
+
+    Venue venue = findById(venueId);
+
+    if (venue.getStatus() != VenueStatus.APPROVED) {
+      throw new AppException(HttpStatus.CONFLICT, "Chỉ có thể tạm dừng cơ sở đang hoạt động");
+    }
+
+    venue.setStatus(VenueStatus.SUSPENDED);
+    Venue savedVenue = venueRepository.save(venue);
+
+    log.info("Venue {} suspended by admin {}", venueId, adminId);
 
     return toVenueResponse(savedVenue);
   }

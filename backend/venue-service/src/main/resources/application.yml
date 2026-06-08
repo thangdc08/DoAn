@@ -6,7 +6,7 @@ spring:
   application:
     name: venue-service
   datasource:
-    url: jdbc:postgresql://localhost:5432/badminton_db?currentSchema=venue
+    url: jdbc:postgresql://localhost:5432/badminton_db?currentSchema=venue,public
     username: admin
     password: adminpassword
   jpa:

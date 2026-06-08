@@ -51,13 +51,18 @@ export const adminApi = {
     return unwrapData(response.data);
   },
 
-  // System Settings
-  getSettings: async (): Promise<Record<string, any>> => {
-    const raw = localStorage.getItem('admin_settings');
-    return raw ? JSON.parse(raw) : {};
+  // System Settings — backed by identity-service
+  getSettings: async (): Promise<Record<string, string>> => {
+    const response = await apiClient.get('/identity/api/v1/admin/system-config');
+    return unwrapData(response.data) ?? {};
   },
 
-  updateSettings: async (settings: Record<string, any>): Promise<void> => {
-    localStorage.setItem('admin_settings', JSON.stringify(settings));
+  updateSettings: async (settings: Record<string, string>): Promise<void> => {
+    await apiClient.put('/identity/api/v1/admin/system-config', settings);
+  },
+
+  getPublicConfig: async (): Promise<Record<string, string>> => {
+    const response = await apiClient.get('/identity/api/v1/config/public');
+    return unwrapData(response.data) ?? {};
   },
 };

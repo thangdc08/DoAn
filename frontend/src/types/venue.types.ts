@@ -44,6 +44,7 @@ export interface Venue {
   priceMax?: number;
   distance?: number;
   policy?: string;
+  currentUserRole?: string;
   createdAt: string;
   updatedAt: string;
 }

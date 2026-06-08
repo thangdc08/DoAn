@@ -34,6 +34,9 @@ public class CommunityEventConsumer {
             case "MatchApproved":
                 handleMatchApproved(event);
                 break;
+            case "MatchRejected":
+                handleMatchRejected(event);
+                break;
             case "RatingCreated":
                 handleRatingCreated(event);
                 break;
@@ -121,5 +124,24 @@ public class CommunityEventConsumer {
                 .build());
         
         log.info("Created notification for player rating: ratee={}, stars={}", rateeUserId, stars);
+    }
+
+    private void handleMatchRejected(Map<String, Object> event) {
+        UUID matchPostId = UUID.fromString(event.get("matchPostId").toString());
+        UUID userId = UUID.fromString(event.get("userId").toString());
+        UUID hostId = UUID.fromString(event.get("hostId").toString());
+        String title = event.get("title") != null ? event.get("title").toString() : "Kèo giao lưu";
+
+        // Notify the rejected user
+        notificationRepository.save(Notification.builder()
+                .receiverId(userId)
+                .type("MATCH_REJECTED")
+                .title("Yêu cầu tham gia kèo bị từ chối")
+                .content("Rất tiếc! Yêu cầu tham gia kèo '" + title + "' của bạn đã bị từ chối.")
+                .data(Map.of("matchPostId", matchPostId, "hostId", hostId))
+                .createdAt(LocalDateTime.now())
+                .build());
+
+        log.info("Created notification for match rejection: match={}, user={}", matchPostId, userId);
     }
 }

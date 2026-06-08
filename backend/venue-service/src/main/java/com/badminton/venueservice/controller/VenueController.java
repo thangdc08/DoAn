@@ -38,10 +38,12 @@ public class VenueController {
 
     @GetMapping("/{id}")
     @Operation(summary = "Get venue by ID", description = "Returns venue details by unique ID")
-    public ApiResponse<VenueResponse> getVenueById(@PathVariable UUID id) {
-        log.info("API Request: Get venue by id {}", id);
+    public ApiResponse<VenueResponse> getVenueById(
+            @PathVariable UUID id,
+            @RequestHeader(value = "X-Auth-User-Id", required = false) UUID userId) {
+        log.info("API Request: Get venue by id {} for user {}", id, userId);
         return ApiResponse.<VenueResponse>builder()
-                .result(venueService.findVenueResponseById(id))
+                .result(venueService.findVenueResponseById(id, userId))
                 .build();
     }
 

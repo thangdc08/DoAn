@@ -1,15 +1,15 @@
 import { useMemo } from 'react';
-import { Card, Row, Col, Typography, Table, Tag, Button, Space, Avatar } from 'antd';
+import { Card, Row, Col, Typography, Table, Tag, Button, Space, Statistic, Spin } from 'antd';
 import { 
   DollarOutlined, 
   CalendarOutlined, 
   CheckCircleOutlined, 
   ClockCircleOutlined,
+  CloseCircleOutlined,
   PlusOutlined,
   ArrowUpOutlined,
   MoreOutlined,
-  UserOutlined,
-  EnvironmentOutlined
+  AppstoreOutlined,
 } from '@ant-design/icons';
 import { 
   AreaChart, 
@@ -18,97 +18,182 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  ResponsiveContainer 
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  Cell,
 } from 'recharts';
 import { useQuery } from '@tanstack/react-query';
-import { mockBookings } from '../../data/mockBookings';
 import dayjs from 'dayjs';
 import { BRAND } from '../../theme/antdTheme';
 import { venueApi } from '../../services/venueApi';
+import { bookingApi } from '../../services/bookingApi';
 
 const { Title, Text } = Typography;
 
-const REVENUE_DATA = [
-  { name: 'Thứ 2', total: 1200000 },
-  { name: 'Thứ 3', total: 1800000 },
-  { name: 'Thứ 4', total: 1500000 },
-  { name: 'Thứ 5', total: 2200000 },
-  { name: 'Thứ 6', total: 3100000 },
-  { name: 'Thứ 7', total: 4500000 },
-  { name: 'Chủ Nhật', total: 5200000 },
-];
+const STATUS_CONFIG: Record<string, { label: string; color: string }> = {
+  PAID: { label: 'Đã thanh toán', color: 'success' },
+  PENDING: { label: 'Chờ xử lý', color: 'warning' },
+  FAILED: { label: 'Thất bại', color: 'error' },
+  EXPIRED: { label: 'Hết hạn', color: 'default' },
+  CANCELLED_BY_ADMIN: { label: 'Đã huỷ', color: 'default' },
+};
 
 export default function OwnerDashboardPage() {
-  // Lấy danh sách sân thực tế để tính toán stats
   const { data: venues = [] } = useQuery({
     queryKey: ['my-venues'],
     queryFn: () => venueApi.getMyVenues(),
   });
 
-  const stats = useMemo(() => {
-    const paid = mockBookings.filter(b => b.status === 'PAID');
-    return {
-      revenue: paid.reduce((sum, b) => sum + b.totalAmount, 0),
-      bookings: paid.length,
-      venues: venues.length,
-      growth: 12.5
-    };
-  }, [venues.length]);
+  const { data: revenue, isLoading: revenueLoading } = useQuery({
+    queryKey: ['owner-revenue'],
+    queryFn: () => bookingApi.getRevenue(),
+  });
+
+  const { data: recentBookingsPage } = useQuery({
+    queryKey: ['owner-bookings-recent'],
+    queryFn: () => bookingApi.getOwnerBookings({ page: 0, size: 6 }),
+  });
+
+  // Fetch courts per venue to count total courts
+  const { data: courtsPerVenue = [] } = useQuery({
+    queryKey: ['all-venue-courts', venues.map(v => v.id).join(',')],
+    queryFn: async () => {
+      if (!venues.length) return [];
+      const results = await Promise.all(
+        venues.map(v =>
+          venueApi.getVenueCourts(v.id)
+            .then(courts => ({ venueId: v.id, courts }))
+            .catch(() => ({ venueId: v.id, courts: [] }))
+        )
+      );
+      return results;
+    },
+    enabled: venues.length > 0,
+  });
+
+  const totalCourts = courtsPerVenue.reduce((sum, v) => sum + v.courts.length, 0);
+  const courtCountMap = Object.fromEntries(courtsPerVenue.map(v => [v.venueId, v.courts.length]));
+
+  const recentBookings = recentBookingsPage?.content ?? [];
+
+  const chartData = useMemo(() => {
+    if (!revenue?.dailyBreakdown?.length) return [];
+    return revenue.dailyBreakdown.slice(-7).map(d => ({
+      name: dayjs(d.date).format('DD/MM'),
+      revenue: d.revenue,
+      bookings: d.bookingCount,
+    }));
+  }, [revenue]);
+
+  const bookingStatusChartData = useMemo(() => {
+    if (!revenue) return [];
+    return [
+      { name: 'Thành công', value: revenue.paidBookings, fill: '#52c41a' },
+      { name: 'Chờ xử lý', value: revenue.pendingBookings, fill: '#faad14' },
+      { name: 'Thất bại', value: revenue.failedBookings, fill: '#ff4d4f' },
+    ];
+  }, [revenue]);
+
+  const statCards = [
+    {
+      title: 'Tổng doanh thu',
+      value: revenue?.totalRevenue ?? 0,
+      suffix: 'đ',
+      icon: <DollarOutlined />,
+      iconBg: 'rgba(0,166,81,0.1)',
+      iconColor: BRAND.primary,
+      formatter: (v: number) => v.toLocaleString('vi-VN'),
+    },
+    {
+      title: 'Tổng booking',
+      value: revenue?.totalBookings ?? 0,
+      icon: <CalendarOutlined />,
+      iconBg: 'rgba(0,91,172,0.1)',
+      iconColor: BRAND.sky,
+    },
+    {
+      title: 'Đặt thành công',
+      value: revenue?.paidBookings ?? 0,
+      icon: <CheckCircleOutlined />,
+      iconBg: 'rgba(82,196,26,0.1)',
+      iconColor: '#52c41a',
+    },
+    {
+      title: 'Chờ xử lý',
+      value: revenue?.pendingBookings ?? 0,
+      icon: <ClockCircleOutlined />,
+      iconBg: 'rgba(250,173,20,0.1)',
+      iconColor: '#faad14',
+    },
+    {
+      title: 'Đặt thất bại',
+      value: revenue?.failedBookings ?? 0,
+      icon: <CloseCircleOutlined />,
+      iconBg: 'rgba(255,77,79,0.1)',
+      iconColor: '#ff4d4f',
+    },
+    {
+      title: 'Cơ sở',
+      value: venues.length,
+      icon: <AppstoreOutlined />,
+      iconBg: 'rgba(114,46,209,0.1)',
+      iconColor: '#722ed1',
+    },
+    {
+      title: 'Tổng số sân',
+      value: totalCourts,
+      icon: <AppstoreOutlined />,
+      iconBg: 'rgba(24,144,255,0.1)',
+      iconColor: '#1890ff',
+    },
+  ];
 
   const columns = [
     {
-      title: 'Booking',
-      key: 'booking',
-      render: (_: any, record: any) => (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <Avatar size={40} icon={<UserOutlined />} style={{ background: '#f1f5f9', color: '#64748b' }} />
-          <div>
-            <Text strong>#{record.id.substring(0, 6).toUpperCase()}</Text>
-            <div style={{ fontSize: 12, color: '#94a3b8' }}>Khách hàng #{record.userId.substring(0, 4)}</div>
-          </div>
-        </div>
-      )
+      title: 'Mã booking',
+      dataIndex: 'id',
+      key: 'id',
+      render: (id: string) => <Text strong>#{id.substring(0, 8).toUpperCase()}</Text>,
     },
     {
-      title: 'Sân',
+      title: 'Sân / Địa điểm',
       dataIndex: 'venueNameSnapshot',
       key: 'venue',
-      render: (text: string) => (
-        <Space>
-          <EnvironmentOutlined style={{ color: '#94a3b8' }} />
-          <Text>{text}</Text>
+      render: (name: string, record: any) => (
+        <Space direction="vertical" size={0}>
+          <Text strong>{name}</Text>
+          {record.items?.[0] && (
+            <Text type="secondary" style={{ fontSize: 12 }}>
+              {record.items[0].courtNameSnapshot} · {dayjs(record.items[0].startTime).format('HH:mm')} - {dayjs(record.items[0].endTime).format('HH:mm')}
+            </Text>
+          )}
         </Space>
-      )
+      ),
     },
     {
-      title: 'Thời gian',
+      title: 'Ngày đặt',
       dataIndex: 'createdAt',
-      key: 'time',
-      render: (date: string) => (
-        <div style={{ display: 'flex', flexDirection: 'column' }}>
-          <Text>{dayjs(date).format('DD/MM/YYYY')}</Text>
-          <Text type="secondary" style={{ fontSize: 12 }}>19:00 - 21:00</Text>
-        </div>
-      )
+      key: 'createdAt',
+      render: (date: string) => dayjs(date).format('DD/MM/YYYY HH:mm'),
     },
     {
-      title: 'Doanh thu',
+      title: 'Tổng tiền',
       dataIndex: 'totalAmount',
       key: 'amount',
       render: (amount: number) => (
-        <Text strong style={{ color: BRAND.primary }}>{amount.toLocaleString()}đ</Text>
-      )
+        <Text strong style={{ color: BRAND.primary }}>{amount.toLocaleString('vi-VN')}đ</Text>
+      ),
     },
     {
       title: 'Trạng thái',
       dataIndex: 'status',
       key: 'status',
-      render: (status: string) => (
-        <Tag color={status === 'PAID' ? 'success' : 'warning'} style={{ borderRadius: 6, fontWeight: 600 }}>
-          {status === 'PAID' ? 'Đã thanh toán' : 'Chờ xử lý'}
-        </Tag>
-      )
-    }
+      render: (status: string) => {
+        const cfg = STATUS_CONFIG[status] ?? { label: status, color: 'default' };
+        return <Tag color={cfg.color} style={{ borderRadius: 6, fontWeight: 600 }}>{cfg.label}</Tag>;
+      },
+    },
   ];
 
   return (
@@ -117,145 +202,156 @@ export default function OwnerDashboardPage() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
           <Title level={2} style={{ margin: 0 }}>Tổng quan Dashboard</Title>
-          <Text type="secondary">Chào mừng quay trở lại! Đây là tình hình kinh doanh của bạn hôm nay.</Text>
+          <Text type="secondary">Chào mừng quay trở lại! Đây là tình hình kinh doanh của bạn.</Text>
         </div>
-        <Space>
-          <Button icon={<CalendarOutlined />}>Tùy chỉnh ngày</Button>
-          <Button type="primary" icon={<PlusOutlined />} style={{ background: BRAND.primary, borderRadius: 10 }}>Thêm sân mới</Button>
-        </Space>
+        <Button type="primary" icon={<PlusOutlined />} style={{ background: BRAND.primary, borderRadius: 10 }}>
+          Thêm sân mới
+        </Button>
       </div>
 
       {/* Stats Grid */}
-      <Row gutter={[20, 20]} style={{ marginBottom: 24 }}>
-        <Col xs={24} sm={12} lg={6}>
-          <Card bodyStyle={{ padding: 24 }} style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(0,166,81,0.1)', color: BRAND.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
-                <DollarOutlined />
-              </div>
-              <Tag color="success" icon={<ArrowUpOutlined />}>12%</Tag>
-            </div>
-            <div style={{ marginTop: 16 }}>
-              <Text type="secondary" strong>Tổng doanh thu</Text>
-              <Title level={3} style={{ margin: '4px 0 0', fontWeight: 800 }}>{stats.revenue.toLocaleString()}đ</Title>
-            </div>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card bodyStyle={{ padding: 24 }} style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(0,91,172,0.1)', color: BRAND.sky, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
-                <CalendarOutlined />
-              </div>
-              <Tag color="processing" icon={<ArrowUpOutlined />}>8%</Tag>
-            </div>
-            <div style={{ marginTop: 16 }}>
-              <Text type="secondary" strong>Số lượng Booking</Text>
-              <Title level={3} style={{ margin: '4px 0 0', fontWeight: 800 }}>{stats.bookings}</Title>
-            </div>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card bodyStyle={{ padding: 24 }} style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(114,46,209,0.1)', color: '#722ed1', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
-                <CheckCircleOutlined />
-              </div>
-            </div>
-            <div style={{ marginTop: 16 }}>
-              <Text type="secondary" strong>Cơ sở hoạt động</Text>
-              <Title level={3} style={{ margin: '4px 0 0', fontWeight: 800 }}>{stats.venues}</Title>
-            </div>
-          </Card>
-        </Col>
-        <Col xs={24} sm={12} lg={6}>
-          <Card bodyStyle={{ padding: 24 }} style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-              <div style={{ width: 48, height: 48, borderRadius: 12, background: 'rgba(250,140,22,0.1)', color: '#fa8c16', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
-                <ClockCircleOutlined />
-              </div>
-            </div>
-            <div style={{ marginTop: 16 }}>
-              <Text type="secondary" strong>Chờ xác nhận</Text>
-              <Title level={3} style={{ margin: '4px 0 0', fontWeight: 800 }}>{mockBookings.filter(b => b.status === 'PENDING').length}</Title>
-            </div>
-          </Card>
-        </Col>
-      </Row>
+      <Spin spinning={revenueLoading}>
+        <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+          {statCards.map((s) => (
+            <Col xs={24} sm={12} lg={Math.floor(24 / 4)} key={s.title} style={{ minWidth: 0 }}>
+              <Card bodyStyle={{ padding: 20 }} style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.04)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                  <div style={{ width: 48, height: 48, borderRadius: 12, background: s.iconBg, color: s.iconColor, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>
+                    {s.icon}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <Text type="secondary" style={{ fontSize: 12, display: 'block' }}>{s.title}</Text>
+                    <Statistic
+                      value={s.value}
+                      formatter={s.formatter ? (v) => s.formatter!(v as number) : undefined}
+                      suffix={s.suffix}
+                      valueStyle={{ fontSize: 20, fontWeight: 800, lineHeight: 1.3 }}
+                    />
+                  </div>
+                </div>
+              </Card>
+            </Col>
+          ))}
+        </Row>
+      </Spin>
 
-      <Row gutter={[20, 20]}>
-        {/* Chart */}
+      <Row gutter={[20, 20]} style={{ marginBottom: 20 }}>
+        {/* Revenue Chart */}
         <Col xs={24} lg={16}>
-          <Card 
-            title="Biểu đồ doanh thu tuần qua" 
+          <Card
+            title="Doanh thu 7 ngày gần nhất"
             extra={<Button type="text" icon={<MoreOutlined />} />}
             style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}
           >
-            <div style={{ height: 350, width: '100%', marginTop: 20 }}>
+            <div style={{ height: 300 }}>
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={REVENUE_DATA}>
+                <AreaChart data={chartData}>
                   <defs>
-                    <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor={BRAND.primary} stopOpacity={0.1}/>
-                      <stop offset="95%" stopColor={BRAND.primary} stopOpacity={0}/>
+                    <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor={BRAND.primary} stopOpacity={0.15} />
+                      <stop offset="95%" stopColor={BRAND.primary} stopOpacity={0} />
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} dy={10} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} tickFormatter={(val) => `${val/1000000}M`} />
-                  <Tooltip 
+                  <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} tickFormatter={(v) => `${(v / 1000000).toFixed(1)}M`} />
+                  <Tooltip
                     contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}
-                    formatter={(val: any) => [`${Number(val).toLocaleString()}đ`, 'Doanh thu']}
+                    formatter={(val: any) => [`${Number(val).toLocaleString('vi-VN')}đ`, 'Doanh thu']}
                   />
-                  <Area type="monotone" dataKey="total" stroke={BRAND.primary} strokeWidth={3} fillOpacity={1} fill="url(#colorTotal)" />
+                  <Area type="monotone" dataKey="revenue" stroke={BRAND.primary} strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </Card>
         </Col>
 
-        {/* Recent Bookings */}
+        {/* Booking Status Chart */}
         <Col xs={24} lg={8}>
-          <Card 
-            title="Booking mới nhất" 
-            extra={<Button type="link" style={{ fontWeight: 700 }}>Xem tất cả</Button>}
+          <Card
+            title="Phân loại đặt sân"
             style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)', height: '100%' }}
           >
-            <Space direction="vertical" size={20} style={{ width: '100%' }}>
-              {mockBookings.slice(0, 5).map(booking => (
-                <div key={booking.id} style={{ display: 'flex', gap: 12 }}>
-                  <Avatar style={{ background: '#E6F7EF', color: BRAND.primary }}>{booking.userId.charAt(0).toUpperCase()}</Avatar>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Text strong>Khách hàng #{booking.userId.substring(0, 4)}</Text>
-                      <Text strong style={{ color: BRAND.primary }}>+{booking.totalAmount.toLocaleString()}đ</Text>
-                    </div>
-                    <div style={{ fontSize: 12, color: '#94a3b8' }}>
-                      {dayjs(booking.createdAt).format('HH:mm')} · {booking.venueNameSnapshot}
-                    </div>
-                  </div>
+            <div style={{ height: 260 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={bookingStatusChartData} layout="vertical" barSize={20}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f1f5f9" />
+                  <XAxis type="number" axisLine={false} tickLine={false} tick={{ fill: '#94a3b8', fontSize: 12 }} />
+                  <YAxis dataKey="name" type="category" axisLine={false} tickLine={false} tick={{ fill: '#64748b', fontSize: 13 }} width={80} />
+                  <Tooltip
+                    contentStyle={{ borderRadius: 12, border: 'none', boxShadow: '0 8px 24px rgba(0,0,0,0.1)' }}
+                    formatter={(val: any) => [`${val} lượt`, 'Số booking']}
+                  />
+                  <Bar dataKey="value" radius={[0, 6, 6, 0]}>
+                    {bookingStatusChartData.map((entry, index) => (
+                      <Cell key={index} fill={entry.fill} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+            <div style={{ marginTop: 8 }}>
+              {bookingStatusChartData.map(d => (
+                <div key={d.name} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #f8f9fa' }}>
+                  <Space>
+                    <div style={{ width: 10, height: 10, borderRadius: 2, background: d.fill }} />
+                    <Text style={{ fontSize: 13 }}>{d.name}</Text>
+                  </Space>
+                  <Text strong>{d.value}</Text>
                 </div>
               ))}
-            </Space>
-          </Card>
-        </Col>
-
-        {/* Table */}
-        <Col span={24}>
-          <Card 
-            title="Danh sách giao dịch gần đây" 
-            style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}
-          >
-            <Table
-              columns={columns}
-              dataSource={mockBookings.slice(0, 6)}
-              rowKey="id"
-              pagination={false}
-              className="custom-table"
-            />
+            </div>
           </Card>
         </Col>
       </Row>
+
+      {/* Venue Court Summary */}
+      {venues.length > 0 && (
+        <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
+          <Col span={24}>
+            <Card
+              title="Thông tin sân theo cơ sở"
+              style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}
+            >
+              <Row gutter={[12, 12]}>
+                {venues.map((venue) => (
+                  <Col xs={24} sm={12} md={8} key={venue.id}>
+                    <div style={{ padding: '14px 16px', background: '#f8fafc', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <Text strong style={{ display: 'block', marginBottom: 2 }}>{venue.name}</Text>
+                        <Tag color={venue.status === 'APPROVED' ? 'success' : 'warning'} style={{ borderRadius: 6, margin: 0 }}>
+                          {venue.status === 'APPROVED' ? 'Hoạt động' : venue.status}
+                        </Tag>
+                      </div>
+                      <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 8 }}>{venue.address}</Text>
+                      <Space>
+                        <AppstoreOutlined style={{ color: '#1890ff' }} />
+                        <Text style={{ fontSize: 13 }}>
+                          <Text strong style={{ color: '#1890ff' }}>{courtCountMap[venue.id] ?? 0}</Text> sân
+                        </Text>
+                      </Space>
+                    </div>
+                  </Col>
+                ))}
+              </Row>
+            </Card>
+          </Col>
+        </Row>
+      )}
+
+      {/* Recent Bookings Table */}
+      <Card
+        title="Giao dịch gần đây"
+        style={{ borderRadius: 16, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.03)' }}
+      >
+        <Table
+          columns={columns}
+          dataSource={recentBookings}
+          rowKey="id"
+          pagination={false}
+          locale={{ emptyText: 'Chưa có giao dịch nào' }}
+        />
+      </Card>
     </div>
   );
 }

@@ -1,6 +1,8 @@
 package com.badminton.notificationservice.consumer;
 
 import com.badminton.notificationservice.client.IdentityServiceClient;
+import com.badminton.notificationservice.client.BookingServiceClient;
+import com.badminton.notificationservice.client.VenueServiceClient;
 import com.badminton.notificationservice.document.Notification;
 import com.badminton.notificationservice.repository.NotificationRepository;
 import com.badminton.notificationservice.service.AsyncEmailService;
@@ -21,6 +23,8 @@ public class BookingEventConsumer {
     private final NotificationRepository notificationRepository;
     private final IdentityServiceClient identityServiceClient;
     private final AsyncEmailService emailService;
+    private final BookingServiceClient bookingServiceClient;
+    private final VenueServiceClient venueServiceClient;
 
     @KafkaListener(topics = "booking-events", groupId = "notification-group")
     public void handleBookingEvent(Map<String, Object> event) {
@@ -32,14 +36,26 @@ public class BookingEventConsumer {
         if (event.containsKey("ownerId")) {
             UUID ownerId = UUID.fromString(event.get("ownerId").toString());
             String amount = event.getOrDefault("totalAmount", "0").toString();
-            notificationRepository.save(Notification.builder()
-                    .receiverId(ownerId)
-                    .type("OWNER_NEW_BOOKING")
-                    .title("Co don dat san moi")
-                    .content("Ban vua nhan don moi tai " + venueName + " (" + amount + "d)")
-                    .data(Map.of("bookingId", bookingId, "venueName", venueName))
-                    .createdAt(LocalDateTime.now())
-                    .build());
+
+            // Check if notification settings allow this
+            UUID venueId = bookingServiceClient.getVenueIdForBooking(bookingId);
+            boolean isEnabled = true;
+            if (venueId != null) {
+                isEnabled = venueServiceClient.isNotificationEnabled(venueId, "newBooking");
+            }
+
+            if (isEnabled) {
+                notificationRepository.save(Notification.builder()
+                        .receiverId(ownerId)
+                        .type("OWNER_NEW_BOOKING")
+                        .title("Có đơn đặt sân mới")
+                        .content("Bạn vừa nhận đơn mới tại " + venueName + " (" + amount + "đ)")
+                        .data(Map.of("bookingId", bookingId, "venueName", venueName))
+                        .createdAt(LocalDateTime.now())
+                        .build());
+            } else {
+                log.info("Owner notification 'newBooking' is disabled for venueId: {} ({})", venueId, venueName);
+            }
         }
 
         if (event.containsKey("paidAt")) {
@@ -47,8 +63,8 @@ public class BookingEventConsumer {
             notificationRepository.save(Notification.builder()
                     .receiverId(userId)
                     .type("BOOKING_PAID")
-                    .title("Dat san thanh cong")
-                    .content("Ban da dat san thanh cong tai " + venueName)
+                    .title("Đặt sân thành công")
+                    .content("Bạn đã đặt sân thành công tại " + venueName)
                     .data(Map.of("bookingId", bookingId, "venueName", venueName))
                     .createdAt(LocalDateTime.now())
                     .build());

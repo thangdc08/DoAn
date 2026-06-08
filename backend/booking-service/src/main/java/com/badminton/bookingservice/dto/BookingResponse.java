@@ -20,4 +20,5 @@ public class BookingResponse {
     private LocalDateTime expiresAt;
     private LocalDateTime paidAt;
     private LocalDateTime createdAt;
+    private java.util.List<com.badminton.bookingservice.entity.BookingItem> items;
 }

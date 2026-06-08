@@ -6,6 +6,7 @@ import com.badminton.communityservice.entity.Participant;
 import com.badminton.communityservice.repository.MatchPostRepository;
 import com.badminton.communityservice.repository.ParticipantRepository;
 import com.badminton.communityservice.specification.MatchPostSpecification;
+import com.badminton.communityservice.client.SystemConfigClient;
 import com.badminton.common.exception.AppException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -41,6 +42,7 @@ public class MatchPostService {
   private final MatchPostRepository matchPostRepository;
   private final ParticipantRepository participantRepository;
   private final CommunityEventPublisher eventPublisher;
+  private final SystemConfigClient systemConfigClient;
 
   @Value("${app.match.cancel-before-hours:2}")
   private int cancelBeforeHours;
@@ -53,6 +55,14 @@ public class MatchPostService {
     log.info("Creating match post for host: {}", hostId);
 
     // Validation
+    List<String> activeStatuses = List.of("OPEN", "PENDING");
+    long activeCount = matchPostRepository.countByHostIdAndStatusIn(hostId, activeStatuses);
+    int maxActiveMatches = systemConfigClient.getInt("max_active_matches_per_user", 5);
+    if (activeCount >= maxActiveMatches) {
+      throw new AppException(HttpStatus.BAD_REQUEST, 
+          String.format("Bạn đã đạt giới hạn tạo kèo hoạt động tối đa (%d kèo)", maxActiveMatches));
+    }
+
     if (request.getStartTime().isBefore(LocalDateTime.now().plusMinutes(30))) {
       throw new AppException(HttpStatus.BAD_REQUEST, "Start time must be at least 30 minutes from now");
     }
@@ -216,10 +226,11 @@ public class MatchPostService {
       throw new AppException(HttpStatus.CONFLICT, "Không thể hủy kèo đấu đã kết thúc hoặc đã hủy");
     }
 
-    LocalDateTime minCancelTime = LocalDateTime.now().plusHours(cancelBeforeHours);
+    int cancelHours = systemConfigClient.getInt("match_cancel_before_hours", 2);
+    LocalDateTime minCancelTime = LocalDateTime.now().plusHours(cancelHours);
     if (matchPost.getStartTime().isBefore(minCancelTime)) {
       throw new AppException(HttpStatus.BAD_REQUEST, 
-          String.format("Không thể hủy kèo đấu trước giờ bắt đầu dưới %d giờ", cancelBeforeHours));
+          String.format("Không thể hủy kèo đấu trước giờ bắt đầu dưới %d giờ", cancelHours));
     }
 
     matchPost.setStatus("CANCELLED_BY_USER");

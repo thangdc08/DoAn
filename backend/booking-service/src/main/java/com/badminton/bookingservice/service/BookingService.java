@@ -2,6 +2,7 @@ package com.badminton.bookingservice.service;
 
 import com.badminton.bookingservice.client.VenueClient;
 import com.badminton.bookingservice.client.PaymentClient;
+import com.badminton.bookingservice.client.SystemConfigClient;
 import com.badminton.bookingservice.dto.ActiveSlotLockResponse;
 import com.badminton.bookingservice.dto.BookingResponse;
 import com.badminton.bookingservice.dto.CreateBookingResponse;
@@ -46,8 +47,10 @@ public class BookingService {
   private final StringRedisTemplate redisTemplate;
   private final com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
-  @Value("${app.booking.cancel-before-hours:24}")
-  private int cancelBeforeHours;
+  private final SystemConfigClient systemConfigClient;
+
+  @Value("${app.booking.cancel-before-hours:2}")
+  private int cancelBeforeHoursDefault;
 
   public List<ActiveSlotLockResponse> findActiveLocks(UUID courtId, LocalDateTime startOfDay, LocalDateTime endOfDay) {
     List<ActiveSlotLockResponse> activeLocks = slotLockRepository
@@ -103,6 +106,7 @@ public class BookingService {
 
     validateSlotAvailability(courtId, startTime, endTime);
 
+    int lockExpireMinutes = systemConfigClient.getInt("auto_expire_minutes", 15);
     SlotLock lock = SlotLock.builder()
         .userId(userId)
         .venueId(venueId)
@@ -110,7 +114,7 @@ public class BookingService {
         .startTime(startTime)
         .endTime(endTime)
         .status("LOCKED")
-        .expiresAt(LocalDateTime.now().plusMinutes(15))
+        .expiresAt(LocalDateTime.now().plusMinutes(lockExpireMinutes))
         .build();
 
     try {
@@ -224,6 +228,7 @@ public class BookingService {
   }
 
   private Booking buildBooking(UUID userId, List<SlotLock> locks, BigDecimal totalAmount) {
+    int expireMinutes = systemConfigClient.getInt("auto_expire_minutes", 15);
     VenueInternalResponse venue = venueClient.getVenueById(locks.get(0).getVenueId());
     return Booking.builder()
         .userId(userId)
@@ -233,7 +238,7 @@ public class BookingService {
         .totalAmountVnd(totalAmount)
         .status("PENDING")
         .paymentStatus("UNPAID")
-        .expiresAt(LocalDateTime.now().plusMinutes(15))
+        .expiresAt(LocalDateTime.now().plusMinutes(expireMinutes))
         .build();
   }
 
@@ -400,7 +405,8 @@ public class BookingService {
         .min(LocalDateTime::compareTo)
         .orElseThrow();
 
-    int cancelHours = cancelBeforeHours;
+    // Read cancellation window from system config, fall back to venue policy, then to property
+    int cancelHours = systemConfigClient.getInt("cancellation_window_hours", cancelBeforeHoursDefault);
     try {
       VenueInternalResponse venue = venueClient.getVenueById(booking.getVenueId());
       if (venue != null && venue.getPolicy() != null && !venue.getPolicy().isEmpty()) {
@@ -550,7 +556,7 @@ public class BookingService {
     int totalBookings = bookings.size();
     int paidBookings = (int) bookings.stream().filter(b -> "PAID".equals(b.getStatus())).count();
     int pendingBookings = (int) bookings.stream().filter(b -> "PENDING".equals(b.getStatus())).count();
-    int failedBookings = (int) bookings.stream().filter(b -> "FAILED".equals(b.getStatus())).count();
+    int failedBookings = (int) bookings.stream().filter(b -> !"PAID".equals(b.getStatus()) && !"PENDING".equals(b.getStatus())).count();
 
     // Venue breakdown
     java.util.Map<UUID, List<Booking>> bookingsByVenue = bookings.stream()
@@ -651,7 +657,7 @@ public class BookingService {
     int totalBookings = bookings.size();
     int paidBookings = (int) bookings.stream().filter(b -> "PAID".equals(b.getStatus())).count();
     int pendingBookings = (int) bookings.stream().filter(b -> "PENDING".equals(b.getStatus())).count();
-    int failedBookings = (int) bookings.stream().filter(b -> "FAILED".equals(b.getStatus())).count();
+    int failedBookings = (int) bookings.stream().filter(b -> !"PAID".equals(b.getStatus()) && !"PENDING".equals(b.getStatus())).count();
 
     java.util.Map<UUID, List<Booking>> bookingsByVenue = bookings.stream()
         .collect(Collectors.groupingBy(Booking::getVenueId));
@@ -726,6 +732,79 @@ public class BookingService {
       }
     } catch (Exception e) {
       log.error("Failed to get venues for owner {}", ownerId, e);
+    }
+    return List.of();
+  }
+
+  private String getVietnameseDayKey(java.time.DayOfWeek dayOfWeek) {
+    switch (dayOfWeek) {
+      case MONDAY: return "Thứ 2";
+      case TUESDAY: return "Thứ 3";
+      case WEDNESDAY: return "Thứ 4";
+      case THURSDAY: return "Thứ 5";
+      case FRIDAY: return "Thứ 6";
+      case SATURDAY: return "Thứ 7";
+      case SUNDAY: return "Chủ Nhật";
+      default: return "";
+    }
+  }
+
+  public List<com.badminton.bookingservice.dto.ConflictBookingInfo> checkBusinessHoursConflicts(UUID venueId, String policyJson) {
+    if (policyJson == null || policyJson.trim().isEmpty()) {
+      return List.of();
+    }
+    try {
+      com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+      com.fasterxml.jackson.databind.JsonNode rootNode = mapper.readTree(policyJson);
+      com.fasterxml.jackson.databind.JsonNode bhNode = rootNode.get("businessHours");
+      if (bhNode == null) {
+        return List.of();
+      }
+
+      LocalDateTime now = LocalDateTime.now();
+      List<com.badminton.bookingservice.entity.BookingItem> items = bookingItemRepository.findByVenueIdAndStatusAndStartTimeGreaterThanEqual(venueId, "PAID", now);
+      List<com.badminton.bookingservice.dto.ConflictBookingInfo> conflicts = new java.util.ArrayList<>();
+
+      for (com.badminton.bookingservice.entity.BookingItem item : items) {
+        java.time.DayOfWeek dayOfWeek = item.getStartTime().getDayOfWeek();
+        String dayKey = getVietnameseDayKey(dayOfWeek);
+        if (dayKey.isEmpty()) continue;
+
+        com.fasterxml.jackson.databind.JsonNode dayNode = bhNode.get(dayKey);
+        if (dayNode != null) {
+          boolean isOpen = dayNode.path("isOpen").asBoolean(true);
+          if (!isOpen) {
+            conflicts.add(com.badminton.bookingservice.dto.ConflictBookingInfo.builder()
+                .bookingId(item.getBookingId())
+                .courtName(item.getCourtNameSnapshot())
+                .startTime(item.getStartTime().toString())
+                .endTime(item.getEndTime().toString())
+                .build());
+            continue;
+          }
+
+          String openStr = dayNode.path("open").asText("05:00");
+          String closeStr = dayNode.path("close").asText("22:00");
+
+          java.time.LocalTime openTime = java.time.LocalTime.parse(openStr);
+          java.time.LocalTime closeTime = java.time.LocalTime.parse(closeStr);
+
+          java.time.LocalTime startTime = item.getStartTime().toLocalTime();
+          java.time.LocalTime endTime = item.getEndTime().toLocalTime();
+
+          if (startTime.isBefore(openTime) || endTime.isAfter(closeTime)) {
+            conflicts.add(com.badminton.bookingservice.dto.ConflictBookingInfo.builder()
+                .bookingId(item.getBookingId())
+                .courtName(item.getCourtNameSnapshot())
+                .startTime(item.getStartTime().toString())
+                .endTime(item.getEndTime().toString())
+                .build());
+          }
+        }
+      }
+      return conflicts;
+    } catch (Exception e) {
+      log.error("Error checking business hours conflicts: {}", e.getMessage(), e);
     }
     return List.of();
   }

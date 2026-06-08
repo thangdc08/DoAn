@@ -5,7 +5,7 @@ spring:
   application:
     name: community-service
   datasource:
-    url: jdbc:postgresql://localhost:5432/badminton_db?currentSchema=community
+    url: jdbc:postgresql://localhost:5432/badminton_db?currentSchema=community,public
     username: admin
     password: adminpassword
   jpa:

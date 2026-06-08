@@ -11,9 +11,12 @@ import {
   ShareAltOutlined,
 } from '@ant-design/icons';
 import { useCommunityStore } from '../../stores/communityStore';
+import { useAuthStore } from '../../stores/authStore';
+import { communityApi } from '../../services/communityApi';
 import { BRAND } from '../../theme/antdTheme';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
+import { useState, useEffect } from 'react';
 
 dayjs.extend(relativeTime);
 
@@ -21,7 +24,60 @@ const { Title, Text, Paragraph } = Typography;
 
 export default function FavoriteMatchesPage() {
   const navigate = useNavigate();
-  const { favorites, toggleFavorite, joinMatch, selectedMatches } = useCommunityStore();
+  const { favorites, toggleFavorite, selectedMatches, syncSelectedMatches } = useCommunityStore();
+  const { user } = useAuthStore();
+
+  const [joinedStatuses, setJoinedStatuses] = useState<Record<string, 'PENDING' | 'APPROVED' | 'HOST' | 'NONE'>>({});
+  const [joiningMap, setJoiningMap] = useState<Record<string, boolean>>({});
+  const [refreshCounter, setRefreshCounter] = useState(0);
+
+  useEffect(() => {
+    if (!user || favorites.length === 0) {
+      setJoinedStatuses({});
+      return;
+    }
+
+    let isSubscribed = true;
+    const fetchStatuses = async () => {
+      const statusesMap: Record<string, 'PENDING' | 'APPROVED' | 'HOST' | 'NONE'> = {};
+      
+      await Promise.all(
+        favorites.map(async (m) => {
+          if (m.hostId === user.id) {
+            statusesMap[m.id] = 'HOST';
+            return;
+          }
+          try {
+            const participants = await communityApi.getMatchParticipants(m.id);
+            const myPart = participants.find(p => p.userId === user.id);
+            if (myPart) {
+              if (myPart.status === 'PENDING') {
+                statusesMap[m.id] = 'PENDING';
+              } else if (myPart.status === 'APPROVED') {
+                statusesMap[m.id] = 'APPROVED';
+              } else {
+                statusesMap[m.id] = 'NONE';
+              }
+            } else {
+              statusesMap[m.id] = 'NONE';
+            }
+          } catch (err) {
+            console.error(`Error loading participants for match ${m.id}`, err);
+            statusesMap[m.id] = 'NONE';
+          }
+        })
+      );
+
+      if (isSubscribed) {
+        setJoinedStatuses(statusesMap);
+      }
+    };
+
+    fetchStatuses();
+    return () => {
+      isSubscribed = false;
+    };
+  }, [favorites, user, refreshCounter]);
 
   const handleToggleFavorite = (match: any, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -29,14 +85,32 @@ export default function FavoriteMatchesPage() {
     message.success('Đã bỏ quan tâm bài viết.');
   };
 
-  const handleJoinMatch = (match: any, e: React.MouseEvent) => {
+  const handleJoinMatch = async (match: any, e: React.MouseEvent) => {
     e.stopPropagation();
-    joinMatch(match);
-    message.success('Đăng ký tham gia kèo thành công! Hãy kiểm tra "Kèo đã chọn".');
-  };
+    if (!user) {
+      message.warning('Vui lòng đăng nhập để đăng ký tham gia kèo!');
+      navigate('/login');
+      return;
+    }
 
-  const isJoined = (matchId: string) => {
-    return selectedMatches.some((sm) => sm.match.id === matchId && sm.selectedStatus !== 'deselected');
+    setJoiningMap(prev => ({ ...prev, [match.id]: true }));
+    try {
+      await communityApi.joinMatch(match.id);
+
+      if (match.joinMode === 'APPROVAL') {
+        message.info('Yêu cầu tham gia kèo thành công! Vui lòng chờ chủ kèo duyệt.');
+      } else {
+        message.success('Đăng ký tham gia kèo thành công!');
+      }
+
+      await syncSelectedMatches();
+      setRefreshCounter(prev => prev + 1);
+    } catch (err: any) {
+      console.error('Failed to join match:', err);
+      message.error(err?.message || 'Có lỗi xảy ra khi tham gia kèo. Vui lòng thử lại.');
+    } finally {
+      setJoiningMap(prev => ({ ...prev, [match.id]: false }));
+    }
   };
 
   return (
@@ -193,22 +267,63 @@ export default function FavoriteMatchesPage() {
                           message.success('Đã sao chép link kèo đấu!');
                         }}
                       />
-                      {joined ? (
-                        <Button
-                          disabled
-                          className="flex-1 rounded-xl h-10 font-bold bg-slate-50 border-slate-200 text-slate-400"
-                        >
-                          Đã đăng ký tham gia
-                        </Button>
-                      ) : (
-                        <Button
-                          type="primary"
-                          className="flex-1 rounded-xl h-10 font-bold"
-                          onClick={(e) => handleJoinMatch(match, e)}
-                        >
-                          Tham gia ngay
-                        </Button>
-                      )}
+                      {(() => {
+                        const joinedStatus = joinedStatuses[match.id] || 'NONE';
+                        const isOwner = match.hostId === user?.id;
+                        const isFull = match.currentParticipants >= match.maxParticipants;
+                        const isJoining = joiningMap[match.id] || false;
+
+                        if (isOwner) {
+                          return (
+                            <Button
+                              disabled
+                              className="flex-1 rounded-xl h-10 font-bold bg-slate-50 border-slate-200 text-slate-400"
+                            >
+                              Kèo của bạn
+                            </Button>
+                          );
+                        }
+                        if (joinedStatus === 'PENDING') {
+                          return (
+                            <Button
+                              disabled
+                              className="flex-1 rounded-xl h-10 font-bold bg-amber-50 border-amber-200 text-amber-600"
+                            >
+                              Chờ duyệt
+                            </Button>
+                          );
+                        }
+                        if (joinedStatus === 'APPROVED') {
+                          return (
+                            <Button
+                              disabled
+                              className="flex-1 rounded-xl h-10 font-bold bg-emerald-50 border-emerald-200 text-emerald-600"
+                            >
+                              Đã tham gia
+                            </Button>
+                          );
+                        }
+                        if (isFull) {
+                          return (
+                            <Button
+                              disabled
+                              className="flex-1 rounded-xl h-10 font-bold bg-slate-50 border-slate-200 text-slate-400"
+                            >
+                              Hết chỗ
+                            </Button>
+                          );
+                        }
+                        return (
+                          <Button
+                            type="primary"
+                            loading={isJoining}
+                            className="flex-1 rounded-xl h-10 font-bold"
+                            onClick={(e) => handleJoinMatch(match, e)}
+                          >
+                            Tham gia ngay
+                          </Button>
+                        );
+                      })()}
                     </div>
                   </Space>
                 </Card>

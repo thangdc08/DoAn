@@ -10,6 +10,8 @@ export interface User {
   bio?: string;
   rating?: number;
   reviewCount?: number;
+  latitude?: number;
+  longitude?: number;
   status: 'ACTIVE' | 'INACTIVE' | 'BANNED';
   roles: string[];
   preferredAreas?: string[];

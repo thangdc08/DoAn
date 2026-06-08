@@ -6,6 +6,8 @@ import { mockNotifications } from '../data/mockNotifications';
 import { notificationApi } from '../services/notificationApi';
 import dayjs from 'dayjs';
 
+import { communityApi } from '../services/communityApi';
+
 export type SelectedMatchStatus = 'today' | 'upcoming' | 'pending' | 'joined' | 'deselected';
 
 export interface SelectedMatch {
@@ -28,6 +30,7 @@ interface CommunityState {
   cancelJoin: (matchId: string) => void;
   updateMatchStatus: (matchId: string, status: SelectedMatchStatus) => void;
   removeSelectedMatch: (matchId: string) => void;
+  syncSelectedMatches: () => Promise<void>;
 
   // Notifications Actions
   addNotification: (notification: Omit<Notification, 'id' | 'createdAt'>) => void;
@@ -115,6 +118,35 @@ export const useCommunityStore = create<CommunityState>()(
         set({
           selectedMatches: selectedMatches.filter((sm) => sm.match.id !== matchId),
         });
+      },
+
+      syncSelectedMatches: async () => {
+        try {
+          const res = await communityApi.getJoinedMatches({ page: 0, size: 100 });
+          const matches = res.content || [];
+
+          const selectedMatchesList = matches.map((match) => {
+            let selectedStatus: SelectedMatchStatus = 'upcoming';
+            const matchStart = dayjs(match.startTime);
+            const isToday = matchStart.isValid() && matchStart.isSame(dayjs(), 'day');
+
+            if (match.joinMode === 'APPROVE' || match.joinMode === 'APPROVAL') {
+              selectedStatus = 'pending';
+            } else if (isToday) {
+              selectedStatus = 'today';
+            }
+
+            return {
+              match,
+              selectedStatus,
+              joinedAt: match.createdAt,
+            };
+          });
+
+          set({ selectedMatches: selectedMatchesList });
+        } catch (err) {
+          console.error('Failed to sync selected matches', err);
+        }
       },
 
       // Notifications Actions
