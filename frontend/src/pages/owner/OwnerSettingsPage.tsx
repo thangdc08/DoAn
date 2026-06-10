@@ -98,7 +98,7 @@ export default function OwnerSettingsPage() {
     let notifs = { newBooking: true, matchReminder: true, dailyReport: false };
     let bHours: any = null;
     let sList: any[] = [
-      { id: '1', name: 'Nguyễn Văn A', email: 'vanya@gmail.com', role: 'Quản lý', status: 'Active' },
+      { id: '1', name: 'Nguyễn Văn A', email: 'vanya@gmail.com', role: 'Nhân viên Check-in', status: 'Active' },
       { id: '2', name: 'Trần Thị B', email: 'thib@gmail.com', role: 'Nhân viên Check-in', status: 'Active' },
       { id: '3', name: 'Lê Văn C', email: 'vanc@gmail.com', role: 'Nhân viên Check-in', status: 'Inactive' },
     ];
@@ -411,7 +411,7 @@ export default function OwnerSettingsPage() {
            ]}>
              <List.Item.Meta
                avatar={<Badge status={item.status === 'Active' ? 'success' : 'default'} offset={[-5, 35]}><div style={{ width: 40, height: 40, borderRadius: '50%', background: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><TeamOutlined /></div></Badge>}
-               title={<Space><Text strong>{item.name}</Text> <Tag color={item.role === 'Quản lý' ? 'purple' : 'blue'}>{item.role}</Tag></Space>}
+               title={<Space><Text strong>{item.name}</Text> <Tag color="blue">{item.role}</Tag></Space>}
                description={item.email}
              />
            </List.Item>
@@ -553,11 +553,8 @@ export default function OwnerSettingsPage() {
           <Form.Item label="Email đăng nhập" name="email" rules={[{ required: true, type: 'email', message: 'Vui lòng nhập email hợp lệ' }]}>
             <Input placeholder="name@domain.com" style={{ borderRadius: 8 }} />
           </Form.Item>
-          <Form.Item label="Vai trò" name="role" rules={[{ required: true }]}>
-            <Select style={{ borderRadius: 8 }}>
-              <Option value="Quản lý">Quản lý</Option>
-              <Option value="Nhân viên Check-in">Nhân viên Check-in</Option>
-            </Select>
+          <Form.Item label="Vai trò" name="role" initialValue="Nhân viên Check-in" hidden>
+            <Input />
           </Form.Item>
           <Form.Item label="Trạng thái" name="status" rules={[{ required: true }]}>
             <Select style={{ borderRadius: 8 }}>

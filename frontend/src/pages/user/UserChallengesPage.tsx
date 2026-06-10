@@ -18,6 +18,7 @@ import { BRAND } from '../../theme/antdTheme';
 import { communityApi } from '../../services/communityApi';
 import type { MatchPost } from '../../types/community.types';
 import { useAuthStore } from '../../stores/authStore';
+import { getLevelLabel, getLevelColor } from '../../constants/levels';
 import dayjs from 'dayjs';
 
 const { Title, Text } = Typography;
@@ -94,7 +95,11 @@ export default function UserChallengesPage() {
               <Tag color={match.status === 'OPEN' ? 'success' : 'default'} className="rounded-full border-none px-3 font-bold">
                 {match.status === 'OPEN' ? 'Đang tìm đối' : match.status}
               </Tag>
-              <Tag icon={<Trophy size={12} className="inline mr-1" />} className="rounded-full border-none bg-gray-100 font-medium">{match.level || 'Chưa rõ'}</Tag>
+              {(match.levels || [match.level]).map((lv) => (
+        <Tag key={lv} icon={<Trophy size={12} className="inline mr-1" />} color={getLevelColor(lv)} className="rounded-full border-none font-medium">
+          {getLevelLabel(lv)}
+        </Tag>
+      ))}
             </div>
             <div className="text-right">
               <Text strong style={{ color: BRAND.primary, fontSize: '18px' }}>Chia sẻ tiền sân</Text>

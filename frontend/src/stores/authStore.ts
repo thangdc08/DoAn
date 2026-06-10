@@ -13,7 +13,7 @@ interface AuthState {
   setAccessToken: (accessToken: string) => void;
   updateUser: (user: User) => void;
   logout: () => void;
-  hasRole: (role: 'USER' | 'OWNER' | 'ADMIN') => boolean;
+  hasRole: (role: 'USER' | 'OWNER' | 'ADMIN' | 'STAFF') => boolean;
 }
 
 export const useAuthStore = create<AuthState>()(

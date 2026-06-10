@@ -21,6 +21,7 @@ import {
   List
 } from 'antd';
 import { useQuery } from '@tanstack/react-query';
+import { getLevelLabel } from '../../constants/levels';
 import dayjs from 'dayjs';
 import { 
   UserOutlined, 
@@ -350,7 +351,7 @@ export default function AdminReportPage() {
             </Paragraph>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
               <Tag color="cyan" style={{ borderRadius: 2, fontSize: '11px' }}>📍 {record.location}</Tag>
-              <Tag color="orange" style={{ borderRadius: 2, fontSize: '11px' }}>🏆 Trình độ: {record.level}</Tag>
+              <Tag color="orange" style={{ borderRadius: 2, fontSize: '11px' }}>🏆 Trình độ: {getLevelLabel(record.level)}</Tag>
               <Tag color="purple" style={{ borderRadius: 2, fontSize: '11px' }}>👥 Slot: {record.slots}</Tag>
               {record.price && <Tag color="gold" style={{ borderRadius: 2, fontSize: '11px' }}>💵 Giá: {record.price}</Tag>}
             </div>

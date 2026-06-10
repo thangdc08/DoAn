@@ -9,20 +9,12 @@ import {
   UserAddOutlined,
 } from '@ant-design/icons';
 import type { MatchPost } from '../../data/mockData';
+import { getLevelLabel, getLevelColor } from '../../constants/levels';
 import StatusTag from './StatusTag';
 import { useNotify } from '../../hooks/useNotify';
 import { BRAND } from '../../theme/antdTheme';
 
 const { Text, Title } = Typography;
-
-// ─── Level config ────────────────────────────────────────────────────────
-
-const LEVEL_TAG_COLOR: Record<MatchPost['level'], string> = {
-  Yếu: 'blue',
-  'Trung bình': 'cyan',
-  'Trung bình khá': 'orange',
-  Khá: 'volcano',
-};
 
 // ─── Sub-components ──────────────────────────────────────────────────────
 
@@ -51,6 +43,7 @@ const MatchCard: React.FC<MatchCardProps> = ({ post }) => {
   const percent = Math.round((post.joined / post.capacity) * 100);
   const isFull = post.joined >= post.capacity;
 
+  
   const handleJoin = () => {
     if (isFull) return;
     confirm({
@@ -118,8 +111,8 @@ const MatchCard: React.FC<MatchCardProps> = ({ post }) => {
           <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, marginBottom: 8 }}>
             <Text strong style={{ fontSize: 14 }}>{post.host}</Text>
             <StatusTag status={post.privacy === 'Công khai' ? 'PUBLIC' : 'PRIVATE'} />
-            <Tag color={LEVEL_TAG_COLOR[post.level]} style={{ fontWeight: 600 }}>
-              Trình {post.level}
+            <Tag color={getLevelColor(post.level)} style={{ fontWeight: 600 }}>
+              Trình {getLevelLabel(post.level)}
             </Tag>
           </div>
 
@@ -183,8 +176,8 @@ const MatchCard: React.FC<MatchCardProps> = ({ post }) => {
                 isFull
                   ? '#ef4444'
                   : percent >= 70
-                  ? '#f59e0b'
-                  : BRAND.primary
+                    ? '#f59e0b'
+                    : BRAND.primary
               }
               trailColor="#e2e8f0"
               size="small"

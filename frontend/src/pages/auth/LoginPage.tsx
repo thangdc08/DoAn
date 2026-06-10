@@ -45,7 +45,6 @@ const LoginPage: React.FC = () => {
   const [form] = Form.useForm<LoginFormValues>();
 
 
-
   const handleFinish = async (_values: LoginFormValues) => {
     setSubmitting(true);
     const hide = loading('Đang đăng nhập...');
@@ -64,22 +63,24 @@ const LoginPage: React.FC = () => {
       }
 
       const { access_token, refresh_token } = loginRes;
-      
+
       // Sau khi đăng nhập thành công, gọi API /me để lấy thông tin user
       // Lưu token vào store trước để API getMe có thể dùng token này
       useAuthStore.getState().setAccessToken(access_token);
-      
+
       const user = await authApi.getMe();
       useAuthStore.getState().setAuth(user, access_token, refresh_token);
 
       hide();
       success('Đăng nhập thành công! Chào mừng trở lại 🏸');
-      
+
       // Điều hướng dựa trên Role
       if (user.roles?.includes('ADMIN')) {
         navigate('/admin/dashboard');
       } else if (user.roles?.includes('OWNER')) {
         navigate('/owner/dashboard');
+      } else if (user.roles?.includes('STAFF')) {
+        navigate('/staff');
       } else {
         navigate('/venues');
       }
@@ -96,27 +97,29 @@ const LoginPage: React.FC = () => {
       error('Xác thực tài khoản Google thất bại.');
       return;
     }
-    
+
     setSubmitting(true);
     const hide = loading('Đang đăng nhập bằng Google...');
-    
+
     try {
       const loginRes = await authApi.loginWithGoogle(credentialResponse.credential);
       const { access_token, refresh_token } = loginRes;
-      
+
       useAuthStore.getState().setAccessToken(access_token);
-      
+
       const user = await authApi.getMe();
       useAuthStore.getState().setAuth(user, access_token, refresh_token);
-      
+
       hide();
       success('Đăng nhập bằng Google thành công! 🏸');
-      
+
       // Điều hướng dựa trên Role
       if (user.roles?.includes('ADMIN')) {
         navigate('/admin/dashboard');
       } else if (user.roles?.includes('OWNER')) {
         navigate('/owner/dashboard');
+      } else if (user.roles?.includes('STAFF')) {
+        navigate('/staff');
       } else {
         navigate('/venues');
       }

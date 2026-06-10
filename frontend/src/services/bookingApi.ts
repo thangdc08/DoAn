@@ -146,44 +146,28 @@ export const bookingApi = {
     return unwrapResult(response);
   },
 
-
-  replySupportTicket: async (ticketId: string, reply: string): Promise<SupportTicket> => {
-    const response = await apiClient.patch(`/bookings/api/owner/support-tickets/${ticketId}/reply`, { reply });
-    return unwrapResult(response);
-  },
-
-  // Admin support ticket APIs
-  getAdminSupportTickets: async (params?: {
+  // Staff APIs
+  getStaffBookings: async (params?: {
+    venueId?: string;
     status?: string;
-    search?: string;
     page?: number;
     size?: number;
-  }): Promise<{ content: SupportTicket[]; totalElements: number; totalPages: number }> => {
-    const response = await apiClient.get('/bookings/api/admin/support-tickets', { params });
+  }): Promise<{ content: Booking[]; totalElements: number; totalPages: number }> => {
+    const response = await apiClient.get('/bookings/api/staff/bookings', { params });
     return unwrapResult(response);
   },
 
-  replyAdminSupportTicket: async (ticketId: string, reply: string): Promise<SupportTicket> => {
-    const response = await apiClient.patch(`/bookings/api/admin/support-tickets/${ticketId}/reply`, { reply });
+  getTodayBookings: async (params?: {
+    venueId?: string;
+    page?: number;
+    size?: number;
+  }): Promise<{ content: Booking[]; totalElements: number; totalPages: number }> => {
+    const response = await apiClient.get('/bookings/api/staff/bookings/today', { params });
     return unwrapResult(response);
   },
 
-  updateTicketStatus: async (ticketId: string, status: string): Promise<SupportTicket> => {
-    const response = await apiClient.patch(`/bookings/api/admin/support-tickets/${ticketId}/status`, { status });
-    return unwrapResult(response);
-  },
-
-  checkConflicts: async (venueId: string, policyJson: string): Promise<Array<{
-    bookingId: string;
-    courtName: string;
-    startTime: string;
-    endTime: string;
-  }>> => {
-    const response = await apiClient.post(`/bookings/api/bookings/internal/check-conflicts?venueId=${venueId}`, policyJson, {
-      headers: {
-        'Content-Type': 'text/plain'
-      }
-    });
+  checkInBooking: async (bookingId: string): Promise<Booking> => {
+    const response = await apiClient.patch(`/bookings/api/staff/bookings/${bookingId}/checkin`);
     return unwrapResult(response);
   },
 };

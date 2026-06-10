@@ -136,6 +136,11 @@ export default function ChatPage() {
     'PROFESSIONAL': 'Chuyên nghiệp',
   };
 
+  const getLevelLabel = (level: string | undefined | null): string => {
+    if (!level) return 'Chưa xác định';
+    return levelMap[level.toUpperCase()] || level;
+  };
+
   const suggestedPlayers = useMemo(() => {
     if (!allUsers || !myLocation) return [];
 
@@ -150,7 +155,7 @@ export default function ChatPage() {
         return {
           id: u.id,
           name: u.fullName,
-          level: levelMap[u.level] || u.level || 'Chưa cập nhật',
+          level: getLevelLabel(u.level),
           avatarUrl: u.avatarUrl || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100&h=100&fit=crop',
           distance: dist,
           hasLocation,

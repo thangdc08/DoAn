@@ -204,7 +204,7 @@ export default function PartnerOnboardingPage() {
         fullName: values.ownerName, 
         email: values.email,
         phone: values.phone,
-        level: 'PRO',
+        level: 'TBK',
         password: values.password,
         // Thông tin sân đi kèm
         venueName: values.venueName,

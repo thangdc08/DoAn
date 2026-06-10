@@ -1,13 +1,11 @@
 package com.badminton.identityservice.dto.response;
 
+import com.badminton.identityservice.dto.model.UserDTO;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
-
-import java.util.Set;
-import java.util.UUID;
 
 @Data
 @Builder
@@ -20,4 +18,11 @@ public class LoginResponse {
     @JsonProperty("refresh_token")
     private String refreshToken;
 
+    @JsonProperty("token_type")
+    private String tokenType;
+
+    @JsonProperty("expires_in")
+    private long expiresIn;
+
+    private UserDTO user;
 }

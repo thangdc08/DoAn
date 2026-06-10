@@ -258,4 +258,14 @@ return ApiResponse.<PlayerRatingResponse>builder()
 .result(playerRatingService.getRatingForMatch(id, rateeId))
 .build();
 }
+
+@GetMapping("/player-stats")
+@Operation(summary = "Get player statistics", description = "Get statistics for player dashboard")
+public ApiResponse<PlayerStatsResponse> getPlayerStats(
+@RequestHeader("X-Auth-User-Id") UUID userId) {
+log.info("API Request: Get player stats for user {}", userId);
+return ApiResponse.<PlayerStatsResponse>builder()
+.result(matchPostService.getPlayerStats(userId))
+.build();
+}
 }

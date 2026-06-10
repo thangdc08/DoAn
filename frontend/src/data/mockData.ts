@@ -19,7 +19,8 @@ export type MatchPost = {
   host: string;
   hostAvatar?: string;
   privacy: 'Công khai' | 'Nội bộ';
-  level: 'Yếu' | 'Trung bình' | 'Trung bình khá' | 'Khá';
+  level: string;
+  levelCode?: string;
   title: string;
   venueName: string;
   time: string;
@@ -36,7 +37,8 @@ export const matchPosts: MatchPost[] = [
     host: 'Thắng Đinh',
     hostAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Thang',
     privacy: 'Công khai',
-    level: 'Trung bình',
+    level: 'TB',
+    levelCode: 'TB',
     title: 'Giao lưu cầu lông tối nay — Nhóm Vui Vẻ',
     venueName: 'Sân Cầu Lông Đào Duy Anh, Phú Nhuận',
     time: '20:00 – 22:00, Hôm nay',
@@ -51,7 +53,8 @@ export const matchPosts: MatchPost[] = [
     host: 'Minh Trần',
     hostAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Minh',
     privacy: 'Công khai',
-    level: 'Trung bình khá',
+    level: 'TBK',
+    levelCode: 'TBK',
     title: 'Tìm thêm 2 bạn nam/nữ trình trung bình',
     venueName: 'Sân Viettel, Quận 10',
     time: '18:00 – 20:00, Ngày mai',
@@ -66,7 +69,8 @@ export const matchPosts: MatchPost[] = [
     host: 'Linh Nguyễn',
     hostAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Linh',
     privacy: 'Nội bộ',
-    level: 'Yếu',
+    level: 'Y',
+    levelCode: 'Y',
     title: 'Kèo sáng sớm — Tập thể dục nhóm nhỏ',
     venueName: 'Sân Kỳ Hòa, Quận 10',
     time: '05:30 – 07:00, 15/05',
@@ -81,7 +85,8 @@ export const matchPosts: MatchPost[] = [
     host: 'Hùng Phạm',
     hostAvatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Hung',
     privacy: 'Công khai',
-    level: 'Khá',
+    level: 'TB++',
+    levelCode: 'TB++',
     title: 'Kèo chiều thứ 7 — Trình khá trở lên',
     venueName: 'Sân Tân Bình Sport, Tân Bình',
     time: '15:00 – 17:00, Thứ 7',

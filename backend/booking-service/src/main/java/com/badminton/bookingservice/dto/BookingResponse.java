@@ -10,15 +10,23 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 public class BookingResponse {
-    private UUID id;
-    private UUID userId;
-    private UUID venueId;
-    private String venueNameSnapshot;
-    private BigDecimal totalAmount;
-    private String status;
-    private String paymentStatus;
-    private LocalDateTime expiresAt;
-    private LocalDateTime paidAt;
-    private LocalDateTime createdAt;
-    private java.util.List<com.badminton.bookingservice.entity.BookingItem> items;
+  private UUID id;
+  private UUID userId;
+  private UUID venueId;
+  private String venueNameSnapshot;
+  private BigDecimal totalAmount;
+  private String status;
+  private String paymentStatus;
+  private LocalDateTime expiresAt;
+  private LocalDateTime paidAt;
+  private LocalDateTime createdAt;
+  private LocalDateTime bookingDate;
+  private String customerName;
+  private String customerEmail;
+  private String courtName;
+  private String courtType;
+  private LocalDateTime startTime;
+  private LocalDateTime endTime;
+  private Boolean checkedIn;
+  private java.util.List<com.badminton.bookingservice.entity.BookingItem> items;
 }

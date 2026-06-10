@@ -239,6 +239,13 @@ public class BookingService {
         .status("PENDING")
         .paymentStatus("UNPAID")
         .expiresAt(LocalDateTime.now().plusMinutes(expireMinutes))
+        .bookingDate(locks.get(0).getStartTime().toLocalDate().atStartOfDay())
+        .customerName("Customer " + userId.toString().substring(0, 8))
+        .customerEmail("customer@example.com")
+        .courtName("Court " + locks.get(0).getCourtId().toString().substring(0, 8))
+        .courtType("SINGLE")
+        .startTime(locks.get(0).getStartTime())
+        .endTime(locks.get(0).getEndTime())
         .build();
   }
 
@@ -494,7 +501,79 @@ public class BookingService {
     return new org.springframework.data.domain.PageImpl<>(pageContent, pageable, bookings.size());
   }
 
-  public com.badminton.bookingservice.dto.RevenueStatsResponse getRevenueStats(
+  // Staff methods
+public org.springframework.data.domain.Page<BookingResponse> getBookingsForStaff(
+    UUID staffId, UUID venueId, String status, org.springframework.data.domain.Pageable pageable) {
+  log.info("Staff {} getting bookings for venueId={}, status={}", staffId, venueId, status);
+  List<UUID> staffVenueIds = getVenueIdsForStaff(staffId);
+  if (staffVenueIds.isEmpty()) {
+    return org.springframework.data.domain.Page.empty(pageable);
+  }
+  List<Booking> bookings = bookingRepository.findAll().stream()
+      .filter(b -> staffVenueIds.contains(b.getVenueId()))
+      .collect(Collectors.toList());
+  if (venueId != null) {
+    if (!staffVenueIds.contains(venueId)) {
+      throw new AppException(HttpStatus.FORBIDDEN, "Bạn không có quyền truy cập sân này");
+    }
+    bookings = bookings.stream().filter(b -> b.getVenueId().equals(venueId)).collect(Collectors.toList());
+  }
+  if (status != null && !status.isEmpty()) {
+    bookings = bookings.stream().filter(b -> b.getStatus().equals(status)).collect(Collectors.toList());
+  }
+  int start = (int) pageable.getOffset();
+  int end = Math.min((start + pageable.getPageSize()), bookings.size());
+  List<BookingResponse> pageContent = bookings.subList(start, end).stream()
+      .map(bookingMapper::toBookingResponse).collect(Collectors.toList());
+  return new org.springframework.data.domain.PageImpl<>(pageContent, pageable, bookings.size());
+}
+
+public BookingResponse checkInBooking(UUID bookingId) {
+  log.info("Check-in booking {}", bookingId);
+  Booking booking = bookingRepository.findById(bookingId)
+      .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy booking"));
+  booking.setCheckedIn(true);
+  bookingRepository.save(booking);
+  return bookingMapper.toBookingResponse(booking);
+}
+
+public org.springframework.data.domain.Page<BookingResponse> getTodayBookingsForStaff(
+    UUID staffId, UUID venueId, org.springframework.data.domain.Pageable pageable) {
+  log.info("Staff {} getting today bookings for venueId={}", staffId, venueId);
+  java.time.LocalDate today = java.time.LocalDate.now();
+  java.time.LocalDateTime startOfDay = today.atStartOfDay();
+  java.time.LocalDateTime endOfDay = today.atTime(23, 59, 59);
+  List<UUID> staffVenueIds = getVenueIdsForStaff(staffId);
+  if (staffVenueIds.isEmpty()) {
+    return org.springframework.data.domain.Page.empty(pageable);
+  }
+  List<Booking> bookings = bookingRepository.findAll().stream()
+      .filter(b -> staffVenueIds.contains(b.getVenueId()))
+      .filter(b -> !b.getStartTime().isBefore(startOfDay) && !b.getStartTime().isAfter(endOfDay))
+      .collect(Collectors.toList());
+  if (venueId != null && staffVenueIds.contains(venueId)) {
+    bookings = bookings.stream().filter(b -> b.getVenueId().equals(venueId)).collect(Collectors.toList());
+  }
+  int start = (int) pageable.getOffset();
+  int end = Math.min((start + pageable.getPageSize()), bookings.size());
+  List<BookingResponse> pageContent = bookings.subList(start, end).stream()
+      .map(bookingMapper::toBookingResponse).collect(Collectors.toList());
+  return new org.springframework.data.domain.PageImpl<>(pageContent, pageable, bookings.size());
+}
+
+private List<UUID> getVenueIdsForStaff(UUID staffId) {
+  try {
+    com.badminton.common.dto.ApiResponse<List<VenueInternalResponse>> resp = venueClient.getVenuesByOwner(staffId);
+    if (resp != null && resp.getResult() != null) {
+      return resp.getResult().stream().map(VenueInternalResponse::getId).collect(Collectors.toList());
+    }
+  } catch (Exception e) {
+    log.error("Failed to get venues for staff {}", staffId, e);
+  }
+  return List.of();
+}
+
+public com.badminton.bookingservice.dto.RevenueStatsResponse getRevenueStats(
       UUID ownerId, UUID venueId, java.time.LocalDate fromDate, java.time.LocalDate toDate) {
     log.info("Owner {} getting revenue stats for venueId={}, from={}, to={}",
         ownerId, venueId, fromDate, toDate);

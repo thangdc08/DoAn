@@ -21,9 +21,9 @@ public class CreateMatchPostRequest {
     private String description;
 
     @NotBlank(message = "Level is required")
-    private String level; // BEGINNER | INTERMEDIATE | ADVANCED
+    private String level; // Y | Y+ | TBY | TBY+ | TB- | TB | TB+ | TB++ | TBK
 
-    private List<@Pattern(regexp = "BEGINNER|INTERMEDIATE|ADVANCED", message = "Each level must be BEGINNER, INTERMEDIATE or ADVANCED") String> levels;
+    private List<@Pattern(regexp = "Y|Y+|TBY|TBY+|TB-|TB|TB+|TB++|TBK", message = "Each level must be one of: Y, Y+, TBY, TBY+, TB-, TB, TB+, TB++, TBK") String> levels;
 
     @NotNull(message = "Start time is required")
     private LocalDateTime startTime;

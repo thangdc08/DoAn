@@ -13,6 +13,7 @@ import {
 import { useCommunityStore } from '../../stores/communityStore';
 import { useAuthStore } from '../../stores/authStore';
 import { communityApi } from '../../services/communityApi';
+import { getLevelLabel, getLevelColor } from '../../constants/levels';
 import { BRAND } from '../../theme/antdTheme';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
@@ -226,7 +227,7 @@ export default function FavoriteMatchesPage() {
                     {/* Tags / Badges */}
                     <div className="flex flex-wrap gap-1.5">
                       <Tag color="emerald" className="border-none rounded-md font-bold px-2 py-0.5 text-xs">
-                        {match.level || 'TB-'}
+                        {getLevelLabel(match.level)}
                       </Tag>
                       <Tag color="blue" className="border-none rounded-md font-bold px-2 py-0.5 text-xs">
                         {match.genderPreference === 'MALE' ? 'Nam' : match.genderPreference === 'FEMALE' ? 'Nữ' : 'Nam/Nữ'}

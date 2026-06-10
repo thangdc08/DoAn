@@ -17,6 +17,7 @@ import { communityApi } from '../../services/communityApi';
 import type { MatchPost } from '../../types/community.types';
 import dayjs from 'dayjs';
 import { BRAND } from '../../theme/antdTheme';
+import { getLevelLabel, getLevelColor } from '../../constants/levels';
 
 const { Title, Text } = Typography;
 
@@ -28,8 +29,8 @@ const STATUS_MAP: Record<string, { label: string; color: string }> = {
 };
 
 const LEVEL_MAP: Record<string, string> = {
-  Y: 'Y',
-  'Y+': 'Y+',
+  Y: 'Yếu',
+  'Y+': 'Yếu+',
   TBY: 'Trung bình yếu',
   'TBY+': 'Trung bình yếu+',
   'TB-': 'Trung bình-',

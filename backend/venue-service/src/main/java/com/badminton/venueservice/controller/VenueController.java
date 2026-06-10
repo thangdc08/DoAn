@@ -188,10 +188,11 @@ public class VenueController {
     @Operation(summary = "Update venue", description = "Allows owners to update their venue information")
     public ApiResponse<VenueResponse> updateVenue(
             @PathVariable UUID id,
-            @RequestBody UpdateVenueRequest request) {
+            @RequestHeader(value = "X-Auth-User-Id", required = false) UUID userId,
+	@RequestBody UpdateVenueRequest request) {
         log.info("API Request: Update venue {}", id);
         return ApiResponse.<VenueResponse>builder()
-                .result(venueService.updateVenue(id, request))
+                .result(venueService.updateVenue(id, userId, request))
                 .build();
     }
 

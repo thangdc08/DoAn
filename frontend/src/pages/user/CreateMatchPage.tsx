@@ -133,9 +133,9 @@ export default function CreateMatchPage() {
     try {
       const selectedLevels: string[] = Array.isArray(values.level) ? values.level : values.level ? [values.level] : [];
       const mappedLevels = Array.from(
-        new Set(selectedLevels.map((lv) => mapLevelToApi(lv))),
+        new Set(selectedLevels),
       );
-      const primaryLevel = mappedLevels[0] || 'INTERMEDIATE';
+      const primaryLevel = mappedLevels[0] || 'BEGINNER';
 
       await communityApi.createMatchPost({
         title: values.title,

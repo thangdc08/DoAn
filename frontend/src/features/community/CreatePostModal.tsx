@@ -6,18 +6,14 @@ import {
 import { EditOutlined } from '@ant-design/icons';
 import { useNotify } from '../../hooks/useNotify';
 import { colors } from '../../styles/theme';
+import { LEVEL_OPTIONS } from '../../constants/levels';
 
 const { TextArea } = Input;
 const { Text } = Typography;
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
-const LEVEL_OPTIONS = [
-  { value: 'beginner',    label: 'Yếu (người mới)'  },
-  { value: 'medium',      label: 'Trung bình'         },
-  { value: 'medium_good', label: 'Trung bình khá'     },
-  { value: 'good',        label: 'Khá'                },
-];
+
 
 const PRIVACY_OPTIONS = [
   { value: 'public',  label: '🌐 Công khai — ai cũng thấy' },
@@ -77,9 +73,14 @@ export const CreatePostModal: React.FC<CreatePostModalProps> = ({
   const handleFinish = async (values: CreatePostValues) => {
     setSubmitting(true);
     try {
+            const payload = {
+        ...values,
+        level: values.level,
+        levels: values.level ? [values.level] : [],
+      };
       // TODO: replace with real API call
       await new Promise((res) => setTimeout(res, 1000));
-      console.info('[CreatePostModal] payload:', values);
+      console.info('[CreatePostModal] payload:', payload);
       success('Đăng bài tìm kèo thành công! Mọi người sẽ thấy bài của bạn sớm 🏸');
       onClose();
       form.resetFields();

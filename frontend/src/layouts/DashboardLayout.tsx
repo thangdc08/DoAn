@@ -22,7 +22,7 @@ const { Text } = Typography;
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
-export type DashboardRole = 'USER' | 'OWNER' | 'ADMIN';
+export type DashboardRole = 'USER' | 'OWNER' | 'ADMIN' | 'STAFF';
 
 export interface DashboardLayoutProps {
   children?: React.ReactNode;
@@ -56,6 +56,14 @@ const OWNER_MENU: MenuItem[] = [
   { to: '/owner/support',    label: 'Hỗ trợ',          icon: <HelpCircle      size={18} /> },
 ];
 
+const STAFF_MENU: MenuItem[] = [
+  { to: '/staff', label: 'Tổng quan', icon: <LayoutDashboard size={18} /> },
+  { to: '/staff/checkin', label: 'Check-in', icon: <FileCheck size={18} /> },
+  { to: '/staff/bookings', label: 'Booking', icon: <CalendarDays size={18} /> },
+  { to: '/chat', label: 'Tin nhắn', icon: <MessageSquare size={18} /> },
+  { to: '/staff/settings', label: 'Cài đặt', icon: <Settings size={18} /> },
+];
+
 const ADMIN_MENU: MenuItem[] = [
   { to: '/admin',            label: 'Tổng quan',      icon: <LayoutDashboard size={18} /> },
   { to: '/admin/users',      label: 'Người dùng',     icon: <Users           size={18} /> },
@@ -70,18 +78,21 @@ const MENUS: Record<DashboardRole, MenuItem[]> = {
   USER:  USER_MENU,
   OWNER: OWNER_MENU,
   ADMIN: ADMIN_MENU,
+  STAFF: STAFF_MENU,
 };
 
 const ROLE_LABELS: Record<DashboardRole, string> = {
   USER:  'Người chơi',
   OWNER: 'Chủ sân',
   ADMIN: 'Quản trị viên',
+  STAFF: 'Nhân viên',
 };
 
 const ROLE_COLORS: Record<DashboardRole, string> = {
   USER:  'bg-brand-green-light text-brand-green',
   OWNER: 'bg-blue-50 text-brand-blue',
   ADMIN: 'bg-purple-50 text-purple-700',
+  STAFF: 'bg-orange-50 text-orange-700',
 };
 
 // ── Sidebar nav item ──────────────────────────────────────────────────────

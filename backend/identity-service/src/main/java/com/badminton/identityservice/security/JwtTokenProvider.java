@@ -20,60 +20,68 @@ import java.util.StringJoiner;
 @Component
 public class JwtTokenProvider {
 
-    @Value("${jwt.signerKey}")
-    private String signerKey;
+  @Value("${jwt.signerKey}")
+  private String signerKey;
 
-    @Value("${jwt.valid-duration}")
-    private long validDuration;
+  @Value("${jwt.valid-duration}")
+  private long validDuration;
 
-    @Value("${jwt.refreshable-duration}")
-    private long refreshableDuration;
+  @Value("${jwt.refreshable-duration}")
+  private long refreshableDuration;
 
-    public String generateToken(User user) {
-        JWSHeader header = new JWSHeader(JWSAlgorithm.HS256);
+  public String generateToken(User user, String extraScope) {
+    JWSHeader header = new JWSHeader(JWSAlgorithm.HS256);
 
-        JWTClaimsSet jwtClaimsSet = new JWTClaimsSet.Builder()
-                .subject(user.getEmail())
-                .issuer("http://localhost:8081")
-                .issueTime(new Date())
-                .expirationTime(new Date(
-                        Instant.now().plus(validDuration, ChronoUnit.SECONDS).toEpochMilli()
-                ))
-                .jwtID(user.getId().toString())
-                .claim("userId", user.getId().toString())
-                .claim("scope", buildScope(user))
-                .build();
-
-        Payload payload = new Payload(jwtClaimsSet.toJSONObject());
-
-        JWSObject jwsObject = new JWSObject(header, payload);
-
-        try {
-            jwsObject.sign(new MACSigner(signerKey.getBytes()));
-            return jwsObject.serialize();
-        } catch (JOSEException e) {
-            log.error("Cannot create token", e);
-            throw new RuntimeException(e);
-        }
+    String scope = buildScope(user);
+    if (extraScope != null && !extraScope.isBlank()) {
+      scope = scope + " " + extraScope;
     }
 
-    public boolean verifyToken(String token) throws JOSEException, ParseException {
-        JWSVerifier verifier = new MACVerifier(signerKey.getBytes());
+    JWTClaimsSet jwtClaimsSet = new JWTClaimsSet.Builder()
+        .subject(user.getEmail())
+        .issuer("http://localhost:8081")
+        .issueTime(new Date())
+        .expirationTime(new Date(
+            Instant.now().plus(validDuration, ChronoUnit.SECONDS).toEpochMilli()
+        ))
+        .jwtID(user.getId().toString())
+        .claim("userId", user.getId().toString())
+        .claim("scope", scope)
+        .build();
 
-        SignedJWT signedJWT = SignedJWT.parse(token);
+    Payload payload = new Payload(jwtClaimsSet.toJSONObject());
+    JWSObject jwsObject = new JWSObject(header, payload);
 
-        Date expiryTime = signedJWT.getJWTClaimsSet().getExpirationTime();
-
-        boolean verified = signedJWT.verify(verifier);
-
-        return verified && expiryTime.after(new Date());
+    try {
+      jwsObject.sign(new MACSigner(signerKey.getBytes()));
+      return jwsObject.serialize();
+    } catch (JOSEException e) {
+      log.error("Cannot create token", e);
+      throw new RuntimeException(e);
     }
+  }
 
-    private String buildScope(User user) {
-        StringJoiner stringJoiner = new StringJoiner(" ");
-        if (user.getRoles() != null) {
-            user.getRoles().forEach(role -> stringJoiner.add(role.getCode()));
-        }
-        return stringJoiner.toString();
+  public String generateToken(User user) {
+    return generateToken(user, null);
+  }
+
+  public boolean verifyToken(String token) throws JOSEException, ParseException {
+    JWSVerifier verifier = new MACVerifier(signerKey.getBytes());
+
+    SignedJWT signedJWT = SignedJWT.parse(token);
+
+    Date expiryTime = signedJWT.getJWTClaimsSet().getExpirationTime();
+
+    boolean verified = signedJWT.verify(verifier);
+
+    return verified && expiryTime.after(new Date());
+  }
+
+  private String buildScope(User user) {
+    StringJoiner stringJoiner = new StringJoiner(" ");
+    if (user.getRoles() != null) {
+      user.getRoles().forEach(role -> stringJoiner.add(role.getCode()));
     }
+    return stringJoiner.toString();
+  }
 }

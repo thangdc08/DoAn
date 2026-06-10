@@ -31,6 +31,7 @@ public class DataSeeder implements CommandLineRunner {
         Role adminRole = getOrCreateRole("ADMIN", "System Administrator");
         getOrCreateRole("USER", "Regular User");
         getOrCreateRole("OWNER", "Venue Owner");
+ getOrCreateRole("STAFF", "Venue Staff");
 
         // Seed default Admin: admin@badmintonhub.local / admin123
         String adminEmail = "admin@badmintonhub.local";

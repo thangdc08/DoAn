@@ -5,6 +5,7 @@ import com.badminton.communityservice.entity.MatchPost;
 import com.badminton.communityservice.entity.Participant;
 import com.badminton.communityservice.repository.MatchPostRepository;
 import com.badminton.communityservice.repository.ParticipantRepository;
+import com.badminton.communityservice.repository.PlayerRatingRepository;
 import com.badminton.communityservice.specification.MatchPostSpecification;
 import com.badminton.communityservice.client.SystemConfigClient;
 import com.badminton.common.exception.AppException;
@@ -41,6 +42,7 @@ public class MatchPostService {
 
   private final MatchPostRepository matchPostRepository;
   private final ParticipantRepository participantRepository;
+  private final PlayerRatingRepository playerRatingRepository;
   private final CommunityEventPublisher eventPublisher;
   private final SystemConfigClient systemConfigClient;
 
@@ -248,6 +250,66 @@ public class MatchPostService {
     log.info("Match post {} cancelled by host {}", matchPostId, userId);
   }
 
+  @Transactional(readOnly = true)
+  public PlayerStatsResponse getPlayerStats(UUID userId) {
+    log.info("Calculating player statistics for user {}", userId);
+    
+    // 1. Total finished matches
+    Specification<MatchPost> finishedSpec = Specification
+        .where(MatchPostSpecification.isHostOrParticipant(userId))
+        .and(MatchPostSpecification.hasStatus("FINISHED"));
+    long totalMatches = matchPostRepository.count(finishedSpec);
+    
+    // 2. Average rating and reliability points
+    Double avgRating = playerRatingRepository.getAverageRatingForUser(userId);
+    int reliabilityPoints = 950; // Default points
+    if (avgRating != null) {
+      reliabilityPoints = 800 + (int) (avgRating * 40);
+    }
+    
+    // 3. Weekly performance chart data
+    LocalDateTime now = LocalDateTime.now();
+    LocalDateTime monday = now.with(java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)).toLocalDate().atStartOfDay();
+    LocalDateTime sunday = monday.plusDays(7).minusNanos(1);
+    
+    Specification<MatchPost> weekMatchesSpec = Specification
+        .where(MatchPostSpecification.isHostOrParticipant(userId))
+        .and(MatchPostSpecification.hasStatus("FINISHED"))
+        .and(MatchPostSpecification.startTimeAfter(monday))
+        .and(MatchPostSpecification.startTimeBefore(sunday));
+        
+    List<MatchPost> weekMatches = matchPostRepository.findAll(weekMatchesSpec);
+    
+    Map<java.time.DayOfWeek, Long> matchesByDay = weekMatches.stream()
+        .collect(Collectors.groupingBy(m -> m.getStartTime().getDayOfWeek(), Collectors.counting()));
+        
+    String[] dayNames = {"Thứ 2", "Thứ 3", "Thứ 4", "Thứ 5", "Thứ 6", "Thứ 7", "Chủ nhật"};
+    java.time.DayOfWeek[] days = {
+        java.time.DayOfWeek.MONDAY,
+        java.time.DayOfWeek.TUESDAY,
+        java.time.DayOfWeek.WEDNESDAY,
+        java.time.DayOfWeek.THURSDAY,
+        java.time.DayOfWeek.FRIDAY,
+        java.time.DayOfWeek.SATURDAY,
+        java.time.DayOfWeek.SUNDAY
+    };
+    
+    List<PlayerStatsResponse.DayMatchStats> performanceData = new ArrayList<>();
+    for (int i = 0; i < 7; i++) {
+        performanceData.add(PlayerStatsResponse.DayMatchStats.builder()
+            .name(dayNames[i])
+            .matches(matchesByDay.getOrDefault(days[i], 0L))
+            .build());
+    }
+    
+    return PlayerStatsResponse.builder()
+        .totalMatches(totalMatches)
+        .reliabilityPoints(reliabilityPoints)
+        .averageRating(avgRating != null ? avgRating : 0.0)
+        .performanceData(performanceData)
+        .build();
+  }
+
   private MatchPostResponse toResponse(MatchPost matchPost) {
     ParsedMeta parsedMeta = extractMeta(matchPost.getDescription());
 
@@ -292,7 +354,7 @@ public class MatchPostService {
       merged.add(request.getLevel().trim());
     }
     if (merged.isEmpty()) {
-      merged.add("INTERMEDIATE");
+      merged.add("TB");
     }
     return new ArrayList<>(merged);
   }

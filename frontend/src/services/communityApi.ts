@@ -16,6 +16,16 @@ export const communityApi = {
     return response.data.result;
   },
 
+  getPlayerStats: async (): Promise<{
+    totalMatches: number;
+    reliabilityPoints: number;
+    averageRating: number;
+    performanceData: { name: string; matches: number }[];
+  }> => {
+    const response = await apiClient.get('/communities/api/community/match-posts/player-stats');
+    return communityApi.unwrapResult(response);
+  },
+
   // Match Posts
   getMatchPosts: async (params?: {
     q?: string;

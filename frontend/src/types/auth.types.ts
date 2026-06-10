@@ -28,7 +28,7 @@ export interface UserAvailability {
 
 export interface Role {
   id: string;
-  code: 'USER' | 'OWNER' | 'ADMIN';
+  code: 'USER' | 'OWNER' | 'ADMIN' | 'STAFF';
   name: string;
 }
 

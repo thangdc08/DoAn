@@ -41,7 +41,9 @@
       "Bash(pip install *)",
       "Bash(python -c \"import docx; print\\('ok'\\)\")",
       "Bash(python generate_report.py)",
-      "Bash(awk '{print \"Size: \" $5 \" bytes\"}')"
+      "Bash(awk '{print \"Size: \" $5 \" bytes\"}')",
+      "mcp__Claude_in_Chrome__navigate",
+      "Bash(node fix_matchfeed.cjs)"
     ]
   }
 }

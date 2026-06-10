@@ -49,6 +49,9 @@ const OwnerPayoutPage = lazy(() => import('../pages/owner/OwnerPayoutPage'));
 const OwnerSettingsPage = lazy(() => import('../pages/owner/OwnerSettingsPage'));
 const OwnerSupportPage = lazy(() => import('../pages/owner/OwnerSupportPage'));
 
+// Staff Pages
+const StaffDashboardPage = lazy(() => import('../pages/staff/StaffDashboardPage'));
+
 // Admin Pages
 const AdminDashboardPage = lazy(() => import('../pages/admin/AdminDashboardPage'));
 const UserManagementPage = lazy(() => import('../pages/admin/UserManagementPage'));
@@ -135,6 +138,19 @@ export const router = createBrowserRouter([
       { path: 'payouts', element: <Suspense fallback={<PageLoader />}><OwnerPayoutPage /></Suspense> },
       { path: 'settings', element: <Suspense fallback={<PageLoader />}><OwnerSettingsPage /></Suspense> },
       { path: 'support', element: <Suspense fallback={<PageLoader />}><OwnerSupportPage /></Suspense> },
+      { path: 'profile', element: <Suspense fallback={<PageLoader />}><ProfilePage /></Suspense> },
+    ],
+  },
+
+  // ── Staff routes ───────────────────────────────────
+  {
+    path: '/staff',
+    element: <DashboardLayout role="STAFF" />,
+    children: [
+      { index: true, element: <Suspense fallback={<PageLoader />}><StaffDashboardPage /></Suspense> },
+      { path: 'checkin', element: <Suspense fallback={<PageLoader />}><StaffDashboardPage /></Suspense> },
+      { path: 'bookings', element: <Suspense fallback={<PageLoader />}><StaffDashboardPage /></Suspense> },
+      { path: 'settings', element: <Suspense fallback={<PageLoader />}><OwnerSettingsPage /></Suspense> },
       { path: 'profile', element: <Suspense fallback={<PageLoader />}><ProfilePage /></Suspense> },
     ],
   },

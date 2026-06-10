@@ -13,7 +13,7 @@ export const mockCurrentUser: User = {
   profile: {
     id: 'profile-1',
     userId: 'user-1',
-    level: 'INTERMEDIATE',
+    level: 'TB',
     gender: 'MALE',
     goal: 'Tăng cường sức khỏe và kỹ năng',
     preferredArea: 'Quận 7, Quận 9',

@@ -45,6 +45,7 @@ import { BRAND } from '../../theme/antdTheme';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { communityApi } from '../../services/communityApi';
+import { getLevelLabel, getLevelColor } from '../../constants/levels';
 import type { MatchPost, FacebookPost } from '../../types/community.types';
 import { useCommunityStore } from '../../stores/communityStore';
 import { useAuthStore } from '../../stores/authStore';
@@ -271,6 +272,7 @@ interface UiMatch {
   location: string;
   genderInfo: string;
   levelCode: string;
+  levels?: string[];
   playDate: string;
   startTime: string;
   endTime: string;
@@ -284,9 +286,7 @@ interface UiMatch {
 function FacebookPostCard({ post }: { post: FacebookPost }) {
   const [expanded, setExpanded] = useState(false);
 
-  const displayLevel = post.level && post.level !== 'Không yêu cầu'
-    ? post.level
-    : null;
+  const displayLevel = post.level || null;
   const hasPriceBreakdown = post.priceBreakdown?.male || post.priceBreakdown?.female;
 
   return (
@@ -817,6 +817,7 @@ export default function CommunityPage() {
   );
 
   const renderMatchCard = (match: UiMatch) => {
+ const matchLevels = match.levels || [match.levelCode];
     const originalMatch = matchData.content.find((m) => m.id === match.id) || ({
       id: match.id,
       title: match.title,
@@ -829,6 +830,7 @@ export default function CommunityPage() {
       hostName: match.userName,
       level: match.levelCode,
       status: 'OPEN',
+    levels: matchLevels,
       createdAt: match.createdAt,
       updatedAt: match.createdAt,
     } as MatchPost);
@@ -923,7 +925,11 @@ export default function CommunityPage() {
               {match.endTime}
             </Text>
             <div style={{ marginTop: 16 }}>
-              <Badge count={match.levelCode} style={{ background: BRAND.warning, color: '#fff', fontWeight: 800, border: 'none' }} />
+              {(match.levels || [match.levelCode]).map((lv) => (
+        <Tag key={lv} color={getLevelColor(lv)} style={{ fontWeight: 600 }}>
+          Trình {getLevelLabel(lv)}
+        </Tag>
+      ))}
             </div>
           </div>
 
@@ -1140,30 +1146,7 @@ export default function CommunityPage() {
                 <WeatherWidget isHeader={true} />
               </div>
               <Space>
-                {activeCategory === 'facebook' && (
-                  <Tooltip title="Quét bài viết mới từ Facebook">
-                    <Button 
-                      icon={<ReloadOutlined />} 
-                      shape="round" 
-                      size="large" 
-                      style={{ fontWeight: 600, background: '#1877f2', color: '#fff', border: 'none' }} 
-                      loading={loading} 
-                      onClick={async () => { 
-                        message.loading({ content: 'Đang quét Facebook...', key: 'scrape', duration: 0 }); 
-                        try { 
-                          await communityApi.scrapeFacebookPosts(); 
-                          message.success({ content: 'Quét xong! Đang tải lại...', key: 'scrape', duration: 2 }); 
-                          const posts = await communityApi.getFacebookPosts(); 
-                          setFacebookPosts(posts || []); 
-                        } catch { 
-                          message.error({ content: 'Quét thất bại. Kiểm tra cookies FB.', key: 'scrape', duration: 3 }); 
-                        } 
-                      }}
-                    >
-                      Quét bài viết
-                    </Button>
-                  </Tooltip>
-                )}
+
                 <Button icon={<FilterOutlined />} shape="round" size="large" style={{ fontWeight: 600 }}>
                   Sắp xếp: Mới nhất
                 </Button>

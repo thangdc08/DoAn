@@ -16,13 +16,16 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
 @RequestMapping("api/v1/users")
 @RequiredArgsConstructor
 public class UserController {
+
     private final UserService userService;
     private final com.badminton.identityservice.service.FileService fileService;
 
@@ -50,9 +53,7 @@ public class UserController {
     @GetMapping
     @ApiMessage("Lấy danh sách người dùng")
     public ResponseEntity<ObjectResponse> getAllUser(
-            @Filter Specification<User> specification,
-            Pageable pageable
-    ){
+            @Filter Specification<User> specification, Pageable pageable){
         return ResponseEntity.ok(this.userService.getAllUser(specification, pageable));
     }
 
@@ -60,6 +61,13 @@ public class UserController {
     @ApiMessage("Lấy thông tin người dùng theo ID")
     public ResponseEntity<UserDTO> getUserById(@PathVariable(value = "userId") UUID id) {
         return ResponseEntity.ok(this.userService.getUserById(id));
+    }
+
+    @GetMapping("/{userId}/email")
+    @ApiMessage("Lấy email người dùng theo ID (internal)")
+    public ResponseEntity<Map<String, String>> getUserEmail(@PathVariable(value = "userId") UUID id) {
+        UserDTO user = this.userService.getUserById(id);
+        return ResponseEntity.ok(Map.of("email", user.getEmail()));
     }
 
     @PutMapping("/{userId}")
@@ -79,8 +87,25 @@ public class UserController {
 
     @GetMapping("/me")
     @ApiMessage("Lấy thông tin cá nhân")
-    public ResponseEntity<UserDTO> getMe(@RequestHeader(CustomHeaders.X_AUTH_USER_ID) UUID id) {
-        return ResponseEntity.ok(this.userService.getUserProfile(id));
+    public ResponseEntity<UserDTO> getMe(
+            @RequestHeader(CustomHeaders.X_AUTH_USER_ID) UUID id,
+            @RequestHeader(value = CustomHeaders.X_AUTH_USER_AUTHORITIES, required = false) String authorities) {
+        UserDTO userDTO = this.userService.getUserProfile(id);
+        if (authorities != null && !authorities.isBlank()) {
+            Set<String> extraRoles = new java.util.LinkedHashSet<>();
+            for (String scope : authorities.split(" ")) {
+                String role = scope.replace("SCOPE_", "");
+                if (!role.equals("USER")) {
+                    extraRoles.add(role);
+                }
+            }
+            if (!extraRoles.isEmpty()) {
+                Set<String> roles = new java.util.LinkedHashSet<>(userDTO.getRoles());
+                roles.addAll(extraRoles);
+                userDTO.setRoles(roles);
+            }
+        }
+        return ResponseEntity.ok(userDTO);
     }
 
     @PutMapping("/me")

@@ -25,7 +25,7 @@ public class UserActivity {
     private List<MatchParticipation> matchParticipations;
     
     // User preferences
-    private String preferredLevel; // BEGINNER | INTERMEDIATE | ADVANCED
+    private String preferredLevel; // Y | Y+ | TBY | TBY+ | TB- | TB | TB+ | TB++ | TBK
     private List<String> preferredAreas;
     private Double preferredPriceMin;
     private Double preferredPriceMax;
