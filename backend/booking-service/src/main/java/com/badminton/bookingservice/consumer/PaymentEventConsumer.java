@@ -5,6 +5,8 @@ import com.badminton.bookingservice.entity.BookingItem;
 import com.badminton.bookingservice.event.PaymentFailedEvent;
 import com.badminton.bookingservice.event.PaymentRefundedEvent;
 import com.badminton.bookingservice.event.PaymentSucceededEvent;
+import com.badminton.bookingservice.client.VenueClient;
+import com.badminton.bookingservice.dto.VenueInternalResponse;
 import com.badminton.bookingservice.repository.BookingItemRepository;
 import com.badminton.bookingservice.repository.BookingRepository;
 import com.badminton.bookingservice.service.BookingEventPublisher;
@@ -27,6 +29,7 @@ public class PaymentEventConsumer {
     private final BookingItemRepository bookingItemRepository;
     private final BookingEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final VenueClient venueClient;
 
     // ──────────────────────────────────────────────
     // Generic listener: accepts any payment event as JSON,
@@ -61,7 +64,27 @@ public class PaymentEventConsumer {
             log.info("Processing PaymentSucceeded for booking id: {}", event.getBookingId());
 
             Booking booking = bookingRepository.findById(event.getBookingId()).orElseThrow();
-            booking.setStatus("PAID");
+            
+            boolean autoApprove = true;
+            try {
+                VenueInternalResponse venue = venueClient.getVenueById(booking.getVenueId());
+                if (venue != null && venue.getPolicy() != null && !venue.getPolicy().trim().isEmpty()) {
+                    JsonNode policyRoot = objectMapper.readTree(venue.getPolicy());
+                    JsonNode bp = policyRoot.path("bookingPolicy");
+                    if (bp.has("autoApprove")) {
+                        autoApprove = bp.get("autoApprove").asBoolean(true);
+                    }
+                }
+            } catch (Exception e) {
+                log.error("Failed to check autoApprove policy for booking {}, defaulting to true", booking.getId(), e);
+            }
+
+            if (autoApprove) {
+                booking.setStatus("CONFIRMED");
+            } else {
+                booking.setStatus("PAID");
+            }
+
             booking.setPaymentStatus("SUCCESS");
             booking.setPaidAt(event.getPaidAt());
             bookingRepository.save(booking);
@@ -77,7 +100,7 @@ public class PaymentEventConsumer {
                     .paidAt(booking.getPaidAt())
                     .build());
 
-            log.info("Booking {} marked as PAID", booking.getId());
+            log.info("Booking {} marked as {}, autoApprove={}", booking.getId(), booking.getStatus(), autoApprove);
         } catch (Exception e) {
             log.error("Failed to process PaymentSucceeded event", e);
         }

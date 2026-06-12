@@ -8,6 +8,7 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "scrape": "node src/scraper.js",
+    "login": "node login.js",
     "export-cookies": "node scripts/exportCookies.js"
   },
   "dependencies": {

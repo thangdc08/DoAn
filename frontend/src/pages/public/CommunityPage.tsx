@@ -21,6 +21,9 @@ import {
   Popover,
   Progress,
   Spin,
+  Form,
+  Modal,
+  InputNumber,
 } from 'antd';
 import {
   EnvironmentOutlined,
@@ -46,7 +49,7 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { communityApi } from '../../services/communityApi';
 import { getLevelLabel, getLevelColor } from '../../constants/levels';
-import type { MatchPost, FacebookPost } from '../../types/community.types';
+import type { MatchPost, FacebookPost, VenueTransfer } from '../../types/community.types';
 import { useCommunityStore } from '../../stores/communityStore';
 import { useAuthStore } from '../../stores/authStore';
 
@@ -58,10 +61,7 @@ const { Option } = Select;
 const CATEGORIES = [
   { icon: <UserOutlined style={{ fontSize: 18 }} />, label: 'Tìm kèo', id: 'matches' },
   { icon: <FacebookFilled style={{ fontSize: 18 }} />, label: 'Facebook', id: 'facebook' },
-  { icon: <ThunderboltFilled style={{ fontSize: 18 }} />, label: 'Pass sân', id: 'pass' },
-  { icon: <LinkOutlined style={{ fontSize: 18 }} />, label: 'Mua bán', id: 'shop' },
-  { icon: <CustomerServiceOutlined style={{ fontSize: 18 }} />, label: 'Lớp dạy', id: 'class' },
-  { icon: <TeamOutlined style={{ fontSize: 18 }} />, label: 'CLB', id: 'club' },
+  { icon: <ThunderboltFilled style={{ fontSize: 18 }} />, label: 'Pass sân', id: 'pass' }
 ];
 
 const LEVELS = ['Y', 'Y+', 'TBY', 'TBY+', 'TB-', 'TB', 'TB+', 'TB++', 'TBK'];
@@ -408,7 +408,7 @@ function FacebookPostCard({ post }: { post: FacebookPost }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <Avatar size={30} icon={<UserOutlined />} style={{ background: '#e2e8f0', color: '#475569' }} />
           <div>
-            <Text strong style={{ fontSize: 13, display: 'block' }}>{post.userName || 'Thanh vien FB'}</Text>
+            <Text strong style={{ fontSize: 13, display: 'block' }}>{post.posterName || post.userName || 'Thanh vien FB'}</Text>
             <Text type="secondary" style={{ fontSize: 11 }}>{dayjs(post.updatedAt).fromNow()}</Text>
           </div>
         </div>
@@ -424,6 +424,153 @@ function FacebookPostCard({ post }: { post: FacebookPost }) {
     </Card>
   );
 }
+
+
+interface VenueTransferCardProps {
+  transfer: VenueTransfer;
+  currentUserId?: string;
+  onClaim: (id: string) => void;
+  onCancel: (id: string) => void;
+}
+
+const VenueTransferCard: React.FC<VenueTransferCardProps> = ({ transfer, currentUserId, onClaim, onCancel }) => {
+  const isSeller = currentUserId === transfer.sellerId;
+  const isClaimed = transfer.status === 'COMPLETED';
+  const isCancelled = transfer.status === 'CANCELLED';
+
+  const startTime = dayjs(transfer.startTime);
+  const endTime = dayjs(transfer.endTime);
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(amount);
+  };
+
+  const discount = transfer.originalPrice > 0 
+    ? Math.round(((transfer.originalPrice - transfer.transferPrice) / transfer.originalPrice) * 100)
+    : 0;
+
+  return (
+    <Card
+      hoverable
+      style={{
+        borderRadius: 16,
+        marginBottom: 16,
+        border: '1px solid #f1f5f9',
+        overflow: 'hidden',
+        boxShadow: '0 2px 12px rgba(0,0,0,0.04)',
+      }}
+    >
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 10,
+        padding: '10px 16px',
+        background: '#f8fafc',
+        borderBottom: '1px solid #f1f5f9',
+        flexWrap: 'wrap',
+      }}>
+        <Space size={4}>
+          <CalendarOutlined style={{ color: '#10b981', fontSize: 13 }} />
+          <Text strong style={{ color: '#10b981', fontSize: 13 }}>
+            {startTime.format('DD/MM/YYYY')}
+          </Text>
+        </Space>
+
+        <Space size={4}>
+          <ClockCircleOutlined style={{ color: '#6366f1', fontSize: 13 }} />
+          <Text strong style={{ color: '#6366f1', fontSize: 13 }}>
+            {startTime.format('HH:mm')} - {endTime.format('HH:mm')}
+          </Text>
+        </Space>
+
+        {transfer.courtName && (
+          <Tag color="cyan" style={{ margin: 0, borderRadius: 6, fontWeight: 600 }}>
+            {transfer.courtName}
+          </Tag>
+        )}
+
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+          {isClaimed && <Tag color="green" style={{ fontWeight: 700 }}>Đã nhận sân</Tag>}
+          {isCancelled && <Tag color="default" style={{ fontWeight: 700 }}>Đã hủy</Tag>}
+          {!isClaimed && !isCancelled && <Tag color="blue" style={{ fontWeight: 700 }}>Sẵn sàng chuyển nhượng</Tag>}
+        </div>
+      </div>
+
+      <div style={{ padding: '16px 16px 12px' }}>
+        <Row gutter={16} align="middle">
+          <Col xs={24} sm={16}>
+            <Title level={5} style={{ margin: '0 0 8px 0', fontSize: 16, fontWeight: 800, color: '#1e293b' }}>
+              📍 {transfer.venueName}
+            </Title>
+            {transfer.note && (
+              <Paragraph type="secondary" style={{ fontSize: 13, margin: '4px 0 0 0', fontStyle: 'italic' }}>
+                Ghi chú: {transfer.note}
+              </Paragraph>
+            )}
+            {transfer.contactPhone && (
+              <Text type="secondary" style={{ fontSize: 13, display: 'block', marginTop: 6 }}>
+                📞 Liên hệ: <strong>{transfer.contactPhone}</strong>
+              </Text>
+            )}
+          </Col>
+          <Col xs={24} sm={8} style={{ textAlign: 'right' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'center' }}>
+              <Text delete type="secondary" style={{ fontSize: 13 }}>
+                Gốc: {formatCurrency(transfer.originalPrice)}
+              </Text>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Text strong style={{ fontSize: 18, color: '#ef4444' }}>
+                  {formatCurrency(transfer.transferPrice)}
+                </Text>
+                {discount > 0 && (
+                  <Tag color="red" style={{ margin: 0, borderRadius: 6, fontWeight: 700 }}>
+                    -{discount}%
+                  </Tag>
+                )}
+              </div>
+            </div>
+          </Col>
+        </Row>
+      </div>
+
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        padding: '10px 16px', borderTop: '1px solid #f1f5f9', background: '#fafafa'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Avatar size={24} icon={<UserOutlined />} style={{ background: '#e2e8f0', color: '#475569' }} />
+          <Text type="secondary" style={{ fontSize: 12 }}>
+            Người đăng: {isSeller ? 'Bạn' : 'Người chơi SmashMate'}
+          </Text>
+        </div>
+
+        <div>
+          {isSeller && transfer.status === 'OPEN' && (
+            <Button 
+              danger 
+              size="middle" 
+              style={{ borderRadius: 8, fontWeight: 600 }}
+              onClick={(e) => { e.stopPropagation(); onCancel(transfer.id); }}
+            >
+              Hủy tin
+            </Button>
+          )}
+
+          {!isSeller && transfer.status === 'OPEN' && (
+            <Button 
+              type="primary" 
+              size="middle" 
+              style={{ borderRadius: 8, fontWeight: 700, background: '#10b981', borderColor: '#10b981' }}
+              onClick={(e) => { e.stopPropagation(); onClaim(transfer.id); }}
+            >
+              Nhận Sân
+            </Button>
+          )}
+        </div>
+      </div>
+    </Card>
+  );
+};
 
 
 export default function CommunityPage() {
@@ -464,6 +611,8 @@ export default function CommunityPage() {
 
   const [loading, setLoading] = useState(false);
   const [facebookPosts, setFacebookPosts] = useState<FacebookPost[]>([]);
+  const [venueTransfers, setVenueTransfers] = useState<VenueTransfer[]>([]);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
   const [matchData, setMatchData] = useState<{ content: MatchPost[]; totalElements: number }>({
     content: [],
     totalElements: 0,
@@ -472,7 +621,8 @@ export default function CommunityPage() {
   useEffect(() => {
     let ignore = false;
 
-    if (activeCategory === 'facebook') {
+    const isFacebookOrCategory = ['facebook', 'shop', 'class', 'club'].includes(activeCategory);
+    if (isFacebookOrCategory) {
       const loadFacebookPosts = async () => {
         setLoading(true);
         try {
@@ -492,6 +642,31 @@ export default function CommunityPage() {
         }
       };
       loadFacebookPosts();
+      return () => {
+        ignore = true;
+      };
+    }
+
+    if (activeCategory === 'pass') {
+      const loadTransfers = async () => {
+        setLoading(true);
+        try {
+          const response = await communityApi.getVenueTransfers('OPEN');
+          if (!ignore) {
+            setVenueTransfers(response || []);
+          }
+        } catch (err) {
+          console.error('Failed to load venue transfers:', err);
+          if (!ignore) {
+            setVenueTransfers([]);
+          }
+        } finally {
+          if (!ignore) {
+            setLoading(false);
+          }
+        }
+      };
+      loadTransfers();
       return () => {
         ignore = true;
       };
@@ -591,8 +766,11 @@ export default function CommunityPage() {
   }, [matchData.content, isAuthenticated, user]);
 
   const filteredFacebookPosts = useMemo(() => {
-    if (activeCategory !== 'facebook') return [];
+    const isFacebookOrCategory = ['facebook', 'shop', 'class', 'club'].includes(activeCategory);
+    if (!isFacebookOrCategory) return [];
+
     return facebookPosts.filter((post) => {
+      // 1. Text Search Filter
       if (search.trim()) {
         const query = search.toLowerCase();
         const inUser = post.userName?.toLowerCase().includes(query);
@@ -600,14 +778,51 @@ export default function CommunityPage() {
         const inLocation = post.location?.toLowerCase().includes(query);
         if (!inUser && !inContent && !inLocation) return false;
       }
+
+      // 2. Level Filter
       if (level) {
         const postLevel = post.level?.toLowerCase() || '';
         const filterLevel = level.toLowerCase();
         if (!postLevel.includes(filterLevel)) return false;
       }
+
+      // 3. Category Specific Filter
+      const contentLower = (post.content || '').toLowerCase();
+      const titleLower = (post.title || '').toLowerCase();
+      const textToSearch = `${titleLower}\n${contentLower}`;
+
+      if (activeCategory === 'shop') {
+        const shopKeywords = ['bán', 'vợt', 'giày', 'áo', 'thanh lý', 'mua', 'shop', 'cửa hàng', 'phụ kiện', 'yonex', 'lining', 'victor'];
+        const isShop = shopKeywords.some(kw => textToSearch.includes(kw));
+        if (!isShop) return false;
+      } else if (activeCategory === 'class') {
+        const classKeywords = ['lớp', 'dạy', 'học', 'hlv', 'huấn luyện viên', 'tuyển sinh', 'thầy', 'cô', 'đào tạo'];
+        const isClass = classKeywords.some(kw => textToSearch.includes(kw));
+        if (!isClass) return false;
+      } else if (activeCategory === 'club') {
+        const clubKeywords = ['clb', 'câu lạc bộ', 'cố định', 'tuyển thành viên', 'chiêu mộ'];
+        const isClub = clubKeywords.some(kw => textToSearch.includes(kw));
+        if (!isClub) return false;
+      }
+
       return true;
     });
   }, [facebookPosts, activeCategory, search, level]);
+
+  const filteredVenueTransfers = useMemo(() => {
+    if (activeCategory !== 'pass') return [];
+
+    return venueTransfers.filter((transfer) => {
+      if (search.trim()) {
+        const query = search.toLowerCase();
+        const inVenue = transfer.venueName.toLowerCase().includes(query);
+        const inCourt = transfer.courtName?.toLowerCase().includes(query);
+        const inNote = transfer.note?.toLowerCase().includes(query);
+        if (!inVenue && !inCourt && !inNote) return false;
+      }
+      return true;
+    });
+  }, [venueTransfers, activeCategory, search]);
 
 
   const uiMatchData = useMemo(() => {
@@ -657,6 +872,57 @@ export default function CommunityPage() {
     setFromTime(null);
     setToTime(null);
     setPage(1);
+  };
+
+  const handleClaimTransfer = async (id: string) => {
+    if (!isAuthenticated) {
+      message.warning('Vui lòng đăng nhập để nhận sân!');
+      return;
+    }
+    try {
+      await communityApi.claimVenueTransfer(id);
+      message.success('Nhận chuyển nhượng sân thành công!');
+      const response = await communityApi.getVenueTransfers('OPEN');
+      setVenueTransfers(response || []);
+    } catch (err: any) {
+      console.error(err);
+      message.error(err?.message || 'Có lỗi xảy ra khi nhận sân.');
+    }
+  };
+
+  const handleCancelTransfer = async (id: string) => {
+    try {
+      await communityApi.cancelVenueTransfer(id);
+      message.success('Đã hủy tin đăng pass sân.');
+      const response = await communityApi.getVenueTransfers('OPEN');
+      setVenueTransfers(response || []);
+    } catch (err: any) {
+      console.error(err);
+      message.error(err?.message || 'Có lỗi xảy ra khi hủy tin đăng.');
+    }
+  };
+
+  const handleCreateTransferSubmit = async (values: any) => {
+    try {
+      const data = {
+        venueName: values.venueName,
+        courtName: values.courtName,
+        startTime: values.timeRange[0].toISOString(),
+        endTime: values.timeRange[1].toISOString(),
+        originalPrice: values.originalPrice,
+        transferPrice: values.transferPrice,
+        contactPhone: values.contactPhone || '',
+        note: values.note || '',
+      };
+      await communityApi.createVenueTransfer(data);
+      message.success('Đăng tin pass sân thành công!');
+      setIsTransferModalOpen(false);
+      const response = await communityApi.getVenueTransfers('OPEN');
+      setVenueTransfers(response || []);
+    } catch (err: any) {
+      console.error(err);
+      message.error(err?.message || 'Có lỗi xảy ra khi đăng tin pass sân.');
+    }
   };
 
   const renderSidebar = () => (
@@ -1135,10 +1401,17 @@ export default function CommunityPage() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
                 <div>
                   <Title level={3} style={{ margin: 0, fontSize: 22, fontWeight: 800 }}>
-                    {activeCategory === 'facebook' ? 'Tin tuyển giao lưu từ Facebook' : 'Kèo mới đăng tải'}
+                    {activeCategory === 'facebook' ? 'Tin tuyển giao lưu từ Facebook' : 
+                     activeCategory === 'pass' ? 'Tin pass sân cầu lông' :
+                     activeCategory === 'shop' ? 'Tin mua bán, thanh lý vợt/phụ kiện' :
+                     activeCategory === 'class' ? 'Lớp học & Huấn luyện viên' :
+                     activeCategory === 'club' ? 'Câu lạc bộ cầu lông' :
+                     'Kèo mới đăng tải'}
                   </Title>
                   <Text type="secondary" style={{ fontSize: 14 }}>
-                    {activeCategory === 'facebook'
+                    {activeCategory === 'pass'
+                      ? `Hiển thị ${Math.min(filteredVenueTransfers.slice((page - 1) * pageSize, page * pageSize).length, pageSize)} trên tổng số ${filteredVenueTransfers.length} kết quả`
+                      : ['facebook', 'shop', 'class', 'club'].includes(activeCategory)
                       ? `Hiển thị ${Math.min(filteredFacebookPosts.slice((page - 1) * pageSize, page * pageSize).length, pageSize)} trên tổng số ${filteredFacebookPosts.length} kết quả`
                       : `Hiển thị ${uiMatchData.content.length} trên tổng số ${uiMatchData.totalElements} kết quả`}
                   </Text>
@@ -1146,7 +1419,23 @@ export default function CommunityPage() {
                 <WeatherWidget isHeader={true} />
               </div>
               <Space>
-
+                {activeCategory === 'pass' && (
+                  <Button
+                    type="primary"
+                    shape="round"
+                    size="large"
+                    style={{ fontWeight: 700, background: '#10b981', borderColor: '#10b981' }}
+                    onClick={() => {
+                      if (!isAuthenticated) {
+                        message.warning('Vui lòng đăng nhập để đăng tin pass sân!');
+                        return;
+                      }
+                      setIsTransferModalOpen(true);
+                    }}
+                  >
+                    ⚡ Đăng tin Pass Sân
+                  </Button>
+                )}
                 <Button icon={<FilterOutlined />} shape="round" size="large" style={{ fontWeight: 600 }}>
                   Sắp xếp: Mới nhất
                 </Button>
@@ -1154,7 +1443,27 @@ export default function CommunityPage() {
             </div>
             {loading ? (
               <Card loading style={{ borderRadius: 16 }} />
-            ) : activeCategory === 'facebook' ? (
+            ) : activeCategory === 'pass' ? (
+              filteredVenueTransfers.length > 0 ? (
+                filteredVenueTransfers
+                  .slice((page - 1) * pageSize, page * pageSize)
+                  .map((transfer) => (
+                    <VenueTransferCard
+                      key={transfer.id}
+                      transfer={transfer}
+                      currentUserId={user?.id}
+                      onClaim={handleClaimTransfer}
+                      onCancel={handleCancelTransfer}
+                    />
+                  ))
+              ) : (
+                <Empty
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={<Text type="secondary">Không tìm thấy tin pass sân phù hợp. Hãy thử đăng tin mới!</Text>}
+                  style={{ padding: '60px 0' }}
+                />
+              )
+            ) : ['facebook', 'shop', 'class', 'club'].includes(activeCategory) ? (
               filteredFacebookPosts.length > 0 ? (
                 filteredFacebookPosts
                   .slice((page - 1) * pageSize, page * pageSize)
@@ -1162,7 +1471,7 @@ export default function CommunityPage() {
               ) : (
                 <Empty
                   image={Empty.PRESENTED_IMAGE_SIMPLE}
-                  description={<Text type="secondary">Không tìm thấy bài viết Facebook phù hợp. Hãy thử thay đổi bộ lọc!</Text>}
+                  description={<Text type="secondary">Không tìm thấy bài viết phù hợp. Hãy thử thay đổi bộ lọc!</Text>}
                   style={{ padding: '60px 0' }}
                 />
               )
@@ -1178,7 +1487,7 @@ export default function CommunityPage() {
             <div style={{ textAlign: 'center', marginTop: 60 }}>
               <Pagination
                 current={page}
-                total={activeCategory === 'facebook' ? filteredFacebookPosts.length : uiMatchData.totalElements}
+                total={activeCategory === 'pass' ? filteredVenueTransfers.length : ['facebook', 'shop', 'class', 'club'].includes(activeCategory) ? filteredFacebookPosts.length : uiMatchData.totalElements}
                 pageSize={pageSize}
                 onChange={setPage}
                 showSizeChanger={false}
@@ -1188,6 +1497,101 @@ export default function CommunityPage() {
           </Col>
         </Row>
       </div>
+
+      <Modal
+        title={<div style={{ fontWeight: 800, fontSize: 18 }}>⚡ Đăng Tin Chuyển Nhượng Sân (Pass Sân)</div>}
+        open={isTransferModalOpen}
+        onCancel={() => setIsTransferModalOpen(false)}
+        footer={null}
+        destroyOnClose
+      >
+        <Form layout="vertical" onFinish={handleCreateTransferSubmit}>
+          <Form.Item
+            name="venueName"
+            label="Tên sân cầu lông"
+            rules={[{ required: true, message: 'Vui lòng nhập tên sân!' }]}
+          >
+            <Input placeholder="Ví dụ: Sân cầu lông Lê Văn Lương" />
+          </Form.Item>
+
+          <Form.Item
+            name="courtName"
+            label="Tên/Số sân cụ thể (nếu có)"
+          >
+            <Input placeholder="Ví dụ: Sân số 3" />
+          </Form.Item>
+
+          <Form.Item
+            name="timeRange"
+            label="Thời gian thuê sân"
+            rules={[{ required: true, message: 'Vui lòng chọn thời gian bắt đầu và kết thúc!' }]}
+          >
+            <DatePicker.RangePicker
+              showTime
+              format="DD/MM/YYYY HH:mm"
+              style={{ width: '100%' }}
+              placeholder={['Bắt đầu', 'Kết thúc']}
+            />
+          </Form.Item>
+
+          <Row gutter={16}>
+            <Col span={12}>
+              <Form.Item
+                name="originalPrice"
+                label="Giá gốc (VND)"
+                rules={[{ required: true, message: 'Vui lòng nhập giá gốc!' }]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                  parser={(value) => value!.replace(/\$\s?|(,*)/g, '')}
+                  min={0}
+                  placeholder="Giá gốc của sân"
+                />
+              </Form.Item>
+            </Col>
+            <Col span={12}>
+              <Form.Item
+                name="transferPrice"
+                label="Giá pass lại (VND)"
+                rules={[{ required: true, message: 'Vui lòng nhập giá pass!' }]}
+              >
+                <InputNumber
+                  style={{ width: '100%' }}
+                  formatter={(value) => `${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
+                  parser={(value) => value!.replace(/\$\s?|(,*)/g, '')}
+                  min={0}
+                  placeholder="Giá muốn pass lại"
+                />
+              </Form.Item>
+            </Col>
+          </Row>
+
+          <Form.Item
+            name="contactPhone"
+            label="Số điện thoại liên hệ"
+            rules={[{ required: true, message: 'Vui lòng nhập số điện thoại!' }]}
+          >
+            <Input placeholder="Số điện thoại của bạn" />
+          </Form.Item>
+
+          <Form.Item
+            name="note"
+            label="Ghi chú thêm"
+          >
+            <Input.TextArea rows={3} placeholder="Mô tả thêm về ca sân hoặc yêu cầu (ví dụ: pass do bận đột xuất, sân đẹp...)" />
+          </Form.Item>
+
+          <Form.Item style={{ marginBottom: 0, textAlign: 'right' }}>
+            <Space>
+              <Button onClick={() => setIsTransferModalOpen(false)}>Hủy</Button>
+              <Button type="primary" htmlType="submit" style={{ background: '#10b981', borderColor: '#10b981', fontWeight: 700 }}>
+                Đăng Tin
+              </Button>
+            </Space>
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }

@@ -6,6 +6,8 @@ import type {
   Report,
   CreateMatchPostRequest,
   FacebookPost,
+  VenueTransfer,
+  CreateVenueTransferRequest,
 } from '../types/community.types';
 
 export const communityApi = {
@@ -190,6 +192,10 @@ export const communityApi = {
     const response = await apiClient.post('/fb-community/api/community/scrape');
     return response.data;
   },
+  getScrapeStatus: async (): Promise<{ status: 'idle' | 'scraping'; logs: string[] }> => {
+    const response = await apiClient.get('/fb-community/api/community/scrape/status');
+    return response.data;
+  },
   
   // Weather Recommendation
   getWeatherRecommendation: async (lat: number, lng: number): Promise<any> => {
@@ -197,5 +203,25 @@ export const communityApi = {
       params: { lat, lng }
     });
     return communityApi.unwrapResult(response);
+  },
+
+  // Venue Transfers (Pass Sân - System Feature)
+  getVenueTransfers: async (status = 'OPEN'): Promise<VenueTransfer[]> => {
+    const response = await apiClient.get('/communities/api/community/venue-transfers', { params: { status } });
+    return communityApi.unwrapResult(response);
+  },
+
+  createVenueTransfer: async (data: CreateVenueTransferRequest): Promise<VenueTransfer> => {
+    const response = await apiClient.post('/communities/api/community/venue-transfers', data);
+    return communityApi.unwrapResult(response);
+  },
+
+  claimVenueTransfer: async (id: string): Promise<VenueTransfer> => {
+    const response = await apiClient.post(`/communities/api/community/venue-transfers/${id}/claim`);
+    return communityApi.unwrapResult(response);
+  },
+
+  cancelVenueTransfer: async (id: string): Promise<void> => {
+    await apiClient.post(`/communities/api/community/venue-transfers/${id}/cancel`);
   },
 };

@@ -1,0 +1,2 @@
+ALTER TABLE booking.bookings ADD COLUMN IF NOT EXISTS owner_reminder_sent BOOLEAN DEFAULT FALSE;
+ALTER TABLE booking.bookings ADD COLUMN IF NOT EXISTS player_reminder_sent BOOLEAN DEFAULT FALSE;

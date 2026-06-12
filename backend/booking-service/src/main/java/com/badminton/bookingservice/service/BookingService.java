@@ -98,6 +98,28 @@ public class BookingService {
       throw new AppException(HttpStatus.BAD_REQUEST, "Thời gian slot không hợp lệ");
     }
 
+    LocalDateTime now = LocalDateTime.now();
+    if (startTime.isBefore(now)) {
+      throw new AppException(HttpStatus.BAD_REQUEST, "Không thể đặt sân ở thời điểm trong quá khứ");
+    }
+
+    // Map venue operating hours configuration
+    try {
+      VenueInternalResponse venue = venueClient.getVenueById(venueId);
+      if (venue != null) {
+        if (venue.getOpenTime() != null && startTime.toLocalTime().isBefore(venue.getOpenTime())) {
+          throw new AppException(HttpStatus.BAD_REQUEST, "Thời gian đặt sân nằm ngoài giờ mở cửa của sân (" + venue.getOpenTime() + ")");
+        }
+        if (venue.getCloseTime() != null && endTime.toLocalTime().isAfter(venue.getCloseTime())) {
+          throw new AppException(HttpStatus.BAD_REQUEST, "Thời gian đặt sân nằm ngoài giờ đóng cửa của sân (" + venue.getCloseTime() + ")");
+        }
+      }
+    } catch (AppException e) {
+      throw e;
+    } catch (Exception e) {
+      log.warn("Failed to validate venue operating hours for venue {}, allowing lock: {}", venueId, e.getMessage());
+    }
+
     String lockKey = String.format("lock:court:%s:slot:%s:%s", courtId, startTime.toString(), endTime.toString());
     Boolean acquired = redisTemplate.opsForValue().setIfAbsent(lockKey, userId.toString(), java.time.Duration.ofSeconds(60));
     if (acquired == null || !acquired) {
@@ -886,5 +908,89 @@ public com.badminton.bookingservice.dto.RevenueStatsResponse getRevenueStats(
       log.error("Error checking business hours conflicts: {}", e.getMessage(), e);
     }
     return List.of();
+  }
+
+  public BookingResponse confirmBookingByOwner(UUID bookingId, UUID ownerId) {
+    log.info("Owner {} confirming booking {}", ownerId, bookingId);
+    Booking booking = bookingRepository.findById(bookingId)
+        .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy booking"));
+
+    try {
+      VenueInternalResponse venue = venueClient.getVenueById(booking.getVenueId());
+      if (venue == null || !ownerId.equals(venue.getOwnerId())) {
+        throw new AppException(HttpStatus.FORBIDDEN, "Bạn không có quyền quản lý sân của booking này");
+      }
+    } catch (AppException e) {
+      throw e;
+    } catch (Exception e) {
+      log.error("Failed to verify owner {} for venue {}", ownerId, booking.getVenueId(), e);
+    }
+
+    if (!"PAID".equals(booking.getStatus())) {
+      throw new AppException(HttpStatus.BAD_REQUEST, "Chỉ có thể xác nhận đơn đặt sân có trạng thái PAID (đang chờ duyệt)");
+    }
+
+    booking.setStatus("CONFIRMED");
+    bookingRepository.save(booking);
+
+    bookingEventPublisher.publishBookingConfirmed(BookingEventPublisher.BookingConfirmedEvent.builder()
+        .bookingId(booking.getId())
+        .userId(booking.getUserId())
+        .venueName(booking.getVenueNameSnapshot())
+        .confirmedAt(LocalDateTime.now())
+        .build());
+
+    return bookingMapper.toBookingResponse(booking);
+  }
+
+  public BookingResponse rejectBookingByOwner(UUID bookingId, UUID ownerId, String reason) {
+    log.info("Owner {} rejecting booking {}", ownerId, bookingId);
+    Booking booking = bookingRepository.findById(bookingId)
+        .orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, "Không tìm thấy booking"));
+
+    try {
+      VenueInternalResponse venue = venueClient.getVenueById(booking.getVenueId());
+      if (venue == null || !ownerId.equals(venue.getOwnerId())) {
+        throw new AppException(HttpStatus.FORBIDDEN, "Bạn không có quyền quản lý sân của booking này");
+      }
+    } catch (AppException e) {
+      throw e;
+    } catch (Exception e) {
+      log.error("Failed to verify owner {} for venue {}", ownerId, booking.getVenueId(), e);
+    }
+
+    if (!"PAID".equals(booking.getStatus()) && !"CONFIRMED".equals(booking.getStatus())) {
+      throw new AppException(HttpStatus.BAD_REQUEST, "Chỉ có thể từ chối đơn đặt sân đang chờ duyệt (PAID) hoặc đã xác nhận (CONFIRMED)");
+    }
+
+    if ("SUCCESS".equals(booking.getPaymentStatus()) || "PAID".equals(booking.getStatus())) {
+      log.info("Booking {} was paid, triggering refund on owner reject", bookingId);
+      try {
+        paymentClient.refundPayment(bookingId);
+        log.info("Refund initiated for booking {} by owner {}", bookingId, ownerId);
+      } catch (Exception e) {
+        log.error("Refund failed for booking {}: {}", bookingId, e.getMessage());
+        throw new AppException(HttpStatus.INTERNAL_SERVER_ERROR, "Không thể hoàn tiền: " + e.getMessage());
+      }
+    }
+
+    booking.setStatus("CANCELLED_BY_OWNER");
+
+    List<BookingItem> items = bookingItemRepository.findByBookingId(bookingId);
+    items.forEach(item -> item.setStatus("CANCELLED"));
+    bookingItemRepository.saveAll(items);
+
+    bookingRepository.save(booking);
+
+    bookingEventPublisher.publishBookingCancelledByOwner(BookingEventPublisher.BookingCancelledByOwnerEvent.builder()
+        .bookingId(booking.getId())
+        .userId(booking.getUserId())
+        .ownerId(ownerId)
+        .venueName(booking.getVenueNameSnapshot())
+        .reason(reason)
+        .cancelledAt(LocalDateTime.now())
+        .build());
+
+    return bookingMapper.toBookingResponse(booking);
   }
 }

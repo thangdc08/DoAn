@@ -1,5 +1,5 @@
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { useMutation } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import { Card, Button, Space, Typography, Alert, message } from 'antd';
 import { CheckCircleOutlined, CloseCircleOutlined } from '@ant-design/icons';
 import { paymentApi } from '../../services/paymentApi';
@@ -10,6 +10,13 @@ export default function MockPaymentPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const transactionId = searchParams.get('transactionId');
+
+  // Fetch transaction details to get bookingId
+  const { data: transaction } = useQuery({
+    queryKey: ['payment-transaction', transactionId],
+    queryFn: () => paymentApi.getPaymentById(transactionId!),
+    enabled: !!transactionId,
+  });
 
   // Validate transactionId
   if (!transactionId) {
@@ -31,12 +38,13 @@ export default function MockPaymentPage() {
     mutationFn: ({ success }: { success: boolean }) =>
       paymentApi.mockPaymentCallback(transactionId, success),
     onSuccess: (_, variables) => {
+      const bId = transaction?.bookingId ? `&bookingId=${transaction.bookingId}` : '';
       if (variables.success) {
         message.success('Thanh toán thành công');
-        navigate('/payment-result?status=success');
+        navigate(`/payment-result?status=success${bId}`);
       } else {
         message.error('Thanh toán thất bại');
-        navigate('/payment-result?status=failed');
+        navigate(`/payment-result?status=failed${bId}`);
       }
     },
     onError: (error: any) => {

@@ -227,32 +227,54 @@ export default function AdminReportPage() {
     document.body.removeChild(link);
   };
 
+  // Poll scraper status on mount and when isScraping changes
+  useEffect(() => {
+    let intervalId: any;
+
+    const checkStatus = async () => {
+      try {
+        const result = await communityApi.getScrapeStatus();
+        if (result.logs) {
+          setScrapingLogs(result.logs);
+        }
+        if (result.status === 'scraping') {
+          setIsScraping(true);
+        } else if (result.status === 'idle' && isScraping) {
+          setIsScraping(false);
+          message.success('Cào dữ liệu Facebook hoàn tất!');
+          refetchFbPosts();
+        }
+      } catch (err) {
+        console.error('Error fetching scrape status:', err);
+      }
+    };
+
+    if (activeTab === 'community') {
+      checkStatus();
+      intervalId = setInterval(checkStatus, 2000);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [activeTab, isScraping, refetchFbPosts]);
+
   // Facebook Scraper Trigger Action
   const handleScrape = async () => {
     setIsScraping(true);
-    const newLogs = [...scrapingLogs, `[${dayjs().format('HH:mm:ss')}] Bắt đầu tiến trình cào dữ liệu Facebook...`];
-    setScrapingLogs(newLogs);
+    setScrapingLogs(prev => [...prev, `[${dayjs().format('HH:mm:ss')}] Bắt đầu gửi lệnh cào dữ liệu Facebook...`]);
     
-    const hideMessage = message.loading('Đang cào dữ liệu từ nhóm Facebook public...', 0);
     try {
-      const result = await communityApi.scrapeFacebookPosts();
-      message.success('Cào dữ liệu Facebook thành công!');
-      setScrapingLogs(prev => [
-        ...prev,
-        `[${dayjs().format('HH:mm:ss')}] Tiến trình hoàn thành. Kết quả: ${result?.message || 'Thành công'}.`,
-        `[${dayjs().format('HH:mm:ss')}] Đang tải lại danh sách bài đăng từ MongoDB...`
-      ]);
-      refetchFbPosts();
+      const response = await communityApi.scrapeFacebookPosts();
+      message.info(response.message || 'Tiến trình cào đã bắt đầu trong nền.');
     } catch (err: any) {
-      const errMsg = err.message || 'Lỗi kết nối API Gateway';
-      message.error(`Lỗi khi cào dữ liệu: ${errMsg}`);
+      const errMsg = err.response?.data?.error || err.message || 'Lỗi kết nối API Gateway';
+      message.error(`Không thể bắt đầu cào: ${errMsg}`);
+      setIsScraping(false);
       setScrapingLogs(prev => [
         ...prev,
-        `[${dayjs().format('HH:mm:ss')}] ❌ LỖI: Không thể cào dữ liệu. Chi tiết: ${errMsg}`
+        `[${dayjs().format('HH:mm:ss')}] ❌ LỖI: ${errMsg}`
       ]);
-    } finally {
-      hideMessage();
-      setIsScraping(false);
     }
   };
 

@@ -150,6 +150,7 @@ export const router = createBrowserRouter([
       { index: true, element: <Suspense fallback={<PageLoader />}><StaffDashboardPage /></Suspense> },
       { path: 'checkin', element: <Suspense fallback={<PageLoader />}><StaffDashboardPage /></Suspense> },
       { path: 'bookings', element: <Suspense fallback={<PageLoader />}><StaffDashboardPage /></Suspense> },
+      { path: 'chat', element: <Suspense fallback={<PageLoader />}><ChatPage /></Suspense> },
       { path: 'settings', element: <Suspense fallback={<PageLoader />}><OwnerSettingsPage /></Suspense> },
       { path: 'profile', element: <Suspense fallback={<PageLoader />}><ProfilePage /></Suspense> },
     ],

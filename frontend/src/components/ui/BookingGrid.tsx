@@ -9,6 +9,7 @@ import { venueApi } from '../../services/venueApi';
 import { bookingApi } from '../../services/bookingApi';
 import dayjs from 'dayjs';
 import type { PriceRule } from '../../types/venue.types';
+import { useQuery } from '@tanstack/react-query';
 
 const { Text } = Typography;
 
@@ -150,8 +151,24 @@ const BookingGrid: React.FC<BookingGridProps> = ({
   const [loading, setLoading] = useState(false);
   const [refreshTrigger, setRefreshTrigger] = useState(0);
 
+  const { data: venue } = useQuery({
+    queryKey: ['venue', venueId],
+    queryFn: () => venueApi.getVenueById(venueId || ''),
+    enabled: !!venueId,
+  });
+
   const finalCourtNames = propsCourtNames || (courts && courts.length > 0 ? courts.map(c => c.name) : courtNames);
   const finalTimeSlots = propsTimeSlots || timeSlots;
+
+  const openTimeStr = venue?.openTime ? venue.openTime.substring(0, 5) : '05:00';
+  const closeTimeStr = venue?.closeTime ? venue.closeTime.substring(0, 5) : '22:00';
+
+  const filteredTimeSlots = useMemo(() => {
+    return finalTimeSlots.filter(time => {
+      return time >= openTimeStr && time < closeTimeStr;
+    });
+  }, [finalTimeSlots, openTimeStr, closeTimeStr]);
+
   const selectedDayOfWeek = selectedDate
     ? ((selectedDate.day() + 6) % 7) + 1
     : (((dayjs().day() + 6) % 7) + 1);
@@ -195,7 +212,7 @@ const BookingGrid: React.FC<BookingGridProps> = ({
 
   const displayPriceByTime = useMemo(() => {
     const firstActiveCourt = courts?.find(c => c.status !== 'INACTIVE');
-    return finalTimeSlots.map((time) => {
+    return filteredTimeSlots.map((time) => {
       if (firstActiveCourt?.id) {
         const slotDetail = dbSlots[`${firstActiveCourt.id}_${time}`];
         if (slotDetail?.price !== undefined) return slotDetail.price;
@@ -207,7 +224,7 @@ const BookingGrid: React.FC<BookingGridProps> = ({
       const hourlyDefault = firstActiveCourt?.defaultPrice ?? pricePerSlot ?? 80000;
       return hourlyDefault / 2;
     });
-  }, [courts, dbSlots, finalTimeSlots, pricePerSlot, priceRules, selectedDayOfWeek]);
+  }, [courts, dbSlots, filteredTimeSlots, pricePerSlot, priceRules, selectedDayOfWeek]);
 
   const totalPrice = useMemo(() => {
     if (selectedSlots.length === 0) return 0;
@@ -288,6 +305,15 @@ const BookingGrid: React.FC<BookingGridProps> = ({
   }, [venueId, courts, selectedDate, refreshTrigger]);
 
   const getStatus = (courtName: string, time: string): SlotStatus => {
+    // Check if slot time is in the past
+    if (selectedDate) {
+      const dateStr = selectedDate.format('YYYY-MM-DD');
+      const slotDateTime = dayjs(`${dateStr}T${time}:00`);
+      if (slotDateTime.isBefore(dayjs())) {
+        return 'locked';
+      }
+    }
+
     if (courts && courts.length > 0) {
       const courtObj = courts.find(c => c.name === courtName);
       if (courtObj) {
@@ -315,6 +341,16 @@ const BookingGrid: React.FC<BookingGridProps> = ({
 
   const toggleSlot = (courtName: string, time: string) => {
     if (readOnly && !isAdmin) return;
+
+    // Check if slot time is in the past
+    if (selectedDate) {
+      const dateStr = selectedDate.format('YYYY-MM-DD');
+      const slotDateTime = dayjs(`${dateStr}T${time}:00`);
+      if (slotDateTime.isBefore(dayjs()) && !isAdmin) {
+        notify('error', 'Không thể chọn slot này', 'Khung giờ này đã trôi qua.');
+        return;
+      }
+    }
 
     if (courts && courts.length > 0) {
       const courtObj = courts.find(c => c.name === courtName);
@@ -523,7 +559,7 @@ const BookingGrid: React.FC<BookingGridProps> = ({
             >
               Sân / Giờ
             </div>
-            {finalTimeSlots.map((time) => (
+            {filteredTimeSlots.map((time) => (
               <div
                 key={time}
                 style={{
@@ -568,7 +604,7 @@ const BookingGrid: React.FC<BookingGridProps> = ({
             </div>
             {displayPriceByTime.map((slotPrice, idx) => (
               <div
-                key={`price-${finalTimeSlots[idx]}`}
+                key={`price-${filteredTimeSlots[idx]}`}
                 style={{
                   width: 48,
                   flexShrink: 0,
@@ -619,7 +655,7 @@ const BookingGrid: React.FC<BookingGridProps> = ({
               </div>
 
               {/* Slot cells */}
-              {finalTimeSlots.map((time) => {
+              {filteredTimeSlots.map((time) => {
                 const status = getStatus(court, time);
                 const label = getSlotLabel(status);
                 const price = getSlotPrice(court, time);

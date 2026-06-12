@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Card, Table, Tag, Button, Select, Space, Typography, Modal, Input, Row, Col, Badge, Divider, Spin, Empty, message, Rate, Upload } from 'antd';
+import { Card, Table, Tag, Button, Select, Space, Typography, Modal, Input, Row, Col, Badge, Divider, Spin, Empty, message, Rate, Upload, QRCode } from 'antd';
 import {
   EyeOutlined,
   CalendarOutlined,
@@ -25,11 +25,14 @@ const { Option } = Select;
 
 // Mapping statuses to Vietnamese
 const STATUS_MAP: Record<string, { label: string, color: string, icon: any }> = {
-  PENDING: { label: 'Chờ xác nhận', color: 'orange', icon: <ClockCircleOutlined /> },
-  PAID: { label: 'Đã xác nhận', color: 'green', icon: <CheckCircleOutlined /> },
+  PENDING: { label: 'Chờ thanh toán', color: 'orange', icon: <ClockCircleOutlined /> },
+  PAID: { label: 'Chờ duyệt', color: 'blue', icon: <ClockCircleOutlined /> },
+  CONFIRMED: { label: 'Đã xác nhận', color: 'green', icon: <CheckCircleOutlined /> },
   FAILED: { label: 'Thanh toán lỗi', color: 'red', icon: <CloseCircleOutlined /> },
   EXPIRED: { label: 'Đã hết hạn', color: 'default', icon: <ClockCircleOutlined /> },
   CANCELLED_BY_ADMIN: { label: 'Hủy bởi Admin', color: 'red', icon: <CloseCircleOutlined /> },
+  CANCELLED_BY_USER: { label: 'Đã hủy', color: 'red', icon: <CloseCircleOutlined /> },
+  CANCELLED_BY_OWNER: { label: 'Bị từ chối', color: 'red', icon: <CloseCircleOutlined /> },
 };
 
 const PAYMENT_STATUS_MAP: Record<string, { label: string, color: string }> = {
@@ -91,6 +94,66 @@ export default function BookingHistoryPage() {
     } finally {
       setSubmittingVenueRating(false);
     }
+  };
+
+  const canRateBooking = (booking: Booking) => {
+    if (booking.status !== 'CONFIRMED' && booking.status !== 'PAID') return false;
+    const isFinished = booking.items && booking.items.length > 0
+      ? dayjs().isAfter(dayjs(booking.items.reduce((max, item) => dayjs(item.endTime).isAfter(max) ? dayjs(item.endTime) : max, dayjs(booking.items[0].endTime))))
+      : dayjs().isAfter(dayjs(booking.endTime));
+      
+    return booking.checkedIn || isFinished;
+  };
+
+  const handleCancelBooking = async (booking: Booking) => {
+    let cancelWindow = 2;
+    try {
+      const venue = await venueApi.getVenueById(booking.venueId);
+      if (venue && venue.policy) {
+        const policyObj = typeof venue.policy === 'string' ? JSON.parse(venue.policy) : venue.policy;
+        if (policyObj.bookingPolicy && policyObj.bookingPolicy.cancelWindow !== undefined) {
+          cancelWindow = Number(policyObj.bookingPolicy.cancelWindow);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to parse venue policy', e);
+    }
+
+    const earliestStart = booking.items && booking.items.length > 0
+      ? booking.items.reduce((min, item) => dayjs(item.startTime).isBefore(min) ? dayjs(item.startTime) : min, dayjs(booking.items[0].startTime))
+      : dayjs(booking.startTime);
+
+    const isTooLate = earliestStart.isBefore(dayjs().add(cancelWindow, 'hour'));
+
+    if (isTooLate) {
+      Modal.error({
+        title: 'Không thể hủy đặt sân',
+        content: `Theo chính sách của sân, bạn chỉ được phép hủy trước giờ chơi ít nhất ${cancelWindow} tiếng. Đơn này không đủ điều kiện để hủy.`,
+        okText: 'Đóng',
+      });
+      return;
+    }
+
+    Modal.confirm({
+      title: 'Xác nhận hủy đặt sân',
+      content: `Bạn có chắc chắn muốn hủy đặt sân này? Theo chính sách, bạn sẽ được hoàn tiền đầy đủ nếu hủy trước giờ chơi ${cancelWindow} tiếng.`,
+      okText: 'Hủy đặt sân',
+      okType: 'danger',
+      cancelText: 'Đóng',
+      onOk: async () => {
+        try {
+          setLoading(true);
+          const updated = await bookingApi.cancelBooking(booking.id);
+          message.success('Hủy đặt sân thành công!');
+          setBookings(prev => prev.map(b => b.id === updated.id ? updated : b));
+          setSelectedBooking(updated);
+        } catch (error: any) {
+          message.error(error?.response?.data?.message || error?.message || 'Không thể hủy đặt sân');
+        } finally {
+          setLoading(false);
+        }
+      }
+    });
   };
 
   const [bookings, setBookings] = useState<Booking[]>([]);
@@ -210,12 +273,16 @@ export default function BookingHistoryPage() {
       align: 'right' as any,
       render: (_: any, record: Booking) => (
         <Space>
-          {record.status === 'PAID' && (
+          {(record.status === 'CONFIRMED' || record.status === 'PAID') && (
             <Button
               type="default"
+              disabled={!canRateBooking(record)}
               icon={<StarOutlined />}
               onClick={(e) => handleOpenVenueRating(record, e)}
-              className="rounded-lg border-amber-200 text-amber-600 hover:bg-amber-50 hover:border-amber-300"
+              title={!record.checkedIn 
+                ? "Bạn cần check-in hoặc kết thúc giờ chơi để đánh giá" 
+                : undefined}
+              className="rounded-lg border-amber-200 text-amber-600 hover:bg-amber-50 hover:border-amber-300 disabled:opacity-50"
             >
               Đánh giá
             </Button>
@@ -390,6 +457,31 @@ export default function BookingHistoryPage() {
 
                 {/* Right Side: Map & Venue Info */}
                 <Col span={11}>
+                  {selectedBooking.status === 'PAID' && (
+                    <Card
+                      bordered={false}
+                      className="shadow-xl rounded-[2.5rem] border border-slate-100 overflow-hidden bg-white mb-6"
+                      bodyStyle={{ padding: '24px 16px', textAlign: 'center' }}
+                    >
+                      <Space direction="vertical" size="small" style={{ width: '100%' }}>
+                        <div style={{ display: 'inline-flex', padding: 8, background: '#f8fafc', borderRadius: 16, border: '1px solid #f1f5f9' }}>
+                          <QRCode
+                            value={selectedBooking.id}
+                            size={120}
+                            bordered={false}
+                            color="#00a651"
+                          />
+                        </div>
+                        <div>
+                          <Text type="secondary" style={{ fontSize: '10px', display: 'block', letterSpacing: '0.05em', fontWeight: 'bold' }}>MÃ CHECK-IN CỦA BẠN</Text>
+                          <Text strong style={{ fontSize: '14px', color: '#334155', display: 'block', marginTop: 2 }}>
+                            #{selectedBooking.id.substring(0, 8).toUpperCase()}
+                          </Text>
+                        </div>
+                      </Space>
+                    </Card>
+                  )}
+
                   <div className="flex items-center gap-3 mb-6">
                     <div className="w-1.5 h-6 bg-brand-primary rounded-full" />
                     <Title level={4} className="!mb-0 font-black tracking-tight text-slate-800">Vị trí sân chơi</Title>
@@ -430,8 +522,13 @@ export default function BookingHistoryPage() {
                 <div>
                   <Text className="text-slate-400 text-[10px] uppercase font-black tracking-widest block mb-1">Trạng thái</Text>
                   <div className="flex items-center gap-2">
-                    <Badge color="#10b981" />
-                    <Text strong className="text-slate-700 text-xs uppercase tracking-wider">Thành công</Text>
+                    <Badge color={
+                      selectedBooking.status === 'PAID' ? '#10b981' : 
+                      selectedBooking.status === 'PENDING' ? '#f59e0b' : '#ef4444'
+                    } />
+                    <Text strong className="text-slate-700 text-xs uppercase tracking-wider">
+                      {STATUS_MAP[selectedBooking.status]?.label || selectedBooking.status}
+                    </Text>
                   </div>
                 </div>
                 <Divider type="vertical" className="h-8 bg-slate-200 m-0" />
@@ -446,14 +543,27 @@ export default function BookingHistoryPage() {
                 {selectedBooking.status === 'PAID' && (
                   <Button 
                     type="default"
+                    disabled={!canRateBooking(selectedBooking)}
                     icon={<StarOutlined />}
-                    className="h-11 px-6 rounded-xl font-bold border-amber-200 text-amber-600 hover:bg-amber-50 hover:border-amber-300"
+                    title={!selectedBooking.checkedIn 
+                      ? "Bạn cần check-in trước khi đánh giá" 
+                      : !dayjs().isAfter(dayjs(selectedBooking.endTime)) 
+                        ? "Vui lòng chờ sau khi hết giờ chơi để đánh giá" 
+                        : undefined}
+                    className="h-11 px-6 rounded-xl font-bold border-amber-200 text-amber-600 hover:bg-amber-50 hover:border-amber-300 disabled:opacity-50"
                     onClick={() => handleOpenVenueRating(selectedBooking)}
                   >
                     Đánh giá sân
                   </Button>
                 )}
-                <Button className="h-11 px-6 rounded-xl font-bold border-slate-200 text-slate-500 hover:text-red-500 hover:border-red-200 transition-all">Hủy đơn</Button>
+                {(selectedBooking.status === 'PENDING' || selectedBooking.status === 'PAID') && !selectedBooking.checkedIn && (
+                  <Button 
+                    className="h-11 px-6 rounded-xl font-bold border-slate-200 text-slate-500 hover:text-red-500 hover:border-red-200 transition-all"
+                    onClick={() => handleCancelBooking(selectedBooking)}
+                  >
+                    Hủy đơn
+                  </Button>
+                )}
                 <Button 
                   type="primary" 
                   className="h-11 px-10 rounded-xl font-black shadow-lg shadow-brand-primary/20 bg-brand-primary border-none"

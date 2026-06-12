@@ -88,6 +88,10 @@ public class MatchPost {
     @UpdateTimestamp
     private LocalDateTime updatedAt;
 
+    @Builder.Default
+    @Column(name = "reminder_sent", nullable = false)
+    private Boolean reminderSent = false;
+
     @PrePersist
     @PreUpdate
     public void syncAuthorAndHost() {

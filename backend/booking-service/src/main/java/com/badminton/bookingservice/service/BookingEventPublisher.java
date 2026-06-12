@@ -36,6 +36,22 @@ public class BookingEventPublisher {
         saveToOutbox(event.getBookingId(), "Booking", "BookingCancelledByAdmin", event);
     }
 
+    public void publishBookingConfirmed(BookingConfirmedEvent event) {
+        saveToOutbox(event.getBookingId(), "Booking", "BookingConfirmed", event);
+    }
+
+    public void publishBookingCancelledByOwner(BookingCancelledByOwnerEvent event) {
+        saveToOutbox(event.getBookingId(), "Booking", "BookingCancelledByOwner", event);
+    }
+
+    public void publishBookingOwnerReminder(BookingOwnerReminderEvent event) {
+        saveToOutbox(event.getBookingId(), "Booking", "BookingOwnerReminder", event);
+    }
+
+    public void publishBookingPlayerReminder(BookingPlayerReminderEvent event) {
+        saveToOutbox(event.getBookingId(), "Booking", "BookingPlayerReminder", event);
+    }
+
     private void saveToOutbox(UUID aggregateId, String aggregateType, String eventType, Object payloadObj) {
         try {
             String payload = objectMapper.writeValueAsString(payloadObj);
@@ -92,6 +108,44 @@ public class BookingEventPublisher {
         private UUID adminId;
         private String reason;
         private LocalDateTime cancelledAt;
+    }
+
+    @Data
+    @Builder
+    public static class BookingConfirmedEvent {
+        private UUID bookingId;
+        private UUID userId;
+        private String venueName;
+        private LocalDateTime confirmedAt;
+    }
+
+    @Data
+    @Builder
+    public static class BookingCancelledByOwnerEvent {
+        private UUID bookingId;
+        private UUID userId;
+        private UUID ownerId;
+        private String venueName;
+        private String reason;
+        private LocalDateTime cancelledAt;
+    }
+
+    @Data
+    @Builder
+    public static class BookingOwnerReminderEvent {
+        private UUID bookingId;
+        private UUID ownerId;
+        private String venueName;
+        private LocalDateTime paidAt;
+    }
+
+    @Data
+    @Builder
+    public static class BookingPlayerReminderEvent {
+        private UUID bookingId;
+        private UUID userId;
+        private String venueName;
+        private LocalDateTime startTime;
     }
 
 }

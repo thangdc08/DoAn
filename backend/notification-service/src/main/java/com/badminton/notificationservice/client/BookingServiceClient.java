@@ -31,4 +31,22 @@ public class BookingServiceClient {
         }
         return null;
     }
+
+    public String getBookingStatus(UUID bookingId) {
+        try {
+            String url = "http://booking-service/api/bookings/" + bookingId;
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = restTemplate.getForObject(url, Map.class);
+            if (response != null && response.containsKey("result")) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> result = (Map<String, Object>) response.get("result");
+                if (result != null && result.containsKey("status")) {
+                    return result.get("status").toString();
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to fetch status for booking {} from booking-service", bookingId, e);
+        }
+        return null;
+    }
 }

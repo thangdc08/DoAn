@@ -60,7 +60,7 @@ const STAFF_MENU: MenuItem[] = [
   { to: '/staff', label: 'Tổng quan', icon: <LayoutDashboard size={18} /> },
   { to: '/staff/checkin', label: 'Check-in', icon: <FileCheck size={18} /> },
   { to: '/staff/bookings', label: 'Booking', icon: <CalendarDays size={18} /> },
-  { to: '/chat', label: 'Tin nhắn', icon: <MessageSquare size={18} /> },
+  { to: '/staff/chat', label: 'Tin nhắn', icon: <MessageSquare size={18} /> },
   { to: '/staff/settings', label: 'Cài đặt', icon: <Settings size={18} /> },
 ];
 
@@ -223,6 +223,14 @@ export const DashboardLayout: React.FC<DashboardLayoutProps> = ({
         label: 'Trang quản lý chủ sân',
         icon: <Building2 size={14} />,
         onClick: () => navigate('/owner'),
+      }
+    ] : []),
+    ...(role !== 'STAFF' && (user?.roles?.includes('STAFF') || user?.roles?.includes('ROLE_STAFF')) ? [
+      {
+        key: 'staff-dashboard',
+        label: 'Trang nhân viên check-in',
+        icon: <FileCheck size={14} />,
+        onClick: () => navigate('/staff'),
       }
     ] : []),
     ...(role !== 'ADMIN' && user?.roles?.includes('ADMIN') ? [

@@ -1,7 +1,9 @@
 package com.badminton.notificationservice.consumer;
 
+import com.badminton.notificationservice.client.IdentityServiceClient;
 import com.badminton.notificationservice.document.Notification;
 import com.badminton.notificationservice.repository.NotificationRepository;
+import com.badminton.notificationservice.service.AsyncEmailService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
@@ -17,6 +19,8 @@ import java.util.UUID;
 public class CommunityEventConsumer {
 
     private final NotificationRepository notificationRepository;
+    private final IdentityServiceClient identityServiceClient;
+    private final AsyncEmailService emailService;
 
     @KafkaListener(topics = "community.events", groupId = "notification-group")
     public void handleCommunityEvent(Map<String, Object> event) {
@@ -39,6 +43,9 @@ public class CommunityEventConsumer {
                 break;
             case "RatingCreated":
                 handleRatingCreated(event);
+                break;
+            case "MatchPlaytimeReminder":
+                handleMatchPlaytimeReminder(event);
                 break;
             default:
                 log.warn("Unknown community event type: {}", eventType);
@@ -143,5 +150,40 @@ public class CommunityEventConsumer {
                 .build());
 
         log.info("Created notification for match rejection: match={}, user={}", matchPostId, userId);
+    }
+
+    private void handleMatchPlaytimeReminder(Map<String, Object> event) {
+        UUID matchPostId = UUID.fromString(event.get("matchPostId").toString());
+        String title = event.get("title").toString();
+        String startTime = event.get("startTime").toString();
+        String venueName = event.getOrDefault("venueName", "Sân đấu giao lưu").toString();
+        
+        @SuppressWarnings("unchecked")
+        java.util.List<String> userIdStrings = (java.util.List<String>) event.get("userIds");
+        if (userIdStrings != null) {
+            for (String userIdStr : userIdStrings) {
+                UUID userId = UUID.fromString(userIdStr);
+                
+                // Save in-app notification
+                notificationRepository.save(Notification.builder()
+                        .receiverId(userId)
+                        .type("MATCH_PLAYTIME_REMINDER")
+                        .title("Kèo đấu sắp diễn ra")
+                        .content("Nhắc nhở: Kèo '" + title + "' của bạn sắp diễn ra lúc: " + startTime + " tại " + venueName + ".")
+                        .data(Map.of("matchPostId", matchPostId, "title", title, "startTime", startTime))
+                        .createdAt(LocalDateTime.now())
+                        .build());
+                
+                // Send email
+                try {
+                    String email = identityServiceClient.getUserEmail(userId);
+                    if (email != null) {
+                        emailService.sendMatchPlaytimeReminderEmail(email, title, startTime, venueName);
+                    }
+                } catch (Exception e) {
+                    log.error("Failed to send match playtime reminder email to userId: {}", userId, e);
+                }
+            }
+        }
     }
 }

@@ -90,8 +90,17 @@ public class VenueService {
             String url = identityServiceUrl + "/api/v1/users/" + userId.toString() + "/email";
             log.info("Calling identity-service to get email: {}", url);
             Map<?, ?> userMap = restTemplate.getForObject(url, Map.class);
-            if (userMap != null && userMap.containsKey("email")) {
-                return (String) userMap.get("email");
+            if (userMap != null) {
+                if (userMap.containsKey("email")) {
+                    return (String) userMap.get("email");
+                }
+                Object resultObj = userMap.get("result");
+                if (resultObj instanceof Map) {
+                    Map<?, ?> resultMap = (Map<?, ?>) resultObj;
+                    if (resultMap.containsKey("email")) {
+                        return (String) resultMap.get("email");
+                    }
+                }
             }
         } catch (Exception e) {
             log.error("Failed to fetch user email for user {}: {}", userId, e.getMessage());

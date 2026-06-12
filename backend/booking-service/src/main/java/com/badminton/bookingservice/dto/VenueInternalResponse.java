@@ -3,6 +3,7 @@ package com.badminton.bookingservice.dto;
 import lombok.Data;
 
 import java.util.UUID;
+import java.time.LocalTime;
 
 @Data
 public class VenueInternalResponse {
@@ -10,4 +11,6 @@ public class VenueInternalResponse {
     private UUID ownerId;
     private String name;
     private String policy;
+    private LocalTime openTime;
+    private LocalTime closeTime;
 }

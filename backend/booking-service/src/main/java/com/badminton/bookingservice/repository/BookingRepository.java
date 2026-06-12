@@ -19,4 +19,8 @@ public interface BookingRepository extends JpaRepository<Booking, UUID> {
     List<Booking> findByStatusAndExpiresAtBefore(String status, LocalDateTime now);
 
     boolean existsByUserIdAndVenueIdAndStatus(UUID userId, UUID venueId, String status);
+
+    List<Booking> findByStatusAndOwnerReminderSent(String status, Boolean ownerReminderSent);
+
+    List<Booking> findByStatusAndStartTimeBetweenAndPlayerReminderSent(String status, LocalDateTime start, LocalDateTime end, Boolean playerReminderSent);
 }

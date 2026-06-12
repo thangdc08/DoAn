@@ -110,3 +110,8 @@ TaiLieu/
 
 # Agent config (local tooling)
 .agent/
+
+# Facebook community scraper data
+backend/fb-community-service/data/cookies.json
+backend/fb-community-service/data/scrape-result.json
+backend/fb-community-service/data/*.png

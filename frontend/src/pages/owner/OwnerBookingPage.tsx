@@ -102,10 +102,12 @@ export default function OwnerBookingPage() {
   const getStatusColor = (status: string) => {
     const colors: Record<string, string> = {
       PENDING: 'warning',
-      PAID: 'success',
+      PAID: 'processing',
+      CONFIRMED: 'success',
       FAILED: 'error',
       EXPIRED: 'default',
       CANCELLED_BY_USER: 'error',
+      CANCELLED_BY_OWNER: 'error',
       CANCELLED_BY_ADMIN: 'error',
     };
     return colors[status] || 'default';
@@ -114,13 +116,66 @@ export default function OwnerBookingPage() {
   const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {
       PENDING: 'Chờ thanh toán',
-      PAID: 'Đã thanh toán',
+      PAID: 'Chờ duyệt',
+      CONFIRMED: 'Đã xác nhận',
       FAILED: 'Thất bại',
       EXPIRED: 'Hết hạn',
-      CANCELLED_BY_USER: 'Khách hủy',
+      CANCELLED_BY_USER: 'Khách tự hủy',
+      CANCELLED_BY_OWNER: 'Chủ sân từ chối',
       CANCELLED_BY_ADMIN: 'Admin hủy',
     };
     return labels[status] || status;
+  };
+
+  // Mutation for owner confirming booking
+  const confirmMutation = useMutation({
+    mutationFn: (bookingId: string) => bookingApi.confirmBookingByOwner(bookingId),
+    onSuccess: () => {
+      message.success('Đã xác nhận đơn đặt sân thành công!');
+      queryClient.invalidateQueries({ queryKey: ['owner-bookings'] });
+      setIsDetailModalOpen(false);
+    },
+    onError: (err: any) => {
+      message.error(err.message || 'Có lỗi xảy ra khi xác nhận đơn.');
+    }
+  });
+
+  // Mutation for owner rejecting booking
+  const rejectMutation = useMutation({
+    mutationFn: ({ bookingId, reason }: { bookingId: string, reason?: string }) => 
+      bookingApi.rejectBookingByOwner(bookingId, reason),
+    onSuccess: () => {
+      message.success('Đã từ chối đơn đặt sân và hoàn tiền cho khách.');
+      queryClient.invalidateQueries({ queryKey: ['owner-bookings'] });
+      setIsDetailModalOpen(false);
+    },
+    onError: (err: any) => {
+      message.error(err.message || 'Có lỗi xảy ra khi từ chối đơn.');
+    }
+  });
+
+  const handleReject = (bookingId: string) => {
+    let reason = '';
+    Modal.confirm({
+      title: 'Từ chối đơn đặt sân',
+      icon: <FilterOutlined style={{ color: '#ef4444' }} />,
+      content: (
+        <div style={{ marginTop: 12 }}>
+          <Text type="secondary">Nhập lý do từ chối (lý do này sẽ được gửi mail cho khách hàng):</Text>
+          <Input 
+            placeholder="Lý do từ chối..." 
+            style={{ marginTop: 8, borderRadius: 6 }}
+            onChange={(e) => { reason = e.target.value; }}
+          />
+        </div>
+      ),
+      okText: 'Xác nhận từ chối',
+      okType: 'danger',
+      cancelText: 'Hủy',
+      onOk: () => {
+        return rejectMutation.mutateAsync({ bookingId, reason: reason || 'Chủ sân bận đột xuất' });
+      }
+    });
   };
 
   // Client-side search filter on the current page content
@@ -207,6 +262,30 @@ export default function OwnerBookingPage() {
       key: 'actions',
       render: (_: any, record: Booking) => (
         <Space>
+          {record.status === 'PAID' && (
+            <>
+              <Button
+                type="primary"
+                size="small"
+                onClick={() => confirmMutation.mutate(record.id)}
+                loading={confirmMutation.isPending && selectedBooking?.id === record.id}
+                style={{ borderRadius: 6, background: '#10b981', borderColor: '#10b981' }}
+              >
+                Duyệt
+              </Button>
+              <Button
+                type="primary"
+                danger
+                ghost
+                size="small"
+                onClick={() => handleReject(record.id)}
+                loading={rejectMutation.isPending && selectedBooking?.id === record.id}
+                style={{ borderRadius: 6 }}
+              >
+                Từ chối
+              </Button>
+            </>
+          )}
           <Button
             type="primary"
             ghost
@@ -337,11 +416,36 @@ export default function OwnerBookingPage() {
         }
         visible={isDetailModalOpen}
         onCancel={() => setIsDetailModalOpen(false)}
-        footer={[
-          <Button key="close" type="primary" onClick={() => setIsDetailModalOpen(false)} style={{ borderRadius: 8 }}>
-            Đóng
-          </Button>
-        ]}
+        footer={
+          selectedBooking && selectedBooking.status === 'PAID' ? [
+            <Button 
+              key="reject" 
+              type="primary" 
+              danger 
+              ghost 
+              onClick={() => handleReject(selectedBooking.id)}
+              style={{ borderRadius: 8 }}
+            >
+              Từ chối đơn
+            </Button>,
+            <Button 
+              key="confirm" 
+              type="primary" 
+              onClick={() => confirmMutation.mutate(selectedBooking.id)}
+              loading={confirmMutation.isPending}
+              style={{ borderRadius: 8, background: '#10b981', borderColor: '#10b981' }}
+            >
+              Xác nhận duyệt
+            </Button>,
+            <Button key="close" onClick={() => setIsDetailModalOpen(false)} style={{ borderRadius: 8 }}>
+              Hủy bỏ
+            </Button>
+          ] : [
+            <Button key="close" type="primary" onClick={() => setIsDetailModalOpen(false)} style={{ borderRadius: 8 }}>
+              Đóng
+            </Button>
+          ]
+        }
         width={550}
         bodyStyle={{ padding: '12px 24px 24px 24px' }}
         centered

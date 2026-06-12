@@ -236,6 +236,8 @@ export const PublicLayout: React.FC = () => {
       handleLogout();
     } else if (key === 'owner-dashboard') {
       navigate('/owner');
+    } else if (key === 'staff-dashboard') {
+      navigate('/staff');
     } else if (key === 'admin-dashboard') {
       navigate('/admin');
     } else {
@@ -249,12 +251,15 @@ export const PublicLayout: React.FC = () => {
     { key: 'bookings', icon: <CalendarOutlined />, label: 'Đơn đặt sân' },
     
     // Links for special roles
-    ...(user?.roles?.includes('OWNER') ? [
+    ...(user?.roles?.includes('OWNER') || user?.roles?.includes('ROLE_OWNER') ? [
       { key: 'owner-dashboard', icon: <ShopOutlined />, label: 'Trang quản lý chủ sân' }
     ] : []),
 
+    ...(user?.roles?.includes('STAFF') || user?.roles?.includes('ROLE_STAFF') ? [
+      { key: 'staff-dashboard', icon: <CalendarOutlined />, label: 'Trang nhân viên check-in' }
+    ] : []),
     
-    ...(user?.roles?.includes('ADMIN') ? [
+    ...(user?.roles?.includes('ADMIN') || user?.roles?.includes('ROLE_ADMIN') ? [
       { key: 'admin-dashboard', icon: <DashboardOutlined />, label: 'Quản trị hệ thống', onClick: () => navigate('/admin') }
     ] : []),
 
@@ -389,7 +394,15 @@ export const PublicLayout: React.FC = () => {
                       )}
                       <div className="hidden md:flex flex-col items-start leading-none">
                         <span className="text-[13px] font-bold text-slate-900">{user?.fullName || 'Thành viên'}</span>
-                        <span className="text-[10px] font-bold text-brand-green uppercase mt-1">Hội viên VIP</span>
+                        <span className="text-[10px] font-bold text-brand-green uppercase mt-1">
+                          {user?.roles?.includes('ADMIN') || user?.roles?.includes('ROLE_ADMIN')
+                            ? 'Quản trị viên'
+                            : user?.roles?.includes('OWNER') || user?.roles?.includes('ROLE_OWNER')
+                            ? 'Chủ sân'
+                            : user?.roles?.includes('STAFF') || user?.roles?.includes('ROLE_STAFF')
+                            ? 'Nhân viên'
+                            : 'Hội viên VIP'}
+                        </span>
                       </div>
                     </div>
                   </Dropdown>

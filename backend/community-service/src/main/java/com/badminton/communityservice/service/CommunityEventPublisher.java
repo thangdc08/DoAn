@@ -11,6 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -178,5 +179,39 @@ public class CommunityEventPublisher {
         private UUID userId;
         private UUID hostId;
         private String title;
+    }
+
+    public void publishMatchPlaytimeReminder(UUID matchPostId, List<UUID> userIds, String title, LocalDateTime startTime, String venueName) {
+        MatchPlaytimeReminderEvent event = MatchPlaytimeReminderEvent.builder()
+                .eventId(UUID.randomUUID())
+                .eventType("MatchPlaytimeReminder")
+                .occurredAt(LocalDateTime.now())
+                .producer("community-service")
+                .version(1)
+                .matchPostId(matchPostId)
+                .userIds(userIds)
+                .title(title)
+                .startTime(startTime)
+                .venueName(venueName)
+                .build();
+
+        kafkaTemplate.send(TOPIC, matchPostId.toString(), event);
+        log.info("Published MatchPlaytimeReminder event for match {} to userIds {}", matchPostId, userIds);
+    }
+
+    @Data
+    @Builder
+    @AllArgsConstructor
+    public static class MatchPlaytimeReminderEvent {
+        private UUID eventId;
+        private String eventType;
+        private LocalDateTime occurredAt;
+        private String producer;
+        private Integer version;
+        private UUID matchPostId;
+        private List<UUID> userIds;
+        private String title;
+        private LocalDateTime startTime;
+        private String venueName;
     }
 }

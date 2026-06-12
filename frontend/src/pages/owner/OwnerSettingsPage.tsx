@@ -93,7 +93,16 @@ export default function OwnerSettingsPage() {
     if (!selectedVenue) return;
 
     // 1. Parse policy JSON
-    let bookingPolicy = { autoApprove: true, bufferTime: 0, maxBooking: 4, deposit: 100, cancelWindow: 24, refundPolicy: 'standard' };
+    let bookingPolicy = { 
+      autoApprove: true, 
+      bufferTime: 0, 
+      maxBooking: 4, 
+      deposit: 100, 
+      cancelWindow: 24, 
+      refundPolicy: 'standard',
+      ownerConfirmReminderWindow: 30,
+      playerPlaytimeReminderWindow: 120
+    };
     let bankAccount = { bankName: '', accountNumber: '', accountHolder: '' };
     let notifs = { newBooking: true, matchReminder: true, dailyReport: false };
     let bHours: any = null;
@@ -382,6 +391,19 @@ export default function OwnerSettingsPage() {
                 <Option value="flexible">Linh hoạt (Hoàn 100% nếu hủy trước 6h)</Option>
              </Select>
           </Form.Item>
+
+          <Row gutter={24}>
+             <Col span={12}>
+                <Form.Item label={<Space><HourglassOutlined /> <Text strong>Nhắc nhở chủ sân duyệt đơn (Phút)</Text></Space>} name="ownerConfirmReminderWindow">
+                   <InputNumber min={5} style={{ width: '100%', borderRadius: 8 }} suffix="phút" />
+                </Form.Item>
+             </Col>
+             <Col span={12}>
+                <Form.Item label={<Space><ClockCircleOutlined /> <Text strong>Nhắc nhở giờ chơi cho khách (Phút)</Text></Space>} name="playerPlaytimeReminderWindow">
+                   <InputNumber min={10} style={{ width: '100%', borderRadius: 8 }} suffix="phút" />
+                </Form.Item>
+             </Col>
+          </Row>
 
           <Divider />
           <Button type="primary" size="large" icon={<SaveOutlined />} onClick={handleSaveBookingPolicy} loading={saving} disabled={isReadOnly} style={{ background: isReadOnly ? undefined : BRAND.primary, borderRadius: 10, height: 48, padding: '0 32px' }}>Lưu thay đổi</Button>

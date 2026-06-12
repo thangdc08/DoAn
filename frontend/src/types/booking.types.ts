@@ -4,7 +4,7 @@ export interface Booking {
   venueId: string;
   venueNameSnapshot: string;
   totalAmount: number;
-  status: 'PENDING' | 'PAID' | 'FAILED' | 'EXPIRED' | 'CANCELLED_BY_ADMIN' | 'CANCELLED_BY_USER';
+  status: 'PENDING' | 'PAID' | 'CONFIRMED' | 'FAILED' | 'EXPIRED' | 'CANCELLED_BY_ADMIN' | 'CANCELLED_BY_USER' | 'CANCELLED_BY_OWNER';
   paymentStatus: 'UNPAID' | 'PROCESSING' | 'SUCCESS' | 'FAILED';
   expiresAt: string;
   paidAt?: string;

@@ -52,4 +52,27 @@ public class OwnerBookingController {
                 .result(bookingService.getRevenueStats(ownerId, venueId, fromDate, toDate))
                 .build();
     }
+
+    @PatchMapping("/{id}/confirm")
+    @Operation(summary = "Confirm paid booking", description = "Owner confirms a pending booking that has been paid")
+    public ApiResponse<BookingResponse> confirmBooking(
+            @RequestHeader("X-Auth-User-Id") UUID ownerId,
+            @PathVariable("id") UUID id) {
+        log.info("API Request: Owner {} confirming booking {}", ownerId, id);
+        return ApiResponse.<BookingResponse>builder()
+                .result(bookingService.confirmBookingByOwner(id, ownerId))
+                .build();
+    }
+
+    @PatchMapping("/{id}/reject")
+    @Operation(summary = "Reject booking", description = "Owner rejects a paid or confirmed booking, triggering refund")
+    public ApiResponse<BookingResponse> rejectBooking(
+            @RequestHeader("X-Auth-User-Id") UUID ownerId,
+            @PathVariable("id") UUID id,
+            @RequestParam(required = false, defaultValue = "Chủ sân từ chối đơn hàng") String reason) {
+        log.info("API Request: Owner {} rejecting booking {} with reason: {}", ownerId, id, reason);
+        return ApiResponse.<BookingResponse>builder()
+                .result(bookingService.rejectBookingByOwner(id, ownerId, reason))
+                .build();
+    }
 }

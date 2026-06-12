@@ -76,4 +76,12 @@ private LocalDateTime endTime;
 
 @Builder.Default
 private Boolean checkedIn = false;
+
+@Builder.Default
+@Column(name = "owner_reminder_sent", nullable = false)
+private Boolean ownerReminderSent = false;
+
+@Builder.Default
+@Column(name = "player_reminder_sent", nullable = false)
+private Boolean playerReminderSent = false;
 }

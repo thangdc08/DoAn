@@ -42,4 +42,22 @@ public class VenueServiceClient {
         // Default to true if not configured or call failed
         return true;
     }
+
+    public UUID getVenueOwnerId(UUID venueId) {
+        try {
+            String url = "http://venue-service/api/venues/" + venueId;
+            @SuppressWarnings("unchecked")
+            Map<String, Object> response = restTemplate.getForObject(url, Map.class);
+            if (response != null && response.containsKey("result")) {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> result = (Map<String, Object>) response.get("result");
+                if (result != null && result.containsKey("ownerId")) {
+                    return UUID.fromString(result.get("ownerId").toString());
+                }
+            }
+        } catch (Exception e) {
+            log.error("Failed to fetch ownerId for venue {}", venueId, e);
+        }
+        return null;
+    }
 }

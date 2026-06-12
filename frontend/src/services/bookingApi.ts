@@ -170,4 +170,21 @@ export const bookingApi = {
     const response = await apiClient.patch(`/bookings/api/staff/bookings/${bookingId}/checkin`);
     return unwrapResult(response);
   },
+
+  cancelBooking: async (bookingId: string): Promise<Booking> => {
+    const response = await apiClient.post(`/bookings/api/bookings/${bookingId}/cancel`);
+    return unwrapResult(response);
+  },
+
+  confirmBookingByOwner: async (bookingId: string): Promise<Booking> => {
+    const response = await apiClient.patch(`/bookings/api/owner/bookings/${bookingId}/confirm`);
+    return unwrapResult(response);
+  },
+
+  rejectBookingByOwner: async (bookingId: string, reason?: string): Promise<Booking> => {
+    const response = await apiClient.patch(`/bookings/api/owner/bookings/${bookingId}/reject`, null, {
+      params: reason ? { reason } : undefined,
+    });
+    return unwrapResult(response);
+  },
 };

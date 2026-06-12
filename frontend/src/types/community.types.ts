@@ -121,6 +121,38 @@ export interface FacebookPost {
   gender?: string | null;
   playType?: string | null;
   url: string;
+  posterName?: string | null;
   updatedAt: string;
 }
+
+export interface VenueTransfer {
+  id: string;
+  sellerId: string;
+  buyerId?: string;
+  venueName: string;
+  courtName?: string;
+  startTime: string;
+  endTime: string;
+  originalPrice: number;
+  transferPrice: number;
+  status: 'OPEN' | 'COMPLETED' | 'CANCELLED';
+  contactPhone?: string;
+  note?: string;
+  bookingId?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateVenueTransferRequest {
+  venueName: string;
+  courtName?: string;
+  startTime: string;
+  endTime: string;
+  originalPrice: number;
+  transferPrice: number;
+  contactPhone?: string;
+  note?: string;
+  bookingId?: string;
+}
+
 

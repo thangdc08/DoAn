@@ -33,4 +33,6 @@ public interface MatchPostRepository extends JpaRepository<MatchPost, UUID>, Jpa
                                       @Param("radiusMeters") double radiusMeters,
                                       @Param("status") String status,
                                       @Param("limit") int limit);
+
+    List<MatchPost> findByStatusInAndStartTimeBetweenAndReminderSent(List<String> statuses, LocalDateTime start, LocalDateTime end, Boolean reminderSent);
 }
